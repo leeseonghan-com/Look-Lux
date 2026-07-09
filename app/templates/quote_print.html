@@ -1,369 +1,556 @@
-{# 견적서 인쇄 화면 — 회사 설정의 테마/표시옵션/드래그 레이아웃을 반영 #}
+{# 견적서 인쇄 화면 — 회사 설정 테마/표시옵션 반영
+   구조 원칙:
+   1. 자연 흐름(flow) 레이아웃 → 페이지 자동 분할 지원
+   2. 표/블록마다 break-inside: avoid → 잘림 방지
+   3. 품목이 많아 표가 넘치면 → 표는 자연 확장, 하단 블록은 다음 페이지로 자동 이월
+   4. 미리보기와 실제 인쇄가 100% 동일한 CSS 사용
+   5. 모바일 다크모드 무시 → 흰색 배경 강제
+#}
 {% set c = preview_company if preview_company else request.state.company %}
 {% set t = c.quote_theme_data %}
 {% set scale = (c.quote_font_scale or 100) / 100.0 %}
-{% set layout_raw = c.quote_layout_json or "" %}
-{% set has_custom_layout = layout_raw and layout_raw|length > 4 %}
 <!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <title>견적서 {{ q.quote_number }}</title>
+{# 🌞 모바일/데스크톱 다크모드 무시 — 흰색 배경 강제 (iOS/Android 인쇄 시 검정 배경 방지) #}
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
+<meta name="theme-color" content="#FFFFFF">
 <style>
-  /* ===== 페이지 설정 — Safari/Chrome 둘 다 동작하는 단순한 설정 =====
-     마진을 10mm로 살짝 줄여 캔버스(800px)가 A4 인쇄영역에 자연스럽게 fit.
-     A4 인쇄가능영역: 210mm - 20mm = 190mm ≈ 717px (96dpi) ~ 800px (Safari) */
-  @page { size: A4 portrait; margin: 10mm; }
+  /* ============================================================
+     페이지 설정 — A4 인쇄 (Safari/Chrome/Edge 공통)
+     ============================================================ */
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm;
+    background: #FFFFFF;
+  }
+
+  /* ⭐ 다크모드 완전 무시 — 브라우저가 자동 반전하지 못하게 */
+  :root {
+    color-scheme: light only;
+    forced-color-adjust: none;
+  }
+  html {
+    color-scheme: light only;
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+  }
 
   * {
     box-sizing: border-box;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    forced-color-adjust: none;
   }
   html, body {
-    background: #FFFFFF !important;    /* ★ 배경 흰색 고정 (테마·화면·인쇄 모두) */
+    background: #FFFFFF !important;
     background-color: #FFFFFF !important;
-  }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', system-ui, sans-serif;
+    color-scheme: light only;
+    margin: 0;
+    padding: 0;
     color: {{ t.primary }};
-    margin: 0; padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', system-ui, sans-serif;
     font-size: {{ (10 * scale)|round(1) }}pt;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    line-height: 1.5;
   }
-  .container-default, .container-canvas {
-    background: #FFFFFF !important;   /* 견적서 본체 흰색 고정 */
+
+  /* 다크모드 미디어 쿼리에서도 강제 흰색 유지 */
+  @media (prefers-color-scheme: dark) {
+    html, body, .quote-doc {
+      background: #FFFFFF !important;
+      background-color: #FFFFFF !important;
+      color: {{ t.primary }} !important;
+    }
+    * {
+      background-color: inherit;
+    }
   }
-  img {
+
+  /* ============================================================
+     컨테이너 — 자연 흐름 모드 (기본)
+     ============================================================ */
+  .quote-doc {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 30px 25px;
+    background: #FFFFFF;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  }
+img {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     max-width: 100%;
   }
 
-  /* ===== 공통 스타일 ===== */
-  h1.title {
-    font-size: {{ (32 * scale)|round(1) }}pt;
-    text-align: center;
+  /* ============================================================
+     상단 헤더 (로고 + 제목 + 견적번호)
+     ============================================================ */
+  .header {
+    display: table;
+    width: 100%;
+    margin-bottom: 20px;
+  }
+  .header-cell {
+    display: table-cell;
+    vertical-align: middle;
+  }
+  .header-logo { width: 30%; }
+  .header-logo img {
+    max-width: 200px;
+    max-height: 70px;
+    object-fit: contain;
+  }
+  .header-title { width: 40%; text-align: center; }
+  .header-title h1 {
+    font-size: {{ (28 * scale)|round(1) }}pt;
     letter-spacing: 0.3em;
     margin: 0;
     font-weight: bold;
     color: {{ t.primary }};
     line-height: 1.2;
   }
-  .meta { display: flex; justify-content: space-between; font-size: {{ (11 * scale)|round(1) }}pt; font-weight: bold; }
+  .header-meta {
+    width: 30%;
+    text-align: right;
+    font-size: {{ (10 * scale)|round(1) }}pt;
+    font-weight: bold;
+    color: {{ t.primary }};
+  }
+  .header-meta div { margin: 2px 0; }
+  .header-meta .label { font-size: {{ (9 * scale)|round(1) }}pt; color: {{ t.primary }}; opacity: 0.75; font-weight: 500; }
 
+  /* ============================================================
+     당사자 표 (공급자/공급받는자)
+     ============================================================ */
   .party-table {
     width: 100%;
     border-collapse: collapse;
     font-size: {{ (10 * scale)|round(1) }}pt;
-    table-layout: fixed;              /* ★ 고정 폭 — 컬럼 폭을 정확히 지정 */
+    table-layout: fixed;
     border: 1px solid #999;
-    margin-bottom: 12px;
+    margin-bottom: 16px;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
-  /* ★ 4열 명시: 라벨1(18%) + 값1(32%) + 라벨2(18%) + 값2(32%) */
   .party-table col.c-label { width: 18%; }
   .party-table col.c-value { width: 32%; }
   .party-table th {
     background: {{ t.header_bg }};
     color: {{ t.header_fg }};
-    padding: 8px;
+    padding: 8px 6px;
     text-align: center;
     font-size: {{ (11 * scale)|round(1) }}pt;
     border: 1px solid #999;
+    font-weight: 700;
   }
   .party-table td.label {
     background: {{ t.label_bg }};
-    padding: 6px 8px;
+    padding: 7px 8px;
     font-weight: bold;
     border: 1px solid #999;
-    white-space: nowrap;              /* 라벨 텍스트 줄바꿈 방지 */
+    white-space: nowrap;
     font-size: {{ (10 * scale)|round(1) }}pt;
+    vertical-align: middle;
   }
   .party-table td.value {
-    padding: 6px 10px;
+    padding: 7px 10px;
     border: 1px solid #999;
-    position: relative;
-    word-break: break-word;           /* 긴 내용 자동 줄바꿈 */
+    word-break: break-word;
     overflow-wrap: break-word;
     font-size: {{ (10 * scale)|round(1) }}pt;
-    /* 내용이 여러 줄이 될 수 있으므로 셀 잘림 방지 */
-    overflow: visible;
+    vertical-align: middle;
   }
 
-  .greeting { text-align: center; font-size: {{ (12 * scale)|round(1) }}pt; font-weight: bold; }
+  /* ============================================================
+     인사 문구
+     ============================================================ */
+  .greeting {
+    text-align: center;
+    font-size: {{ (12 * scale)|round(1) }}pt;
+    font-weight: bold;
+    color: {{ t.primary }};
+    margin: 14px 0 12px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .rental-notice {
+    text-align: center;
+    font-size: {{ (10 * scale)|round(1) }}pt;
+    color: #92400E;
+    margin: -6px 0 12px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
 
-  .items-table { width: 100%; border-collapse: collapse; font-size: {{ (10 * scale)|round(1) }}pt; }
+  /* ============================================================
+     품목 표 — 페이지 넘김 지원 (thead 반복)
+     ============================================================ */
+  .items-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: {{ (10 * scale)|round(1) }}pt;
+    margin-bottom: 14px;
+  }
   .items-table th {
     background: {{ t.header_bg }};
     color: {{ t.header_fg }};
     padding: 8px 6px;
     border: 1px solid {{ t.header_bg }};
+    font-weight: 700;
+    font-size: {{ (10 * scale)|round(1) }}pt;
   }
-  .items-table td { padding: 6px; border: 1px solid #BBB; }
+  .items-table td {
+    padding: 7px 6px;
+    border: 1px solid #BBB;
+    font-size: {{ (10 * scale)|round(1) }}pt;
+    vertical-align: middle;
+    word-break: break-word;
+  }
   .items-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .items-table td.c { text-align: center; }
 
-  .summary-box { font-size: {{ (10 * scale)|round(1) }}pt; }
-  .summary-row { display: flex; border: 1px solid #BBB; border-top: none; }
-  .summary-row:first-child { border-top: 1px solid #BBB; }
-  .summary-row .lbl { flex: 1; background: {{ t.label_bg }}; padding: 8px 12px; text-align: right; font-weight: bold; font-size: {{ (11 * scale)|round(1) }}pt; }
-  .summary-row .val { width: 40%; padding: 8px 12px; text-align: right; font-weight: bold; font-variant-numeric: tabular-nums; font-size: {{ (11 * scale)|round(1) }}pt; }
-  .summary-row.discount .lbl, .summary-row.discount .val { color: {{ t.discount_color }}; background: {{ t.discount_bg }}; }
-  .summary-row.total { border-color: {{ t.primary }}; border-width: 2px; }
-  .summary-row.total .lbl { background: {{ t.total_bg }}; color: {{ t.header_fg }}; font-size: {{ (13 * scale)|round(1) }}pt; }
-  .summary-row.total .val { background: {{ t.total_bg }}; color: {{ t.total_fg }}; font-size: {{ (15 * scale)|round(1) }}pt; }
-
-  .conditions h3 { color: {{ t.primary }}; font-size: {{ (11 * scale)|round(1) }}pt; margin: 0 0 8px; }
-  .conditions table { width: 100%; border-collapse: collapse; font-size: {{ (10 * scale)|round(1) }}pt; }
-  .conditions td.k { background: {{ t.label_bg }}; padding: 6px 10px; font-weight: bold; width: 20%; border: 1px solid #DDD; }
-  .conditions td.v { padding: 6px 10px; border: 1px solid #DDD; }
-
-  .qe-img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  .footer-message { text-align: center; font-size: {{ (11 * scale)|round(1) }}pt; color: {{ t.primary }}; font-weight: 500; white-space: pre-line; }
-  .footer-sign-text { font-size: {{ (11 * scale)|round(1) }}pt; font-weight: bold; color: {{ t.primary }}; }
-
-  /* ===== 기본 모드 컨테이너 ===== */
-  .container-default {
-    max-width: 800px; margin: 0 auto;
-    background: white; padding: 30px 25px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  /* ============================================================
+     합계 박스
+     ============================================================ */
+  .summary-box {
+    font-size: {{ (10 * scale)|round(1) }}pt;
+    margin-left: auto;
+    width: 55%;
+    min-width: 320px;
+    margin-top: 8px;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
-
-  /* ===== 커스텀 레이아웃 컨테이너 (A4 캔버스) =====
-     화면 미리보기는 800×1131px (A4 비율 ≈ 1:1.414).
-     인쇄 시에는 동일한 캔버스를 mm 단위로 다시 정의해서
-     Safari/Chrome 모두 잘림 없이 한 페이지에 떨어지도록 함. */
-  .container-canvas {
-    width: 800px;
-    height: 1131px;
-    margin: 0 auto;
-    background: white;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-    position: relative;
-    overflow: hidden;
-  }
-  .qe-print {
-    position: absolute;
-    overflow: hidden;
-  }
-  .qe-print img.qe-img {
+  .summary-row {
+    display: table;
     width: 100%;
-    height: 100%;
-    object-fit: contain;
-    object-position: center;
-    display: block;
+    border: 1px solid #BBB;
+    border-top: none;
+    table-layout: fixed;
+  }
+  .summary-row:first-child { border-top: 1px solid #BBB; }
+  .summary-row .lbl {
+    display: table-cell;
+    width: 55%;
+    background: {{ t.label_bg }};
+    padding: 8px 12px;
+    text-align: right;
+    font-weight: bold;
+    font-size: {{ (11 * scale)|round(1) }}pt;
+    vertical-align: middle;
+  }
+  .summary-row .val {
+    display: table-cell;
+    width: 45%;
+    padding: 8px 12px;
+    text-align: right;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+    font-size: {{ (11 * scale)|round(1) }}pt;
+    vertical-align: middle;
+  }
+  .summary-row.discount .lbl,
+  .summary-row.discount .val {
+    color: {{ t.discount_color }};
+    background: {{ t.discount_bg }};
+  }
+  .summary-row.total {
+    border-color: {{ t.primary }};
+    border-width: 2px;
+    border-style: solid;
+  }
+  .summary-row.total .lbl {
+    background: {{ t.total_bg }};
+    color: {{ t.header_fg }};
+    font-size: {{ (13 * scale)|round(1) }}pt;
+  }
+  .summary-row.total .val {
+    background: {{ t.total_bg }};
+    color: {{ t.total_fg }};
+    font-size: {{ (14 * scale)|round(1) }}pt;
   }
 
-  /* ===== 기본 모드 — 도장/로고 사이즈 고정 (Safari 일관성) ===== */
-  .container-default img[alt="logo"] {
-    max-width: 200px;
-    max-height: 70px;
-    height: auto;
-    object-fit: contain;
+  /* ============================================================
+     견적 조건
+     ============================================================ */
+  .conditions {
+    margin-top: 22px;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
-  .container-default img[alt="도장"] {
-    max-width: 70px;
-    max-height: 70px;
-    width: 70px;
-    height: 70px;
+  .conditions h3 {
+    color: {{ t.primary }};
+    font-size: {{ (11 * scale)|round(1) }}pt;
+    margin: 0 0 8px;
+    font-weight: 700;
+  }
+  .conditions table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: {{ (10 * scale)|round(1) }}pt;
+    table-layout: fixed;
+  }
+  .conditions col.k { width: 20%; }
+  .conditions td.k {
+    background: {{ t.label_bg }};
+    padding: 6px 10px;
+    font-weight: bold;
+    border: 1px solid #DDD;
+    vertical-align: middle;
+    font-size: {{ (10 * scale)|round(1) }}pt;
+  }
+  .conditions td.v {
+    padding: 6px 10px;
+    border: 1px solid #DDD;
+    word-break: break-word;
+    font-size: {{ (10 * scale)|round(1) }}pt;
+  }
+
+  /* ============================================================
+     하단 메시지 · 서명 · 도장
+     ============================================================ */
+  .footer-message {
+    text-align: center;
+    font-size: {{ (11 * scale)|round(1) }}pt;
+    color: {{ t.primary }};
+    font-weight: 500;
+    white-space: pre-line;
+    margin-top: 22px;
+    padding: 10px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .sign-block {
+    margin-top: 32px;
+    text-align: right;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .sign-inner {
+    display: inline-block;
+    position: relative;
+    padding-right: 45px;   /* 도장 크기 절반 축소에 맞춰 padding도 감소 */
+  }
+  .sign-text {
+    font-size: {{ (11 * scale)|round(1) }}pt;
+    font-weight: bold;
+    color: {{ t.primary }};
+    line-height: 2;
+  }
+  .sign-stamp {
+    position: absolute;
+    right: 0;
+    top: -8px;             /* 크기 절반에 맞춰 top 조정 */
+    width: 35px;           /* ★ 절반으로 축소 (70px → 35px) */
+    height: 35px;          /* ★ 절반으로 축소 (70px → 35px) */
     object-fit: contain;
   }
 
-  .print-btn { position: fixed; top: 20px; right: 20px; padding: 10px 20px; background: {{ t.primary }}; color: {{ t.header_fg }}; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; z-index: 100; }
+  /* ============================================================
+     페이지 넘김 그룹 — 표는 절대 잘리지 않게
+     ============================================================ */
+  .keep-together {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
 
-  /* ====================================================================
-     인쇄 미디어 — 단순하고 견고한 설정 (Safari/Chrome/Edge 공통)
-     - 기본 모드: 자연스러운 흐름 레이아웃에 맡김 (브라우저가 자동 분할)
-     - 캔버스 모드: 800px 캔버스를 종이에 그대로 출력 (스케일 변환 없음)
-     ==================================================================== */
+  /* ============================================================
+     인쇄 미디어 특별 처리
+     ============================================================ */
   @media print {
-    .print-btn, .print-helper { display: none !important; }
+    /* 🌞 인쇄 시 다크모드 완전 무시 (모바일 iOS/Android 검정 배경 방지) */
+    :root, html, body {
+      color-scheme: light only !important;
+      background: #FFFFFF !important;
+      background-color: #FFFFFF !important;
+      forced-color-adjust: none !important;
+    }
     html, body {
       margin: 0 !important;
       padding: 0 !important;
-      background: white !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      forced-color-adjust: none !important;
+    }
+    .print-helper { display: none !important; }
 
-    /* ───────── 기본 모드 ───────── */
-    .container-default {
+    .quote-doc {
       box-shadow: none !important;
       padding: 0 !important;
-      margin: 0 auto !important;
       max-width: 100% !important;
-      background: white !important;
+      background: #FFFFFF !important;
+      background-color: #FFFFFF !important;
+      color: {{ t.primary }} !important;
     }
 
-    /* ───────── 캔버스(커스텀 레이아웃) 모드 ─────────
-       Safari/iPhone 호환: transform/zoom 사용 시 페이지 사이즈
-       계산이 어긋나거나 빈 페이지가 추가됨. 단순히 800px 캔버스를
-       그대로 두고 인쇄 다이얼로그의 "맞춤(Scale to fit)" 옵션이
-       자동 축소하도록 위임. 사용자 안내는 우측 상단 가이드로 제공. */
-    .container-canvas {
-      box-shadow: none !important;
-      margin: 0 auto !important;
-      padding: 0 !important;
-      background: white !important;
-      page-break-after: avoid;
-      page-break-inside: avoid;
-      overflow: hidden !important;
-    }
-    .container-canvas .qe-print {
-      position: absolute !important;
-      overflow: hidden !important;
-    }
-
-    /* ───────── 표/박스 페이지 분할 — 잘림 방지 강화 ─────────
-       원칙:
-       1) 헤더는 매 페이지마다 반복 (thead = table-header-group)
-       2) 각 행(tr)은 페이지 경계에서 잘리지 않음
-       3) 합계·결제조건·서명 묶음은 한 페이지 안에 통째로 표시
-       4) 합계 박스 안의 각 행도 잘리지 않음 */
-    .items-table { width: 100% !important; page-break-inside: auto; }
+    /* 품목 표: 헤더는 매 페이지 반복 */
     .items-table thead {
-      display: table-header-group !important;  /* 매 페이지 반복 */
+      display: table-header-group !important;
+    }
+    .items-table thead tr,
+    .items-table thead th {
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
-    .items-table thead tr { page-break-inside: avoid !important; break-inside: avoid !important; }
     .items-table tbody tr {
       page-break-inside: avoid !important;
       break-inside: avoid !important;
-      page-break-after: auto !important;
     }
     .items-table td, .items-table th {
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
 
-    /* 합계·결제조건·서명 — 각 블록 잘림 방지 + 마지막 페이지로 묶음 */
-    .summary-box {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-      page-break-before: auto !important;   /* 필요시 새 페이지로 자동 이동 */
-      break-before: auto !important;
-      margin-top: 12px !important;
-    }
-    .summary-row {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    .conditions, .footer-message, .footer-sign-text {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    .conditions table, .conditions tbody, .conditions tr, .conditions td {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    /* 거래 당사자 표도 잘림 방지 */
-    .party-table {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    .party-table tr {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    /* 합계 + 결제조건 + 서명 묶음 — 가능하면 같은 페이지로
-       (구식 브라우저 호환을 위해 wrapper 클래스 사용) */
-    .print-end-block {
+    /* 잘림 방지 그룹 */
+    .party-table,
+    .party-table tr,
+    .party-table thead,
+    .greeting,
+    .rental-notice,
+    .summary-box,
+    .summary-row,
+    .conditions,
+    .conditions table,
+    .conditions tr,
+    .conditions td,
+    .footer-message,
+    .sign-block,
+    .keep-together {
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
 
-    /* ───────── 테마 배경색 인쇄 강제 ─────────
-       Chrome: print-color-adjust / Safari: -webkit-print-color-adjust */
+    /* 하단 블록(합계 · 조건 · 서명)은 함께 붙어 있어야 함 */
+    .end-block {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* 배경색 강제 인쇄 */
     .party-table th, .items-table th,
     .summary-row .lbl, .summary-row .val,
     .summary-row.total .lbl, .summary-row.total .val,
     .summary-row.discount .lbl, .summary-row.discount .val,
     .conditions td.k, .party-table td.label,
-    h1.title, .greeting {
+    .header-title h1, .greeting {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
 
-    /* ───────── 이미지(로고·도장) ───────── */
-    img, .qe-img {
+    img {
       page-break-inside: avoid;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    .qe-print img.qe-img {
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: contain !important;
-      object-position: center !important;
-    }
+  }
+
+  /* ============================================================
+     인쇄 도우미 (화면에서만 표시)
+     ============================================================ */
+  .print-helper {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .print-btn {
+    padding: 10px 20px;
+    background: {{ t.primary }};
+    color: {{ t.header_fg }};
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .print-hint {
+    background: #FEF3C7;
+    border: 1px solid #FCD34D;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #78350F;
+    max-width: 240px;
+    line-height: 1.5;
   }
 </style>
 </head>
 <body>
-<div class="print-helper" style="position: fixed; top: 20px; right: 20px; z-index: 100; display: flex; gap: 8px; align-items: flex-start;">
-  <button class="print-btn" onclick="doPrint()" style="position: static;">🖨️ 인쇄 / PDF 저장</button>
-  <div style="background: #FEF3C7; border: 1px solid #FCD34D; padding: 8px 12px; border-radius: 6px; font-size: 11px; color: #78350F; max-width: 240px; line-height: 1.5;">
+
+<div class="print-helper">
+  <button class="print-btn" onclick="doPrint()">🖨️ 인쇄 / PDF 저장</button>
+  <div class="print-hint">
     💡 <b>Safari 사용 시</b>:<br>
-    ① 인쇄 다이얼로그 → 우측 상단 <b>"세부사항 보기"</b><br>
-    ② <b>"배경 그래픽 인쇄"</b> 체크 ✓<br>
+    ① 인쇄 다이얼로그 → <b>"세부사항 보기"</b><br>
+    ② <b>"배경 그래픽 인쇄"</b> ✓ 체크<br>
     ③ <b>크기 조정 → 자동</b> 선택<br>
-    <span style="color:#92400E; font-size:10px;">(Chrome도 유사 — 더 보기 → 배경 그래픽 ✓)</span>
+    <span style="color:#92400E; font-size:10px;">(Chrome도 유사 — "더 보기" → "배경 그래픽" ✓)</span>
   </div>
 </div>
+
 <script>
   function doPrint() {
-    // 인쇄 직전 배경 그래픽 안내 (한 번만)
     if (!sessionStorage.getItem('print_bg_notice')) {
-      alert('🖨️ 인쇄 다이얼로그에서 반드시 확인하세요:\n\n[Safari (Mac/iPhone)]\n  → 우측 상단 "세부사항 보기"\n  → "배경 그래픽 인쇄" ✓ 체크\n  → 크기 조정: "자동" 선택\n\n[Chrome / Edge]\n  → "더 보기" → "배경 그래픽" ✓\n  → 크기: 기본\n\n이 옵션이 꺼져 있으면 표 헤더·배경색이 인쇄되지 않습니다.');
+      alert('🖨️ 인쇄 다이얼로그에서 반드시 확인하세요:\n\n[Safari]\n  → "세부사항 보기" → "배경 그래픽 인쇄" ✓\n  → 크기 조정: "자동"\n\n[Chrome / Edge]\n  → "더 보기" → "배경 그래픽" ✓\n\n이 옵션이 꺼져 있으면 표 헤더·배경색이 인쇄되지 않습니다.');
       sessionStorage.setItem('print_bg_notice', '1');
     }
     window.print();
   }
 </script>
 
-{# ============================================================
-   품목 컬럼 수 계산 (기본/커스텀 공통)
-   ============================================================ #}
-{% set col_count = 5 + (1 if c.show_spec else 0) + (1 if c.show_unit else 0) + (1 if c.show_memo else 0) %}
+<div class="quote-doc" id="quote-doc">
 
-{# ============================================================
-   매크로: 각 블록을 함수처럼 정의 (기본/커스텀 모드 모두 재사용)
-   ============================================================ #}
-{% macro block_logo() %}
-  {% if c.logo_image and (c.show_logo or c.show_logo is none) %}
-  <img src="/company/{{ c.logo_image }}" class="qe-img" alt="logo">
-  {% endif %}
-{% endmacro %}
-
-{% macro block_title() %}
-  <h1 class="title">
-    {% if q.quote_type == '렌탈' %}{{ c.quote_title_rental }}{% else %}{{ c.quote_title_normal }}{% endif %}
-  </h1>
-{% endmacro %}
-
-{% macro block_meta() %}
-  <div class="meta">
-    <span>견적번호:&nbsp; {{ q.quote_number }}</span>
-    <span>견적일자:&nbsp; {{ q.quote_date }}</span>
+  {# ========== 1) 상단 헤더 (로고 + 제목 + 견적번호/일자) ========== #}
+  <div class="header keep-together">
+    <div class="header-cell header-logo">
+      {% if c.logo_image and (c.show_logo or c.show_logo is none) %}
+      <img src="/company/{{ c.logo_image }}" alt="logo">
+      {% endif %}
+    </div>
+    <div class="header-cell header-title">
+      <h1>{% if q.quote_type == '렌탈' %}{{ c.quote_title_rental }}{% else %}{{ c.quote_title_normal }}{% endif %}</h1>
+    </div>
+    <div class="header-cell header-meta">
+      <div><span class="label">견적번호</span><br>{{ q.quote_number }}</div>
+      <div style="margin-top:6px;"><span class="label">견적일자</span><br>{{ q.quote_date }}</div>
+    </div>
   </div>
-{% endmacro %}
 
-{% macro block_parties() %}
+  {# ========== 2) 렌탈 안내 (렌탈일 경우만) ========== #}
+  {% if q.quote_type == '렌탈' %}
+  <div class="rental-notice">
+    🎬 렌탈 일수: <strong>{{ q.rental_days }}일</strong> · 아래 금액은 일수가 적용된 최종 금액입니다.
+  </div>
+  {% endif %}
+
+  {# ========== 3) 당사자 표 ========== #}
   <table class="party-table">
     <colgroup>
       <col class="c-label"><col class="c-value">
       <col class="c-label"><col class="c-value">
     </colgroup>
     <thead>
-      <tr><th colspan="2">공 급 받 는 자</th><th colspan="2">공 급 자</th></tr>
+      <tr>
+        <th colspan="2">공 급 받 는 자</th>
+        <th colspan="2">공 급 자</th>
+      </tr>
     </thead>
     <tbody>
       <tr>
         <td class="label">거래처명</td><td class="value">{{ q.vendor_name }}</td>
-        <td class="label">상호</td>
-        <td class="value"><strong>{{ c.company_name }}</strong></td>
+        <td class="label">상호</td><td class="value"><strong>{{ c.company_name }}</strong></td>
       </tr>
       <tr>
         <td class="label">담당자</td><td class="value">{{ q.vendor_contact }}</td>
@@ -380,18 +567,16 @@
       {% if c.address %}
       <tr>
         <td class="label">&nbsp;</td><td class="value">&nbsp;</td>
-        <td class="label">주소</td><td class="value" style="font-size: {{ (9 * scale)|round(1) }}pt;">{{ c.address }}</td>
+        <td class="label">주소</td><td class="value" style="font-size:{{ (9 * scale)|round(1) }}pt;">{{ c.address }}</td>
       </tr>
       {% endif %}
     </tbody>
   </table>
-{% endmacro %}
 
-{% macro block_greeting() %}
+  {# ========== 4) 인사 문구 ========== #}
   <div class="greeting">{{ c.quote_greeting }}</div>
-{% endmacro %}
 
-{% macro block_items() %}
+  {# ========== 5) 품목 표 (자동 페이지 넘김) ========== #}
   <table class="items-table">
     <thead>
       <tr>
@@ -418,164 +603,73 @@
         {% if c.show_memo %}<td>{{ it.memo or '' }}</td>{% endif %}
       </tr>
       {% endfor %}
-      {% set blank_count = 6 - items|length %}
-      {% if blank_count > 0 %}{% for i in range(blank_count) %}
-      <tr class="blank-filler">{% for _ in range(col_count) %}<td>&nbsp;</td>{% endfor %}</tr>
-      {% endfor %}{% endif %}
     </tbody>
   </table>
-{% endmacro %}
 
-<style>
-  /* 빈 행 채우기는 화면용 (보기 좋게) — 인쇄 시에는 숨김 (페이지 분할 방해 방지) */
-  @media print { .blank-filler { display: none !important; } }
-</style>
-
-{% macro block_summary() %}
-  <div class="summary-box">
-    <div class="summary-row"><div class="lbl">공급가액 합계</div><div class="val">{{ q.subtotal|money_raw }}원</div></div>
-    {% if q.discount %}
-    <div class="summary-row discount"><div class="lbl">할 인 금 액</div><div class="val">-{{ q.discount|money_raw }}원</div></div>
-    <div class="summary-row"><div class="lbl">할인 후 공급가액</div><div class="val">{{ q.after_discount|money_raw }}원</div></div>
-    {% endif %}
-    <div class="summary-row"><div class="lbl">부가세 (10%)</div><div class="val">{{ q.vat|money_raw }}원</div></div>
-    <div class="summary-row total"><div class="lbl">총 합 계 금 액</div><div class="val">{{ q.total|money_raw }}원</div></div>
-  </div>
-{% endmacro %}
-
-{% macro block_conditions() %}
-  <div class="conditions">
-    <h3>■ 견적 조건</h3>
-    <table>
-      <tr><td class="k">유효기간</td><td class="v">견적일로부터 {{ q.valid_until or '협의' }}까지</td></tr>
-      <tr><td class="k">결제조건</td><td class="v">{{ q.payment_terms }}</td></tr>
-      <tr><td class="k">납품기일</td><td class="v">{{ q.delivery_terms }}</td></tr>
-      {% if c.show_bank_in_quote and c.bank_account %}
-      <tr><td class="k">입금계좌</td><td class="v">{{ c.bank_account }}</td></tr>
+  {# ========== 6) 하단 블록 (합계 + 조건 + 하단메시지 + 서명) ========== #}
+  {# 하단 블록은 하나의 keep-together 그룹으로, 표가 넘치면 통째로 다음 페이지로 이동 #}
+  <div class="end-block">
+    {# 합계 박스 #}
+    <div class="summary-box">
+      <div class="summary-row">
+        <div class="lbl">공급가액 합계</div>
+        <div class="val">{{ q.subtotal|money_raw }}원</div>
+      </div>
+      {% if q.discount %}
+      <div class="summary-row discount">
+        <div class="lbl">할 인 금 액</div>
+        <div class="val">-{{ q.discount|money_raw }}원</div>
+      </div>
+      <div class="summary-row">
+        <div class="lbl">할인 후 공급가액</div>
+        <div class="val">{{ q.after_discount|money_raw }}원</div>
+      </div>
       {% endif %}
-      {% if q.notes %}<tr><td class="k">특기사항</td><td class="v">{{ q.notes }}</td></tr>{% endif %}
-    </table>
-  </div>
-{% endmacro %}
+      <div class="summary-row">
+        <div class="lbl">부가세 (10%)</div>
+        <div class="val">{{ q.vat|money_raw }}원</div>
+      </div>
+      <div class="summary-row total">
+        <div class="lbl">총 합 계 금 액</div>
+        <div class="val">{{ q.total|money_raw }}원</div>
+      </div>
+    </div>
 
-{% macro block_stamp() %}
-  {% if c.stamp_image and (c.show_stamp_in_sign or c.show_stamp_in_sign is none) %}
-  <img src="/company/{{ c.stamp_image }}" class="qe-img" alt="도장">
-  {% endif %}
-{% endmacro %}
+    {# 견적 조건 #}
+    <div class="conditions">
+      <h3>■ 견적 조건</h3>
+      <table>
+        <colgroup><col class="k"><col></colgroup>
+        <tr><td class="k">유효기간</td><td class="v">견적일로부터 {{ q.valid_until or '협의' }}까지</td></tr>
+        <tr><td class="k">결제조건</td><td class="v">{{ q.payment_terms }}</td></tr>
+        <tr><td class="k">납품기일</td><td class="v">{{ q.delivery_terms }}</td></tr>
+        {% if c.show_bank_in_quote and c.bank_account %}
+        <tr><td class="k">입금계좌</td><td class="v">{{ c.bank_account }}</td></tr>
+        {% endif %}
+        {% if q.notes %}
+        <tr><td class="k">특기사항</td><td class="v">{{ q.notes }}</td></tr>
+        {% endif %}
+      </table>
+    </div>
 
-{% macro block_signature() %}
-  <div class="footer-sign-text" style="text-align: right;">
-    {{ c.company_name }} &nbsp; 대표 &nbsp; {{ c.representative }} (인)
-  </div>
-{% endmacro %}
-
-
-{% if has_custom_layout %}
-{# =====================================================
-   커스텀 드래그 레이아웃 모드 — 절대 위치
-   ===================================================== #}
-<div class="container-canvas" id="canvas-print">
-  {# 모든 블록을 absolute 위치로 배치, JS로 layout 적용 #}
-  <div class="qe-print" data-key="logo">{{ block_logo() }}</div>
-  <div class="qe-print" data-key="title">{{ block_title() }}</div>
-  <div class="qe-print" data-key="meta">{{ block_meta() }}</div>
-  <div class="qe-print" data-key="parties">{{ block_parties() }}</div>
-  <div class="qe-print" data-key="greeting">{{ block_greeting() }}</div>
-  <div class="qe-print" data-key="items">{{ block_items() }}</div>
-  <div class="qe-print" data-key="summary">{{ block_summary() }}</div>
-  <div class="qe-print" data-key="conditions">{{ block_conditions() }}</div>
-  <div class="qe-print" data-key="stamp">{{ block_stamp() }}</div>
-  <div class="qe-print" data-key="signature">{{ block_signature() }}</div>
-</div>
-
-<script>
-// 저장된 레이아웃 적용 — 디자이너 위치를 화면 + 인쇄에 동일 적용
-(function() {
-  const layoutRaw = {{ layout_raw|tojson }};
-  let layout = {};
-  try {
-    layout = typeof layoutRaw === 'string' ? JSON.parse(layoutRaw) : layoutRaw;
-  } catch (e) {
-    console.error('레이아웃 파싱 실패', e);
-    return;
-  }
-  // 기본 위치 (디자이너의 data-default-x 와 같은 값) — 800×1131px 캔버스 기준
-  const defaults = {
-    logo:       { x: 40,  y: 40,   w: 160, h: 60 },
-    title:      { x: 200, y: 40,   w: 400, h: 80 },
-    meta:       { x: 600, y: 50,   w: 160, h: 60 },
-    parties:    { x: 40,  y: 160,  w: 720, h: 180 },
-    greeting:   { x: 40,  y: 355,  w: 720, h: 40 },
-    items:      { x: 40,  y: 410,  w: 720, h: 260 },
-    summary:    { x: 380, y: 685,  w: 380, h: 140 },
-    conditions: { x: 40,  y: 840,  w: 720, h: 120 },
-    stamp:      { x: 640, y: 985,  w: 100, h: 100 },
-    signature:  { x: 380, y: 1010, w: 280, h: 40 },
-  };
-  document.querySelectorAll('.qe-print').forEach(el => {
-    const key = el.dataset.key;
-    const cfg = (layout && layout[key]) || defaults[key] || { x: 0, y: 0, w: 200, h: 50 };
-    el.style.left = cfg.x + 'px';
-    el.style.top = cfg.y + 'px';
-    el.style.width = cfg.w + 'px';
-    el.style.height = cfg.h + 'px';
-  });
-  // 인쇄 시 캔버스를 종이에 맞게 자동 축소하는 것은 브라우저 인쇄 다이얼로그의
-  // "맞춤(Scale to fit)" 옵션에 위임 — CSS transform 사용 시 Safari에서
-  // 페이지 사이즈 계산이 어긋나서 잘리는 문제가 있어 제거함.
-})();
-</script>
-
-{% else %}
-{# =====================================================
-   기본 모드 — 표 흐름 레이아웃
-   ===================================================== #}
-<div class="container-default">
-
-  {{ block_title() }}
-
-  {% if q.quote_type == '렌탈' %}
-  <div style="text-align:center; font-size:{{ (11 * scale)|round(1) }}pt; color:#92400e; margin-top:8px; margin-bottom:18px;">
-    렌탈 일수: <strong>{{ q.rental_days }}일</strong> &nbsp; · &nbsp; 아래 금액은 일수가 적용된 최종 금액입니다.
-  </div>
-  {% else %}
-  <div style="margin-bottom: 20px;"></div>
-  {% endif %}
-
-  <div style="margin-bottom: 20px;">{{ block_meta() }}</div>
-
-  <div style="margin-bottom: 20px;">{{ block_parties() }}</div>
-
-  <div style="padding: 12px 0; margin: 10px 0;">{{ block_greeting() }}</div>
-
-  {{ block_items() }}
-
-  {# 합계·결제조건·서명 묶음 — 한 페이지 안에 통째로 표시
-     items-table 뒤에 공간이 부족하면 자동으로 새 페이지로 이동 #}
-  <div class="print-end-block">
-    {{ block_summary() }}
-
-    <div style="margin-top: 25px;">{{ block_conditions() }}</div>
-
+    {# 하단 메시지 (설정에서 입력한 경우) #}
     {% if c.quote_footer_message %}
-    <div style="margin-top: 26px;">{{ c.quote_footer_message }}</div>
+    <div class="footer-message">{{ c.quote_footer_message }}</div>
     {% endif %}
 
-    <div style="margin-top: 40px; text-align: right; position: relative;">
-      <div style="display: inline-block; position: relative; padding-right: 90px;">
-        {{ block_signature() }}
+    {# 서명 + 도장 #}
+    <div class="sign-block">
+      <div class="sign-inner">
+        <div class="sign-text">
+          {{ c.company_name }} &nbsp; 대표 &nbsp; {{ c.representative }} (인)
+        </div>
         {% if c.stamp_image and (c.show_stamp_in_sign or c.show_stamp_in_sign is none) %}
-        <img src="/company/{{ c.stamp_image }}"
-             style="position: absolute; right: 0; top: -25px; width: 70px; height: 70px; object-fit: contain;"
-             alt="도장">
+        <img src="/company/{{ c.stamp_image }}" class="sign-stamp" alt="도장">
         {% endif %}
       </div>
     </div>
   </div>
 
 </div>
-{% endif %}
-
 </body>
 </html>

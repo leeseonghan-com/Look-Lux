@@ -423,7 +423,8 @@ if ('serviceWorker' in navigator) {
     <a href="/quotes" class="nav-link {% if path.startswith('/quote') %}active{% endif %}"><span class="icon">✎</span>견적서</a>
     {% endif %}
     {% if is_admin or perms.get('products') %}
-    <a href="/products" class="nav-link {% if path.startswith('/product') or path.startswith('/item') or path.startswith('/equipment') %}active{% endif %}"><span class="icon">◫</span>물품 등록</a>
+    <a href="/products" class="nav-link {% if path.startswith('/product') or path.startswith('/item') %}active{% endif %}"><span class="icon">💰</span>견적 단가표</a>
+    <a href="/inventory" class="nav-link {% if path.startswith('/inventory') or path.startswith('/equipment') %}active{% endif %}"><span class="icon">📦</span>재고/장비</a>
     {% endif %}
 
     <div class="nav-section">현장</div>
@@ -482,6 +483,19 @@ if ('serviceWorker' in navigator) {
 {% else %}
 <main>{% block content_nologin %}{% endblock %}</main>
 {% endif %}
+
+{# ────── 배포 버전 배지 (우측 하단, 화면에만 표시 · 인쇄 제외) ────── #}
+<div id="deploy-version-badge" title="배포 버전 — 브라우저 캐시가 남아있으면 이전 버전이 표시됩니다"
+     style="position:fixed; right:10px; bottom:10px; z-index:9990;
+            background:rgba(10,14,26,0.85); color:#C9A961;
+            padding:4px 10px; border-radius:999px;
+            font-size:10.5px; font-weight:600; letter-spacing:0.03em;
+            font-family:'Inter', monospace; cursor:pointer;
+            box-shadow:0 2px 8px rgba(0,0,0,0.15);"
+     onclick="this.style.display='none';">
+  ⚡ v2026.07.09-2100 · 사이드바메뉴복원
+</div>
+<style>@media print { #deploy-version-badge { display:none !important; } }</style>
 
 </body>
 </html>

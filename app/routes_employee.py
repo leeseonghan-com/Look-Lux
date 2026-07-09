@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 from database import engine, User, Worker, hash_password
 from permissions import (
     PERMISSION_KEYS, DEFAULT_STAFF_PERMISSIONS,
-    get_permissions, set_permissions, is_admin,
+    get_permissions, get_stored_permissions, set_permissions, is_admin,
 )
 from template_utils import templates
 
@@ -108,7 +108,9 @@ def employee_edit(request: Request, eid: int):
         u = s.get(User, eid)
         if not u:
             raise HTTPException(404)
-        perms = get_permissions(u)
+        # ★ 수정 폼에서는 사용자가 명시적으로 저장한 권한 상태 그대로 표시
+        #   (admin이라도 저장된 체크박스 상태를 유지 → staff로 강등 시 그대로 살아남)
+        perms = get_stored_permissions(u)
     return templates.TemplateResponse(request, "employee_form.html", {
         "user": admin,
         "e": {

@@ -275,6 +275,27 @@
     <p class="text-xs text-slate-500 mt-2">💡 순서: ▲▼ 버튼으로 위/아래 이동. 원가 컬럼을 켜면 마진율이 자동 계산됩니다 (인쇄본에는 포함 안 됨).</p>
   </div>
 
+  <!-- 마진 요약 (원가 컬럼 활성 시) -->
+  <div class="card max-w-md ml-auto space-y-2" id="margin-summary" style="display:none; background:#F0FDF4; border:1.5px solid #86EFAC;">
+    <div class="text-xs font-bold" style="color:#047857; letter-spacing:0.04em; text-transform:uppercase;">💼 마진 요약 (내부용, 인쇄 제외)</div>
+    <div class="flex justify-between text-sm">
+      <span>총 원가</span>
+      <span class="num font-bold" id="margin-total-cost" style="color:#B45309;">0원</span>
+    </div>
+    <div class="flex justify-between text-sm">
+      <span>총 납품가</span>
+      <span class="num font-bold" id="margin-total-sell">0원</span>
+    </div>
+    <div class="flex justify-between text-sm border-t border-green-300 pt-2">
+      <span class="font-bold">마진 금액</span>
+      <span class="num font-bold" id="margin-amount">0원</span>
+    </div>
+    <div class="flex justify-between text-base">
+      <span class="font-bold">마진율</span>
+      <span class="num font-bold" id="margin-pct">0%</span>
+    </div>
+  </div>
+
   <!-- 합계 -->
   <div class="card max-w-md ml-auto space-y-2">
     <div class="flex justify-between text-sm">
@@ -375,14 +396,14 @@
           const parseMoneyFn = (window.parseMoney) || function(v) {
             return parseInt(String(v||'').replace(/[^\d]/g, ''), 10) || 0;
           };
-          const cpInput = tr.querySelector('input[name=cost_price]');
+          const cInput = tr.querySelector('input[name=cost_price]');
           items.push({
             name: name,
             spec: sInput ? sInput.value : '',
             quantity: qInput ? (parseInt(qInput.value, 10) || 1) : 1,
             unit: uInput ? uInput.value : 'EA',
             unit_price: pInput ? parseMoneyFn(pInput.value) : 0,
-            cost_price: cpInput ? parseMoneyFn(cpInput.value) : 0,
+            cost_price: cInput ? parseMoneyFn(cInput.value) : 0,
             amount: parseInt(tr.dataset.amount || 0) || 0,
           });
         });
@@ -502,8 +523,10 @@ function addRow(data) {
     },
   });
 
-  // money-input 부착
+  // money-input 부착 — 단가 + 원가 모두 자동 콤마 표시
   attachMoneyInput(tr.querySelector('input[name=unit_price]'));
+  const _costEl = tr.querySelector('input[name=cost_price]');
+  if (_costEl) attachMoneyInput(_costEl);
 
   renumber();
   calcRow(tr.querySelector('input[name=quantity]'));
@@ -525,12 +548,86 @@ function calcRow(input) {
   const tr = input.closest('tr');
   const qty = parseInt(tr.querySelector('input[name=quantity]').value, 10) || 0;
   const price = parseMoney(tr.querySelector('input[name=unit_price]').value);
+  const costInput = tr.querySelector('input[name=cost_price]');
+  const cost = costInput ? parseMoney(costInput.value) : 0;
   const days = (currentType() === '렌탈') ? (parseInt(document.querySelector('input[name=rental_days]').value) || 1) : 1;
   const amount = Math.round(qty * price * days);
   tr.querySelector('.amount-cell').textContent = formatMoney(amount) + '원';
   tr.dataset.amount = amount;
   tr.dataset.unitAmount = Math.round(qty * price);  // 일수 미적용
+
+  // 마진 계산 (원가 컬럼 표시 중일 때만)
+  const marginCell = tr.querySelector('.margin-cell');
+  if (marginCell) {
+    const totalCost = cost * qty * days;
+    const margin = amount - totalCost;
+    const pct = amount > 0 ? (margin / amount * 100) : 0;
+    if (cost > 0) {
+      const color = margin >= 0 ? '#047857' : '#DC2626';
+      marginCell.innerHTML = '<span style="color:' + color + '; font-weight:700;">' + pct.toFixed(1) + '%</span><br><span style="font-size:10px; color:#6B7280;">' + formatMoney(margin) + '원</span>';
+    } else {
+      marginCell.textContent = '-';
+    }
+  }
   calc();
+}
+
+function toggleCostColumn(show) {
+  document.querySelectorAll('.cost-col').forEach(el => {
+    el.style.display = show ? '' : 'none';
+  });
+  // 표시 상태 로컬 저장
+  try { localStorage.setItem('quote_show_cost', show ? '1' : '0'); } catch(_) {}
+  // 마진 재계산
+  document.querySelectorAll('#items-body tr').forEach(tr => {
+    const qInput = tr.querySelector('input[name=quantity]');
+    if (qInput) calcRow(qInput);
+  });
+  // 전체 마진 요약 갱신
+  updateMarginSummary();
+}
+
+function updateMarginSummary() {
+  const showCost = document.getElementById('show-cost-col');
+  const summaryBox = document.getElementById('margin-summary');
+  if (!summaryBox) return;
+  if (!showCost || !showCost.checked) {
+    summaryBox.style.display = 'none';
+    return;
+  }
+  let totalSell = 0, totalCost = 0;
+  const days = (currentType() === '렌탈') ? (parseInt(document.querySelector('input[name=rental_days]').value) || 1) : 1;
+  document.querySelectorAll('#items-body tr').forEach(tr => {
+    const qty = parseInt(tr.querySelector('input[name=quantity]').value, 10) || 0;
+    const price = parseMoney(tr.querySelector('input[name=unit_price]').value);
+    const costInput = tr.querySelector('input[name=cost_price]');
+    const cost = costInput ? parseMoney(costInput.value) : 0;
+    totalSell += qty * price * days;
+    totalCost += qty * cost * days;
+  });
+  const margin = totalSell - totalCost;
+  const pct = totalSell > 0 ? (margin / totalSell * 100) : 0;
+  summaryBox.style.display = '';
+  const color = margin >= 0 ? '#047857' : '#DC2626';
+  document.getElementById('margin-total-cost').textContent = formatMoney(totalCost) + '원';
+  document.getElementById('margin-total-sell').textContent = formatMoney(totalSell) + '원';
+  const mAmt = document.getElementById('margin-amount');
+  mAmt.textContent = formatMoney(margin) + '원';
+  mAmt.style.color = color;
+  const mPct = document.getElementById('margin-pct');
+  mPct.textContent = pct.toFixed(1) + '%';
+  mPct.style.color = color;
+}
+
+function moveRow(btn, dir) {
+  const tr = btn.closest('tr');
+  const tbody = tr.parentNode;
+  if (dir < 0 && tr.previousElementSibling) {
+    tbody.insertBefore(tr, tr.previousElementSibling);
+  } else if (dir > 0 && tr.nextElementSibling) {
+    tbody.insertBefore(tr.nextElementSibling, tr);
+  }
+  renumber();
 }
 
 function getVatMode() {
@@ -538,6 +635,7 @@ function getVatMode() {
   return checked ? checked.value : 'supply';
 }
 
+function calc_wrap_marker_ignored() { /* placeholder */ }
 function calc() {
   let sub = 0;
   document.querySelectorAll('#items-body tr').forEach(tr => {
@@ -567,6 +665,7 @@ function calc() {
   document.getElementById('after-discount-display').textContent = formatMoney(afterDisp) + '원';
   document.getElementById('vat-display').textContent = formatMoney(vat) + '원' + (mode === 'cash' ? ' (없음)' : '');
   document.getElementById('total-display').textContent = formatMoney(total) + '원';
+  updateMarginSummary();
 }
 
 function initQuoteForm() {
@@ -605,71 +704,21 @@ function initQuoteForm() {
     cost_price: {{ it.cost_price or 0 }},
   });
   {% endfor %}
-  // 원가가 하나라도 입력된 경우 자동으로 원가 컬럼 켜기
-  {% set has_cost = existing_items|selectattr('cost_price')|list|length > 0 %}
-  {% if has_cost %}
-  const _costTgl = document.getElementById('show-cost-col');
-  if (_costTgl) { _costTgl.checked = true; toggleCostColumn(true); }
-  {% endif %}
 {% else %}
   for (let i = 0; i < 5; i++) addRow();
 {% endif %}
 
   onTypeChange();  // 초기 라벨 세팅
-}
 
-// ────── 품목 순서 이동 (▲▼ 버튼) ──────
-function moveRow(btn, direction) {
-  const tr = btn.closest('tr');
-  const tbody = tr.parentNode;
-  if (!tr || !tbody) return;
-  if (direction < 0) {
-    const prev = tr.previousElementSibling;
-    if (prev) tbody.insertBefore(tr, prev);
-  } else {
-    const next = tr.nextElementSibling;
-    if (next) tbody.insertBefore(next, tr);
-  }
-  renumber();
+  // 원가 컬럼 상태 복원
+  try {
+    const showCost = localStorage.getItem('quote_show_cost') === '1';
+    if (showCost) {
+      const cb = document.getElementById('show-cost-col');
+      if (cb) { cb.checked = true; toggleCostColumn(true); }
+    }
+  } catch(_) {}
 }
-
-// ────── 원가 컬럼 표시/숨김 + 마진 계산 ──────
-function toggleCostColumn(show) {
-  document.querySelectorAll('.cost-col').forEach(el => {
-    el.style.display = show ? '' : 'none';
-  });
-  if (show) {
-    // 이미 있는 모든 행의 마진 재계산
-    document.querySelectorAll('#items-body tr').forEach(tr => {
-      const q = tr.querySelector('input[name=quantity]');
-      if (q) calcRow(q);
-    });
-  }
-}
-
-// calcRow 확장: 마진율 계산 로직 추가 (기존 calcRow 뒤에서 호출됨)
-const _origCalcRow = calcRow;
-calcRow = function(input) {
-  _origCalcRow(input);
-  const tr = input.closest('tr');
-  const cpInput = tr.querySelector('input[name=cost_price]');
-  const upInput = tr.querySelector('input[name=unit_price]');
-  const qInput = tr.querySelector('input[name=quantity]');
-  const marginCell = tr.querySelector('.margin-cell');
-  if (!marginCell) return;
-  const cp = cpInput ? parseMoney(cpInput.value) : 0;
-  const up = upInput ? parseMoney(upInput.value) : 0;
-  const qty = qInput ? (parseInt(qInput.value, 10) || 0) : 0;
-  if (cp > 0 && up > 0 && qty > 0) {
-    const lineCost = cp * qty;
-    const lineSell = up * qty;
-    const lineMargin = lineSell - lineCost;
-    const pct = lineSell ? (lineMargin / lineSell * 100) : 0;
-    marginCell.innerHTML = `<div style="font-weight:700; color:${lineMargin >= 0 ? '#047857' : '#DC2626'};">${pct.toFixed(1)}%</div><div style="font-size:10px; color:#6B7280;">${formatMoney(lineMargin)}원</div>`;
-  } else {
-    marginCell.textContent = '-';
-  }
-};
 </script>
 
 {% endblock %}
