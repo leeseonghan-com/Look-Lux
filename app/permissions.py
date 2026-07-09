@@ -39,22 +39,18 @@ DEFAULT_STAFF_PERMISSIONS = {
 }
 
 
-def get_permissions(user, effective: bool = True) -> dict:
+def get_permissions(user) -> dict:
     """사용자의 권한 dict 반환.
-    - effective=True (기본): 실제 사용 시 판정용 — admin은 모든 권한 True 반환
-    - effective=False: 저장된 값 그대로 반환 (권한 수정 폼에서 이전 선택 상태 복원 시 사용)
-
-    admin은 실제 접근 판정 시에는 모든 권한을 자동 가지지만,
-    권한 수정 화면에서는 사용자가 이전에 명시적으로 저장한 체크박스 상태를 그대로 보여줘야
-    'staff로 강등했을 때 되살아날 권한'을 관리자가 명확히 인지할 수 있다.
+    - admin: 모든 권한 True
+    - staff: permissions_json 파싱 (없는 키는 False)
     """
     if not user:
         return {k: False for k in PERMISSION_KEYS}
 
-    if effective and (user.role or "").lower() == "admin":
+    if (user.role or "").lower() == "admin":
         return {k: True for k in PERMISSION_KEYS}
 
-    # 저장된 permissions_json 파싱 (없는 키는 False)
+    # staff: JSON 파싱
     try:
         data = json.loads(user.permissions_json or "{}")
     except (json.JSONDecodeError, TypeError, AttributeError):
@@ -65,11 +61,6 @@ def get_permissions(user, effective: bool = True) -> dict:
         if k in result:
             result[k] = bool(v)
     return result
-
-
-def get_stored_permissions(user) -> dict:
-    """수정 폼용 — 저장된 권한 상태 그대로 반환 (admin이라도 저장값 유지)"""
-    return get_permissions(user, effective=False)
 
 
 def has_permission(user, key: str) -> bool:

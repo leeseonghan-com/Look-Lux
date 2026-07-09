@@ -296,13 +296,7 @@ def items_search(q: str = "", category: str = ""):
     - category=물품/납품 → consumer_price 우선
     """
     with Session(engine, expire_on_commit=False) as s:
-        # ★ 견적서 자동완성은 견적 단가표(usage_type='quote')만 조회
-        #   재고 관리용 장비(usage_type='inventory')는 표시하지 않음
-        items = s.exec(
-            select(Item)
-            .where(Item.is_active == True)
-            .where(Item.usage_type == "quote")
-        ).all()
+        items = s.exec(select(Item).where(Item.is_active == True)).all()
 
         # 검색어 매칭만 적용 (카테고리 필터는 제거 — 모든 품목 표시)
         if q:

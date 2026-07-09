@@ -154,10 +154,7 @@ class Attendance(SQLModel, table=True):
 
 
 class Item(SQLModel, table=True):
-    """물품 마스터 — 견적용 단가표 또는 재고 관리용 장비
-    usage_type = 'quote'     → 견적 단가표 (가격만, 재고 미관리)
-    usage_type = 'inventory' → 재고/장비 관리 (개체별 QR, 시리얼 추적)
-    """
+    """단가표 (납품가 + 렌탈가 동시 보유 가능)"""
     id: Optional[int] = Field(default=None, primary_key=True)
     code: str = Field(unique=True, index=True)  # I-001
     name: str = Field(index=True)
@@ -168,8 +165,6 @@ class Item(SQLModel, table=True):
     consumer_price: int = 0     # 납품 단가 (소비자가)
     rental_daily: int = 0       # 렌탈 1일 단가
     rental_deposit: int = 0     # 렌탈 보증금
-    # ★ 용도 구분 — quote(견적용) / inventory(재고용) — 기존 데이터는 마이그레이션에서 자동 분류
-    usage_type: str = Field(default="quote", index=True)
     # 호환성: category 필드는 유지하되 "겸용"이 기본값 (기존 데이터는 마이그레이션에서 변환)
     category: str = "겸용"      # 겸용/물품/렌탈 (구분용 - 점진적 제거 예정)
     # 보유장비 연동
@@ -452,13 +447,6 @@ def init_db():
             _add_column_if_missing(conn, "expense", "vendor_id", "vendor_id INTEGER")
             # ── QuoteItem: 원가 (납품 견적 마진 계산용) ──
             _add_column_if_missing(conn, "quoteitem", "cost_price", "cost_price INTEGER DEFAULT 0 NOT NULL")
-            # ── Item: 견적용/재고용 구분 필드 ──
-            _add_column_if_missing(conn, "item", "usage_type", "usage_type VARCHAR DEFAULT 'quote' NOT NULL")
-            # 기존 품목 자동 분류: equipment_id 있으면 재고용, 아니면 견적용
-            _safe_exec(conn, "UPDATE item SET usage_type = 'inventory' WHERE equipment_id IS NOT NULL AND (usage_type IS NULL OR usage_type = '' OR usage_type = 'quote')")
-            _safe_exec(conn, "UPDATE item SET usage_type = 'quote' WHERE usage_type IS NULL OR usage_type = ''")
-            # ⭐ 재고용 품목의 가격 필드 초기화 (재고는 가격을 다루지 않음 — 견적 단가표와 완전 분리)
-            _safe_exec(conn, "UPDATE item SET consumer_price = 0, rental_daily = 0, rental_deposit = 0 WHERE usage_type = 'inventory'")
             # 기존 role 'owner' → 'admin' 변환
             conn.exec_driver_sql("UPDATE user SET role = 'admin' WHERE role IN ('owner','manager')")
     except Exception as e:

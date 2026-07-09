@@ -62,17 +62,13 @@ def _classify(item) -> str:
     return "미설정"
 
 
-def _next_item_code(usage_type: str = "quote") -> str:
-    """다음 품목 코드 — 견적/재고 완전 분리된 코드 체계
-    - 견적: Q-001, Q-002, ... (Quote 단가표)
-    - 재고: E-001, E-002, ... (Equipment)
-    """
-    prefix = "Q" if usage_type == "quote" else "E"
+def _next_item_code() -> str:
+    """다음 품목 코드 (I-001 ...)"""
     with Session(engine, expire_on_commit=False) as s:
         existing_codes = {it.code for it in s.exec(select(Item)).all()}
         next_num = 1
         while True:
-            candidate = f"{prefix}-{next_num:03d}"
+            candidate = f"I-{next_num:03d}"
             if candidate not in existing_codes:
                 return candidate
             next_num += 1
@@ -112,27 +108,11 @@ CATEGORY_ICONS = {
 # ============================================================
 @router.get("/products", response_class=HTMLResponse)
 def product_list(request: Request, category: str = "all", usage: str = "all", q: str = ""):
-    """💰 견적 단가표 — 가격 정보만 관리 (usage_type='quote')"""
-    return _render_product_list(request, category=category, usage=usage, q=q,
-                                usage_type="quote", template_name="products.html")
-
-
-@router.get("/inventory", response_class=HTMLResponse)
-def inventory_list(request: Request, category: str = "all", q: str = ""):
-    """📦 재고/장비 관리 — 개체별(QR) 재고 추적 (usage_type='inventory')"""
-    return _render_product_list(request, category=category, usage="all", q=q,
-                                usage_type="inventory", template_name="inventory_list.html")
-
-
-def _render_product_list(request, category, usage, q, usage_type, template_name):
-    """공통 목록 렌더러 — usage_type으로 필터링"""
+    """물품 통합 목록 — 단가표 + 보유장비를 하나로 표시. q 키워드 검색"""
     user = _user(request)
     search_q = (q or "").strip().lower()
     with Session(engine, expire_on_commit=False) as s:
-        # ★ usage_type으로 1차 필터링
-        items = s.exec(
-            select(Item).where(Item.is_active == True).where(Item.usage_type == usage_type)
-        ).all()
+        items = s.exec(select(Item).where(Item.is_active == True)).all()
         if search_q:
             items = [i for i in items if any(search_q in (str(x) or "").lower() for x in [
                 i.code, i.name, i.spec, i.unit, i.memo, i.category,
@@ -146,102 +126,88 @@ def _render_product_list(request, category, usage, q, usage_type, template_name)
         for u in all_units:
             units_by_eq.setdefault(u.equipment_id, []).append(u)
 
-        # ⭐ usage_type에 따라 완전히 다른 rows 구조를 만든다 (중복 필드 제거)
+        # Item 우선 표시, equipment_id 없는 항목 + 있는 항목 모두 포함
         rows = []
         linked_eq_ids = set()
         for i in items:
             eq = eq_by_id.get(i.equipment_id) if i.equipment_id else None
             if eq:
                 linked_eq_ids.add(eq.id)
+            units = units_by_eq.get(i.equipment_id, []) if i.equipment_id else []
+            total = len(units)
+            available = sum(1 for u in units if u.status == "보유중")
+            on_rent = sum(1 for u in units if u.status == "대여중")
+            in_repair = sum(1 for u in units if u.status == "수리중")
 
-            if usage_type == "quote":
-                # 💰 견적 관점: 가격 관련만 (카테고리는 정식 옵션 중 하나여야 함)
-                cat_val = i.category if i.category in CATEGORY_OPTIONS else "기타"
-                row = {
-                    "id": i.id,
-                    "code": i.code, "name": i.name, "spec": i.spec, "unit": i.unit,
-                    "category": cat_val,
-                    "consumer_price": i.consumer_price,
-                    "rental_daily": i.rental_daily,
-                    "rental_deposit": i.rental_deposit,
-                    "usage": _classify(i),
-                    "memo": i.memo,
-                }
-            else:
-                # 📦 재고 관점: 재고/장비 관련만 (가격 정보 절대 노출 X)
-                units = units_by_eq.get(i.equipment_id, []) if i.equipment_id else []
-                row = {
-                    "id": i.id,
-                    "code": i.code, "name": i.name, "spec": i.spec, "unit": i.unit,
-                    "category": (eq.category if eq else i.category if i.category not in ("겸용",) else "기타"),
-                    "equipment_id": i.equipment_id,
-                    "manufacturer": eq.manufacturer if eq else "",
-                    "model": eq.model if eq else "",
-                    "total": len(units),
-                    "available": sum(1 for u in units if u.status == "보유중"),
-                    "on_rent": sum(1 for u in units if u.status == "대여중"),
-                    "in_repair": sum(1 for u in units if u.status == "수리중"),
-                    "has_inventory": eq is not None,
-                    "memo": i.memo,
-                }
+            usage_kind = _classify(i)
+            cat = eq.category if eq else "기타"
+            row = {
+                "id": i.id,
+                "code": i.code, "name": i.name, "spec": i.spec, "unit": i.unit,
+                "category": cat,
+                "consumer_price": i.consumer_price,
+                "rental_daily": i.rental_daily,
+                "rental_deposit": i.rental_deposit,
+                "usage": usage_kind,
+                "equipment_id": i.equipment_id,
+                "manufacturer": eq.manufacturer if eq else "",
+                "model": eq.model if eq else "",
+                "total": total, "available": available,
+                "on_rent": on_rent, "in_repair": in_repair,
+                "has_inventory": eq is not None,
+                "memo": i.memo,
+            }
             rows.append(row)
 
-        # Equipment에만 있고 Item 연결 안 된 케이스도 노출 (재고 모드에서만)
-        if usage_type == "inventory":
-            for eq in all_eqs:
-                if eq.id in linked_eq_ids:
-                    continue
-                units = units_by_eq.get(eq.id, [])
-                rows.append({
-                    "id": None,  # 단가표 미연동
-                    "code": "(미연동)", "name": eq.name, "spec": eq.spec, "unit": "EA",
-                    "category": eq.category,
-                    "consumer_price": 0, "rental_daily": 0, "rental_deposit": 0,
-                    "usage": "미설정",
-                    "equipment_id": eq.id,
-                    "manufacturer": eq.manufacturer, "model": eq.model,
-                    "total": len(units),
-                    "available": sum(1 for u in units if u.status == "보유중"),
-                    "on_rent": sum(1 for u in units if u.status == "대여중"),
-                    "in_repair": sum(1 for u in units if u.status == "수리중"),
-                    "has_inventory": True,
-                    "memo": eq.memo,
-                    "orphan_equipment": True,
-                })
+        # Equipment에만 있고 Item 연결 안 된 케이스도 노출 (마이그레이션 누락 대비)
+        for eq in all_eqs:
+            if eq.id in linked_eq_ids:
+                continue
+            units = units_by_eq.get(eq.id, [])
+            rows.append({
+                "id": None,  # 단가표 미연동
+                "code": "(미연동)", "name": eq.name, "spec": eq.spec, "unit": "EA",
+                "category": eq.category,
+                "consumer_price": 0, "rental_daily": 0, "rental_deposit": 0,
+                "usage": "미설정",
+                "equipment_id": eq.id,
+                "manufacturer": eq.manufacturer, "model": eq.model,
+                "total": len(units),
+                "available": sum(1 for u in units if u.status == "보유중"),
+                "on_rent": sum(1 for u in units if u.status == "대여중"),
+                "in_repair": sum(1 for u in units if u.status == "수리중"),
+                "has_inventory": True,
+                "memo": eq.memo,
+                "orphan_equipment": True,
+            })
 
         # 카운터
         cat_counts = {"all": len(rows)}
         for c in CATEGORY_OPTIONS:
-            cat_counts[c] = sum(1 for r in rows if r.get("category") == c)
-
-        # 견적 화면 통계 (가격 미설정 등) — 재고 화면에서는 usage 키가 없으므로 무해
+            cat_counts[c] = sum(1 for r in rows if r["category"] == c)
         usage_counts = {
             "all": len(rows),
-            "combo": sum(1 for r in rows if r.get("usage") == "겸용"),
-            "sale": sum(1 for r in rows if r.get("usage") == "납품"),
-            "rental": sum(1 for r in rows if r.get("usage") == "렌탈"),
-            "unset": sum(1 for r in rows if r.get("usage") == "미설정"),
+            "combo": sum(1 for r in rows if r["usage"] == "겸용"),
+            "sale": sum(1 for r in rows if r["usage"] == "납품"),
+            "rental": sum(1 for r in rows if r["usage"] == "렌탈"),
+            "unset": sum(1 for r in rows if r["usage"] == "미설정"),
         }
-        # 재고 화면 통계 (재고 추적 여부)
-        with_inventory = sum(1 for r in rows if r.get("has_inventory"))
+        with_inventory = sum(1 for r in rows if r["has_inventory"])
 
-        # 카테고리 필터
+        # 필터
         if category != "all":
-            rows = [r for r in rows if r.get("category") == category]
-        # 용도 필터는 견적 화면에서만 (재고는 용도 개념 없음)
-        if usage_type == "quote" and usage != "all":
+            rows = [r for r in rows if r["category"] == category]
+        if usage != "all":
             want = {"sale": "납품", "rental": "렌탈", "combo": "겸용", "unset": "미설정"}.get(usage)
             if want:
-                rows = [r for r in rows if r.get("usage") == want]
+                rows = [r for r in rows if r["usage"] == want]
 
-    return templates.TemplateResponse(request, template_name, {
+    return templates.TemplateResponse(request, "products.html", {
         "user": user, "rows": rows,
         "category": category, "usage": usage,
         "cat_counts": cat_counts, "usage_counts": usage_counts,
         "category_options": CATEGORY_OPTIONS, "category_icons": CATEGORY_ICONS,
         "with_inventory": with_inventory,
-        "usage_type": usage_type,  # 템플릿에서 링크/타이틀 분기용
-        "search_q": search_q,
     })
 
 
@@ -250,44 +216,18 @@ def _render_product_list(request, category, usage, q, usage_type, template_name)
 # ============================================================
 @router.get("/products/new", response_class=HTMLResponse)
 def product_new(request: Request):
-    """💰 견적 단가표 — 새 품목 등록 (가격만, 재고 미관리)"""
     user = _user(request)
     return templates.TemplateResponse(request, "product_new.html", {
         "user": user,
-        "suggested_code": _next_item_code("quote"),
+        "suggested_code": _next_item_code(),
         "category_options": CATEGORY_OPTIONS,
         "category_icons": CATEGORY_ICONS,
-        "usage_type": "quote",
-    })
-
-
-@router.get("/inventory/new", response_class=HTMLResponse)
-def inventory_new(request: Request):
-    """📦 재고/장비 관리 — 새 장비 등록 (재고 개체 추적 위주)"""
-    user = _user(request)
-    return templates.TemplateResponse(request, "inventory_new.html", {
-        "user": user,
-        "suggested_code": _next_item_code("inventory"),
-        "category_options": CATEGORY_OPTIONS,
-        "category_icons": CATEGORY_ICONS,
-        "usage_type": "inventory",
     })
 
 
 @router.post("/products/new")
 async def product_create(request: Request):
-    """견적용 품목 등록"""
-    return await _create_product(request, usage_type="quote")
-
-
-@router.post("/inventory/new")
-async def inventory_create(request: Request):
-    """재고용 장비 등록"""
-    return await _create_product(request, usage_type="inventory")
-
-
-async def _create_product(request: Request, usage_type: str):
-    """공통 등록 처리 — usage_type으로 저장 후 각 목록으로 리다이렉트"""
+    """물품 등록 — 옵션으로 초기 개체(들)에 공통 정보를 함께 적용"""
     user = _user(request)
     form = await request.form()
 
@@ -295,29 +235,22 @@ async def _create_product(request: Request, usage_type: str):
     if not name:
         raise HTTPException(400, "물품명을 입력해주세요.")
 
-    code = ((form.get("code") or "").strip()) or _next_item_code(usage_type)
+    code = ((form.get("code") or "").strip()) or _next_item_code()
     category = form.get("category") or "기타"
-    # ⭐ 재고용은 가격을 저장하지 않음 (견적 단가표와 완전 분리)
-    if usage_type == "inventory":
-        consumer_price_i = 0
-        rental_daily_i = 0
-        rental_deposit_i = 0
-    else:
-        consumer_price_i = _to_int(form.get("consumer_price", "0"))
-        rental_daily_i = _to_int(form.get("rental_daily", "0"))
-        rental_deposit_i = _to_int(form.get("rental_deposit", "0"))
+    consumer_price_i = _to_int(form.get("consumer_price", "0"))
+    rental_daily_i = _to_int(form.get("rental_daily", "0"))
+    rental_deposit_i = _to_int(form.get("rental_deposit", "0"))
     initial_units_i = _to_int(form.get("initial_units", "0"))
-    # 재고용은 항상 개체 추적 ON, 견적용은 체크박스 무시하고 항상 OFF
-    if usage_type == "inventory":
-        is_tracked = True
-    else:
-        is_tracked = False
-    # 사양 데이터 입력 시 Equipment 메타 저장이 필요하지만 견적용은 사양 자체를 안 다룸
-    has_spec_input = usage_type == "inventory" and (any(
+    is_tracked = (form.get("track_inventory") == "yes") or initial_units_i > 0
+    # 사양 데이터가 입력된 경우는 Equipment 메타를 보관할 가치가 있음
+    # (체크 안 했어도 spec_data를 위해 Equipment 자동 생성)
+    has_spec_input = any(
         (form.get(f"spec_{k}") or "").strip() for k in
         ("power_w", "weight_kg", "ch_count", "spl_db",
          "rms_power_w", "peak_power_w", "freq_range", "notes")
-    ) or any((form.get(f"spec_ch{i}_value") or "").strip() for i in range(1, 5)))
+    ) or any((form.get(f"spec_ch{i}_value") or "").strip() for i in range(1, 5))
+    if has_spec_input:
+        is_tracked = True  # 사양 입력 시 Equipment 자동 생성
 
     # 초기 개체에 적용할 공통 정보
     unit_department = (form.get("unit_department") or "").strip()
@@ -361,7 +294,7 @@ async def _create_product(request: Request, usage_type: str):
     with Session(engine, expire_on_commit=False) as s:
         existing = s.exec(select(Item).where(Item.code == code)).first()
         if existing:
-            code = _next_item_code(usage_type)
+            code = _next_item_code()
 
         equipment_id = None
         if is_tracked:
@@ -408,15 +341,15 @@ async def _create_product(request: Request, usage_type: str):
                     next_num += 1
             s.commit()
 
-        # Item 생성 — 카테고리는 사용자가 선택한 값 유지 (조명/음향/영상/구조물/전원/특수효과/기타)
-        item_category = category if category in CATEGORY_OPTIONS else "기타"
+        # Item 생성
         item = Item(
             code=code, name=name, spec=spec, unit=unit_label,
             consumer_price=consumer_price_i,
             rental_daily=rental_daily_i,
             rental_deposit=rental_deposit_i,
-            category=item_category,
-            usage_type=usage_type,
+            category="겸용" if (consumer_price_i > 0 and rental_daily_i > 0) else (
+                "렌탈" if rental_daily_i > 0 else ("납품" if consumer_price_i > 0 else "겸용")
+            ),
             equipment_id=equipment_id,
             memo=memo,
         )
@@ -425,10 +358,7 @@ async def _create_product(request: Request, usage_type: str):
         s.refresh(item)
         new_id = item.id
 
-    # ★ 등록 완료 후 각각의 목록 홈으로 이동 (상세/수정 페이지가 아닌 목록)
-    if usage_type == "inventory":
-        return RedirectResponse("/inventory?created=1", status_code=303)
-    return RedirectResponse("/products?created=1", status_code=303)
+    return RedirectResponse(f"/products/{new_id}", status_code=303)
 
 
 # ============================================================
@@ -492,14 +422,9 @@ def product_detail(request: Request, pid: int):
             "rental_daily": item.rental_daily,
             "rental_deposit": item.rental_deposit,
             "usage": _classify(item),
-            "usage_type": getattr(item, "usage_type", "quote"),
             "memo": item.memo,
             "equipment_id": item.equipment_id,
-            # ★ 카테고리 우선순위: Item.category (사용자 선택) → Equipment.category → "기타"
-            "category": (
-                item.category if item.category in CATEGORY_OPTIONS
-                else (eq.category if eq and eq.category in CATEGORY_OPTIONS else "기타")
-            ),
+            "category": eq.category if eq else "기타",
             "manufacturer": eq.manufacturer if eq else "",
             "model": eq.model if eq else "",
             "spec_data": spec_data,
@@ -514,9 +439,7 @@ def product_detail(request: Request, pid: int):
         # 다음 개체 코드 추천
         next_asset = _next_asset_code(pd["category"])
 
-    # ⭐ usage_type에 따라 완전히 다른 상세 페이지 렌더 (기능 중복 제거)
-    template = "product_detail_quote.html" if pd["usage_type"] == "quote" else "product_detail.html"
-    return templates.TemplateResponse(request, template, {
+    return templates.TemplateResponse(request, "product_detail.html", {
         "user": user, "p": pd, "units": units, "maint_logs": maint_logs,
         "total": total, "available": available, "on_rent": on_rent, "in_repair": in_repair,
         "next_asset_code": next_asset,
@@ -569,21 +492,13 @@ async def product_update(request: Request, pid: int):
         if not item:
             raise HTTPException(404)
         item.name = name; item.spec = spec; item.unit = unit_label
-        # ⭐ 재고용 품목은 가격 필드 항상 0으로 강제 (견적 단가표와 완전 분리)
-        item_usage_type = getattr(item, "usage_type", "quote")
-        if item_usage_type == "inventory":
-            item.consumer_price = 0
-            item.rental_daily = 0
-            item.rental_deposit = 0
-        else:
-            item.consumer_price = consumer_price_i
-            item.rental_daily = rental_daily_i
-            item.rental_deposit = rental_deposit_i
+        item.consumer_price = consumer_price_i
+        item.rental_daily = rental_daily_i
+        item.rental_deposit = rental_deposit_i
         item.memo = memo
-        # ★ 카테고리는 사용자가 폼에서 선택한 값 그대로 유지 (조명/음향/영상 등)
-        #   가격 유무로 자동 덮어쓰던 이전 로직 제거 — "용도(납품/렌탈/겸용)"는 _classify()로 파생 계산됨
-        if category and category in CATEGORY_OPTIONS:
-            item.category = category
+        item.category = "겸용" if (consumer_price_i > 0 and rental_daily_i > 0) else (
+            "렌탈" if rental_daily_i > 0 else ("납품" if consumer_price_i > 0 else "겸용")
+        )
         s.add(item)
 
         # Equipment 정보도 함께 갱신 (없으면 사양만 입력된 경우 새로 생성)
@@ -613,14 +528,11 @@ async def product_update(request: Request, pid: int):
 
 @router.post("/products/{pid}/delete")
 def product_delete(request: Request, pid: int):
-    """물품 비활성화 (개체는 유지) — usage_type에 따라 원래 목록으로 리다이렉트"""
+    """물품 비활성화 (개체는 유지)"""
     _user(request)
-    ret = "/products"
     with Session(engine, expire_on_commit=False) as s:
         item = s.get(Item, pid)
         if item:
-            if getattr(item, "usage_type", "quote") == "inventory":
-                ret = "/inventory"
             item.is_active = False
             s.add(item)
         # Equipment도 함께 비활성화
@@ -630,20 +542,11 @@ def product_delete(request: Request, pid: int):
                 eq.is_active = False
                 s.add(eq)
         s.commit()
-    return RedirectResponse(f"{ret}?deleted=1", status_code=303)
+    return RedirectResponse("/products?deleted=1", status_code=303)
 
 
 @router.post("/products/bulk-delete")
 async def products_bulk_delete(request: Request):
-    return await _bulk_delete_impl(request, redirect_to="/products")
-
-
-@router.post("/inventory/bulk-delete")
-async def inventory_bulk_delete(request: Request):
-    return await _bulk_delete_impl(request, redirect_to="/inventory")
-
-
-async def _bulk_delete_impl(request: Request, redirect_to: str):
     _user(request)
     form = await request.form()
     ids = [int(x) for x in form.get("ids", "").split(",") if x.strip()]
@@ -661,17 +564,11 @@ async def _bulk_delete_impl(request: Request, redirect_to: str):
                         s.add(eq)
                 deleted += 1
         s.commit()
-    return RedirectResponse(f"{redirect_to}?deleted={deleted}", status_code=303)
-
-
-@router.post("/inventory/bulk-update")
-async def inventory_bulk_update(request: Request):
-    """재고/장비 목록에서의 일괄 수정 (products_bulk_update와 동일 동작)"""
-    return await products_bulk_update(request, redirect_to="/inventory")
+    return RedirectResponse(f"/products?deleted={deleted}", status_code=303)
 
 
 @router.post("/products/bulk-update")
-async def products_bulk_update(request: Request, redirect_to: str = "/products"):
+async def products_bulk_update(request: Request):
     """물품(품목) 목록에서 선택한 항목들을 일괄 수정.
 
     field 종류:
@@ -740,7 +637,7 @@ async def products_bulk_update(request: Request, redirect_to: str = "/products")
                         units_updated += 1
         s.commit()
     return RedirectResponse(
-        f"{redirect_to}?bulk_updated={updated}&units_updated={units_updated}&bulk_field={field}",
+        f"/products?bulk_updated={updated}&units_updated={units_updated}&bulk_field={field}",
         status_code=303,
     )
 

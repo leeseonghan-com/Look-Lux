@@ -1,33 +1,37 @@
 {% extends "base.html" %}
-{% block title %}{% if quote %}견적 품목 수정{% else %}새 견적 품목 등록{% endif %}{% endblock %}
+{% block title %}새 물품 등록{% endblock %}
 {% block content %}
 
 <div class="mb-5">
-  <a href="/products" class="text-sm" style="color: var(--ink-4);">← 견적 단가표</a>
-  <h1 class="page-title mt-2">💰 {% if quote %}견적 품목 수정{% else %}새 견적 품목 등록{% endif %}</h1>
-  <p class="page-sub">
-    견적서 작성 시 자동완성으로 불러올 <b>가격 정보</b>만 관리합니다. 실물 장비(제조사·모델·상세사양·개체별 QR·부서·담당자·시리얼)는
-    <a href="/inventory" style="color:#059669; font-weight:600;">📦 재고/장비 관리</a>에서 별도로 등록하세요.
-  </p>
+  <a href="/products" class="text-sm" style="color: var(--ink-4);">← 물품 등록 목록</a>
+  <h1 class="page-title mt-2">+ 새 물품 등록</h1>
+  <p class="page-sub">가격만 관리할 수도 있고, 같은 종류의 여러 개체(일련번호)를 추적할 수도 있습니다.</p>
 </div>
 
 <form method="post" action="/products/new" class="space-y-5 max-w-3xl">
 
-  <!-- 📝 기본 정보 (견적 자동완성에 필요한 최소 정보만) -->
+  <!-- 기본 정보 -->
   <div class="card">
     <h2 class="text-lg font-bold mb-4">📝 기본 정보</h2>
     <div class="grid md:grid-cols-3 gap-4">
       <div>
         <label class="label">품목 코드</label>
         <input name="code" class="input" value="{{ suggested_code }}" placeholder="자동 생성">
-        <div class="text-xs mt-1" style="color: var(--ink-4);">비워두면 자동 생성 (I-001 형식)</div>
+        <div class="text-xs mt-1" style="color: var(--ink-4);">비워두면 자동 생성</div>
       </div>
       <div class="md:col-span-2">
-        <label class="label">품목명 *</label>
+        <label class="label">물품명 *</label>
         <input name="name" class="input" required placeholder="예: LED 무빙라이트 230W">
-        <div class="text-xs mt-1" style="color: var(--ink-4);">견적서에 표시될 이름</div>
       </div>
 
+      <div>
+        <label class="label">제조사</label>
+        <input name="manufacturer" class="input" placeholder="예: Clay Paky">
+      </div>
+      <div>
+        <label class="label">모델명</label>
+        <input name="model" class="input" placeholder="예: Sharpy 230">
+      </div>
       <div>
         <label class="label">카테고리</label>
         <select name="category" class="input">
@@ -36,62 +40,226 @@
           {% endfor %}
         </select>
       </div>
-      <div class="md:col-span-1">
-        <label class="label">단위</label>
-        <input name="unit" class="input" value="EA" placeholder="EA / SET / 장 / 일">
-        <div class="text-xs mt-1" style="color: var(--ink-4);">견적서 수량 단위</div>
-      </div>
-      <div class="md:col-span-1">
+
+      <div class="md:col-span-2">
         <label class="label">규격 / 사양 (한줄 요약)</label>
         <input name="spec" class="input" placeholder="예: Beam/Spot/Wash">
-        <div class="text-xs mt-1" style="color: var(--ink-4);">견적서에 함께 표시됨</div>
+      </div>
+      <div>
+        <label class="label">단위</label>
+        <input name="unit" class="input" value="EA" placeholder="EA / SET / 장">
       </div>
     </div>
   </div>
 
-  <!-- 💰 가격 정보 (견적 단가표의 핵심) -->
-  <div class="card" style="border-left: 4px solid #2563EB; background:#F8FAFF;">
-    <h2 class="text-lg font-bold mb-2" style="color: #1E40AF;">💰 가격 정보 <span class="text-xs" style="color:#6B7280; font-weight:500;">— 견적서 자동완성용 (핵심)</span></h2>
-    <p class="text-xs mb-4" style="color: var(--ink-4);">
-      납품가와 렌탈가 <b>둘 다 입력하면</b> 견적서 유형(납품/렌탈)에 맞게 자동 적용됩니다. 사용하지 않는 가격은 <code>0</code>으로 두세요.
-    </p>
+  <!-- ───── 상세 사양 (카테고리 공통 + 카테고리별) ───── -->
+  <div class="card" style="border-left: 4px solid #C9A961;" id="spec-card">
+    <h2 class="text-lg font-bold mb-2" style="color: #92400E;">📐 상세 사양 <span class="text-xs" id="spec-cat-label" style="color: var(--ink-4); font-weight: 500;"></span></h2>
+    <p class="text-xs mb-4" style="color: var(--ink-4);">소비전력과 중량은 모든 카테고리 공통입니다. 그 외는 카테고리별 항목이 자동으로 표시됩니다.</p>
+
+    <!-- 공통 사양 (모든 카테고리) -->
+    <div class="grid md:grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="label">소비 전력</label>
+        <input name="spec_power_w" type="text" class="input" placeholder="예: 230" inputmode="numeric"><div class="text-xs" style="color:var(--ink-4);">W (와트)</div>
+      </div>
+      <div>
+        <label class="label">중량</label>
+        <input name="spec_weight_kg" type="text" class="input" placeholder="예: 12.5"><div class="text-xs" style="color:var(--ink-4);">kg</div>
+      </div>
+    </div>
+
+    <!-- 조명 전용 사양 -->
+    <div class="spec-section" data-cat="조명" style="display:none;">
+      <div class="grid md:grid-cols-3 gap-3">
+        <div>
+          <label class="label">채널 수</label>
+          <input name="spec_ch_count" type="number" class="input" value="16" min="0" max="64"><div class="text-xs" style="color:var(--ink-4);">DMX 채널 수</div>
+        </div>
+      </div>
+      <div class="mt-3" style="background:#FFFBEB; padding:12px; border-radius:8px; border:1px solid #FDE68A;">
+        <div class="text-sm font-bold mb-2" style="color:#92400E;">모드 (이름 수정 가능)</div>
+        <div class="grid md:grid-cols-2 gap-3">
+          {% for i in range(1, 5) %}
+          <div style="display:flex; gap:6px; align-items:flex-end;">
+            <div style="flex:1;">
+              <label class="label">MODE {{ i }} 이름</label>
+              <input name="spec_ch{{ i }}_name" class="input" value="MODE {{ i }}" placeholder="MODE {{ i }}">
+            </div>
+            <div style="flex:1;">
+              <label class="label">값/채널</label>
+              <input name="spec_ch{{ i }}_value" class="input" placeholder="예: 16ch / Beam 모드">
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- 음향 전용 사양 -->
+    <div class="spec-section" data-cat="음향" style="display:none;">
+      <div class="grid md:grid-cols-3 gap-3">
+        <div>
+          <label class="label">SPL (음압)</label>
+          <input name="spec_spl_db" type="text" class="input" inputmode="numeric" placeholder="예: 134"><div class="text-xs" style="color:var(--ink-4);">dB</div>
+        </div>
+        <div>
+          <label class="label">RMS Power</label>
+          <input name="spec_rms_power_w" type="text" class="input" inputmode="numeric" placeholder="예: 600"><div class="text-xs" style="color:var(--ink-4);">W</div>
+        </div>
+        <div>
+          <label class="label">Peak Power</label>
+          <input name="spec_peak_power_w" type="text" class="input" inputmode="numeric" placeholder="예: 2400"><div class="text-xs" style="color:var(--ink-4);">W</div>
+        </div>
+        <div>
+          <label class="label">대역폭 (주파수 범위)</label>
+          <input name="spec_freq_range" class="input" placeholder="예: 50Hz - 20kHz"><div class="text-xs" style="color:var(--ink-4);">Hz-Hz</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <label class="label">비고 / 추가 사양</label>
+      <textarea name="spec_notes" rows="2" class="input" placeholder="예: IP65 등급, 색온도 6500K, 빔각 3-30° 등"></textarea>
+    </div>
+  </div>
+
+  <!-- 가격 -->
+  <div class="card" style="border-left: 4px solid #2563EB;">
+    <h2 class="text-lg font-bold mb-2" style="color: #1E40AF;">💰 가격 정보</h2>
+    <p class="text-xs mb-4" style="color: var(--ink-4);">납품가/렌탈가 둘 다 입력하면 견적서 종류에 맞게 자동 적용됩니다. 사용하지 않는 가격은 0으로 두세요.</p>
     <div class="grid md:grid-cols-3 gap-4">
-      <div style="background:white; padding:12px; border-radius:8px; border:1px solid #DBEAFE;">
+      <div>
         <label class="label" style="color: #1E40AF;">📦 납품 단가</label>
         <input name="consumer_price" type="text" class="input num money-input" value="0" placeholder="0">
-        <div class="text-xs mt-1" style="color: var(--ink-4);">판매 시 소비자가 (원)</div>
       </div>
-      <div style="background:white; padding:12px; border-radius:8px; border:1px solid #FED7AA;">
+      <div>
         <label class="label" style="color: #9A3412;">🎬 렌탈 1일 단가</label>
         <input name="rental_daily" type="text" class="input num money-input" value="0" placeholder="0">
-        <div class="text-xs mt-1" style="color: var(--ink-4);">렌탈 시 하루 임대료 (원)</div>
       </div>
-      <div style="background:white; padding:12px; border-radius:8px; border:1px solid #FED7AA;">
+      <div>
         <label class="label" style="color: #9A3412;">🎬 렌탈 보증금</label>
         <input name="rental_deposit" type="text" class="input num money-input" value="0" placeholder="0">
-        <div class="text-xs mt-1" style="color: var(--ink-4);">렌탈 시 보증금 (원)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 재고 관리 -->
+  <div class="card" style="border-left: 4px solid #059669;">
+    <h2 class="text-lg font-bold mb-2" style="color: #047857;">📦 재고 관리 (선택)</h2>
+    <p class="text-xs mb-4" style="color: var(--ink-4);">
+      같은 종류 여러 대를 개체별 일련번호(QR)로 관리하려면 체크하세요. 단순 단가표 용도라면 체크하지 않아도 됩니다.
+    </p>
+    <label class="flex items-center gap-2 cursor-pointer mb-3" style="padding: 10px; background: #F0FDF4; border-radius: 8px;">
+      <input type="checkbox" name="track_inventory" value="yes" id="track-toggle" onchange="toggleInventory()">
+      <span class="font-semibold" style="color: #047857;">✓ 재고(개체별) 추적 활성화</span>
+    </label>
+
+    <div id="inventory-fields" style="display:none;">
+      <div class="grid md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="label">초기 등록 개수</label>
+          <input name="initial_units" type="number" min="0" max="100" class="input" value="1" placeholder="0">
+          <div class="text-xs mt-1" style="color: var(--ink-4);">예: 5 입력 → 5대 자동 생성 (관리코드 자동 부여)</div>
+        </div>
+        <div style="display: flex; align-items: end;">
+          <div class="text-xs" style="color: var(--ink-4); line-height: 1.6;">
+            💡 아래 정보는 등록되는 <b>모든 개체</b>에 공통 적용됩니다.<br>
+            개체별로 다른 경우는 등록 후 상세 페이지에서 수정.
+          </div>
+        </div>
+      </div>
+
+      <!-- 첫 개체(들)에 적용할 정보 -->
+      <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 14px;">
+        <div style="font-size: 13px; font-weight: 700; color: #92400E; margin-bottom: 10px;">🧰 초기 개체 정보 (선택)</div>
+        <div class="grid md:grid-cols-3 gap-3">
+          <div>
+            <label class="label" style="color: #78350F;">관리 부서</label>
+            <input name="unit_department" class="input" placeholder="예: 운영팀">
+          </div>
+          <div>
+            <label class="label" style="color: #78350F;">담당자</label>
+            <input name="unit_manager" class="input" placeholder="이름">
+          </div>
+          <div>
+            <label class="label" style="color: #78350F;">보관 위치</label>
+            <input name="unit_location" class="input" placeholder="예: 창고 A-3">
+          </div>
+          <div>
+            <label class="label" style="color: #78350F;">상태</label>
+            <select name="unit_status" class="input">
+              <option value="보유중">✓ 보유중</option>
+              <option value="대여중">대여중</option>
+              <option value="수리중">수리중</option>
+              <option value="폐기">폐기</option>
+            </select>
+          </div>
+          <div>
+            <label class="label" style="color: #78350F;">구입처</label>
+            <input name="unit_purchase_vendor" class="input" placeholder="예: ABC상사">
+          </div>
+          <div>
+            <label class="label" style="color: #78350F;">구입일</label>
+            <input name="unit_purchase_date" type="date" class="input">
+          </div>
+          <div>
+            <label class="label" style="color: #78350F;">구입금액 (개체당)</label>
+            <input name="unit_purchase_price" type="text" class="input num money-input" value="0" placeholder="0">
+          </div>
+          <div class="md:col-span-2">
+            <label class="label" style="color: #78350F;">개체 메모</label>
+            <input name="unit_memo" class="input" placeholder="공통 비고 (선택)">
+          </div>
+        </div>
+        <p class="text-xs mt-3" style="color: #92400E;">
+          💡 <b>시리얼 번호</b>는 개체별로 다르므로 등록 후 상세 화면에서 개별 입력하세요.
+        </p>
       </div>
     </div>
   </div>
 
   <!-- 메모 -->
-  <div class="card">
-    <label class="label">📝 메모</label>
-    <input name="memo" class="input" placeholder="비고 · 견적 시 참고사항 (예: 최소 3일 이상 렌탈, 야간 할증 별도 등)">
-  </div>
-
-  <!-- 안내 배너 -->
-  <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:14px 16px; font-size:12.5px; color:#065F46; line-height:1.7;">
-    💡 <b>이 화면은 견적서 자동완성용 가격표 전용입니다.</b><br>
-    • 실물 장비의 <b>제조사·모델·상세사양·개체별 QR·부서·담당자·시리얼·구입이력</b>은 
-    <a href="/inventory/new" style="color:#047857; font-weight:700; text-decoration:underline;">📦 재고/장비 관리 → 새 장비 등록</a>에서 관리합니다.<br>
-    • 두 정보는 완전히 분리되어 관리되며, 서로 영향을 주지 않습니다.
+  <div>
+    <label class="label">메모</label>
+    <input name="memo" class="input" placeholder="비고 / 특이사항">
   </div>
 
   <div class="flex gap-3 max-w-md ml-auto">
     <a href="/products" class="btn-secondary">취소</a>
-    <button class="btn-primary flex-1" style="background:#1E40AF; border-color:#1E40AF;">💾 견적 단가표에 등록</button>
+    <button class="btn-primary flex-1">💾 등록</button>
   </div>
 </form>
+
+<script>
+function toggleInventory() {
+  const checked = document.getElementById('track-toggle').checked;
+  document.getElementById('inventory-fields').style.display = checked ? 'block' : 'none';
+}
+
+// 카테고리 변경 시 카테고리 전용 사양 섹션 표시 전환
+// (공통 사양인 소비전력/중량은 항상 표시되므로 disable 불필요)
+function updateSpecSection() {
+  const cat = document.querySelector('select[name="category"]').value;
+  const label = document.getElementById('spec-cat-label');
+  if (label) label.textContent = '(' + cat + ')';
+  document.querySelectorAll('.spec-section').forEach(s => {
+    s.style.display = 'none';
+    s.querySelectorAll('input, select, textarea').forEach(el => el.disabled = true);
+  });
+  const section = document.querySelector(`.spec-section[data-cat="${cat}"]`);
+  if (section) {
+    section.style.display = 'block';
+    section.querySelectorAll('input, select, textarea').forEach(el => el.disabled = false);
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.querySelector('select[name="category"]');
+  if (sel) {
+    sel.addEventListener('change', updateSpecSection);
+    updateSpecSection();
+  }
+});
+</script>
 
 {% endblock %}

@@ -52,32 +52,22 @@
       <label class="label">🔍 프로젝트 검색 (이름·코드·거래처·장소·메모)</label>
       <input name="q" class="input" value="{{ search_q or '' }}" placeholder="예: 신년행사, P-2026, ABC상사" autocomplete="off">
     </div>
-    <div style="min-width:160px;">
-      <label class="label">📊 정렬</label>
+    <div style="min-width:180px;">
+      <label class="label">📊 정렬 방식</label>
       <select name="sort" class="input" onchange="this.form.submit()">
-        <option value="created_desc" {% if request.query_params.get('sort','created_desc') == 'created_desc' %}selected{% endif %}>최신 등록순</option>
-        <option value="event_desc" {% if request.query_params.get('sort') == 'event_desc' %}selected{% endif %}>행사일 최신순</option>
-        <option value="event_asc" {% if request.query_params.get('sort') == 'event_asc' %}selected{% endif %}>행사일 오래된순</option>
-        <option value="code_desc" {% if request.query_params.get('sort') == 'code_desc' %}selected{% endif %}>코드 내림차순</option>
-        <option value="code_asc" {% if request.query_params.get('sort') == 'code_asc' %}selected{% endif %}>코드 오름차순</option>
-        <option value="name_asc" {% if request.query_params.get('sort') == 'name_asc' %}selected{% endif %}>이름 가나다순</option>
+        <option value="recent" {% if sort == 'recent' %}selected{% endif %}>🕒 최근 등록순</option>
+        <option value="event_desc" {% if sort == 'event_desc' %}selected{% endif %}>📅 행사일 최신순</option>
+        <option value="event_asc" {% if sort == 'event_asc' %}selected{% endif %}>📅 행사일 오래된순</option>
+        <option value="month" {% if sort == 'month' %}selected{% endif %}>🗓️ 월별로 묶어보기</option>
+        <option value="code" {% if sort == 'code' %}selected{% endif %}>#️⃣ 프로젝트 코드순</option>
+        <option value="revenue_desc" {% if sort == 'revenue_desc' %}selected{% endif %}>💰 매출 큰 순</option>
       </select>
     </div>
-    <div style="min-width:150px;">
-      <label class="label">📅 월 (행사일)</label>
-      <input type="month" name="month" class="input" value="{{ request.query_params.get('month','') }}" onchange="this.form.submit()">
-    </div>
     <button class="btn-primary" type="submit">적용</button>
-    {% if search_q or request.query_params.get('sort') or request.query_params.get('month') or request.query_params.get('year') %}
-    <a href="/projects{% if selected_cats %}?cats={{ selected_cats|join(',') }}{% endif %}" class="btn-secondary">초기화</a>
-    {% endif %}
+    {% if search_q or sort != 'recent' %}<a href="/projects{% if selected_cats %}?cats={{ selected_cats|join(',') }}{% endif %}" class="btn-secondary">초기화</a>{% endif %}
   </form>
-  {% set active_filters = [] %}
-  {% if search_q %}{% set _ = active_filters.append('검색: "' ~ search_q ~ '"') %}{% endif %}
-  {% if request.query_params.get('month') %}{% set _ = active_filters.append('월: ' ~ request.query_params.get('month')) %}{% endif %}
-  {% if request.query_params.get('sort') and request.query_params.get('sort') != 'created_desc' %}{% set _ = active_filters.append('정렬: ' ~ request.query_params.get('sort')) %}{% endif %}
-  {% if active_filters %}
-  <div class="text-xs mt-2" style="color: var(--ink-4);">🔍 {{ active_filters|join(' · ') }} — {{ filtered_count }}건</div>
+  {% if search_q %}
+  <div class="text-xs mt-2" style="color: var(--ink-4);">🔍 "<b>{{ search_q }}</b>" 검색 결과 — {{ filtered_count }}건</div>
   {% endif %}
 </div>
 
@@ -85,14 +75,15 @@
 <div class="card mb-4" style="padding: 14px 16px;">
   <div class="text-xs font-bold mb-2" style="color: var(--ink-4); letter-spacing: 0.04em; text-transform: uppercase;">🎯 항목별 필터 (중복 선택)</div>
   <div class="flex flex-wrap gap-2">
-    <a href="/projects" class="cat-chip {% if not selected_cats %}active{% endif %}">
+    {% set _sort_qs = '&sort=' + sort if sort and sort != 'recent' else '' %}
+    <a href="/projects{% if _sort_qs %}?{{ _sort_qs[1:] }}{% endif %}" class="cat-chip {% if not selected_cats %}active{% endif %}">
       <span>전체</span>
       <span class="cat-chip-count">{{ total_count }}</span>
     </a>
     {% for cat in category_options %}
     {% set is_active = cat in selected_cats %}
     {% set new_cats = selected_cats|reject('equalto', cat)|list if is_active else (selected_cats + [cat]) %}
-    <a href="/projects?cats={{ new_cats|join(',') }}" class="cat-chip {% if is_active %}active{% endif %}">
+    <a href="/projects?cats={{ new_cats|join(',') }}{{ _sort_qs }}" class="cat-chip {% if is_active %}active{% endif %}">
       <span>{{ category_icons.get(cat, '📌') }} {{ cat }}</span>
       <span class="cat-chip-count">{{ cat_counts.get(cat, 0) }}</span>
     </a>
@@ -173,6 +164,13 @@
     </thead>
     <tbody>
       {% for r in rows %}
+      {% if sort == 'month' and r._group_start %}
+      <tr style="background:#F3F4F6;">
+        <td colspan="10" style="padding:8px 12px; font-weight:700; color:#0A0E1A; font-size:13px; letter-spacing:0.02em;">
+          🗓️ {{ r._group_label }}
+        </td>
+      </tr>
+      {% endif %}
       <tr>
         <td onclick="event.stopPropagation();"><input type="checkbox" class="prj-check" value="{{ r.id }}" onchange="updateCount()"></td>
         <td class="text-xs cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{{ r.code }}</td>

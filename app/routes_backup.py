@@ -1,39 +1,32 @@
-"""데이터 관리 — Excel 내보내기/불러오기 + 완전 백업(ZIP)
+"""데이터 관리 — Excel 내보내기/불러오기
 
 전체 데이터(프로젝트, 비용, 근태, 거래처, 장비, 근무자)를
 한 개의 Excel 파일(시트별)로 백업하고 복원할 수 있습니다.
 
-또한 DB 파일 + 업로드된 모든 이미지(영수증/로고/직원사진)를
-한 개의 ZIP 파일로 완전 백업 · 복원할 수 있습니다.
-
 [안전 원칙]
-- Excel 불러오기는 항상 "추가" 모드 — 기존 데이터 보존
-- 완전 백업 복원은 관리자만 접근, 확인 절차 필수
+- 불러오기는 항상 "추가" 모드 — 기존 데이터 보존
+- 업로드 시 미리보기로 확인 후 일괄 적용
 - 코드 중복 시 자동 skip (기존 유지)
 """
 import io
-import os
 import json
-import shutil
-import zipfile
 import tempfile
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from sqlmodel import Session, select
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
 from database import (
-    engine, User, DATA_DIR, DB_PATH,
+    engine, User,
     Project, Expense, Worker, Attendance, WorkerCheckin, Vendor,
     Equipment, EquipmentUnit, MaintenanceLog, Item,
     Quote, QuoteItem, CompanySettings,
 )
-from permissions import is_admin, require_admin_user
 from template_utils import templates
 
 router = APIRouter()
@@ -380,235 +373,8 @@ def _parse_value(value, field_name: str, model):
 @router.get("/backup", response_class=HTMLResponse)
 def backup_page(request: Request):
     user = _user(request)
-    # 완전 백업용 통계 (파일 개수 · 크기 미리보기)
-    data_stats = _get_data_dir_stats()
     return templates.TemplateResponse(request, "backup.html", {
         "user": user, "schema": SHEET_SCHEMA,
-        "is_admin": is_admin(user),
-        "data_stats": data_stats,
-    })
-
-
-# ============================================================
-# ⭐ 완전 백업 (DB + 이미지 파일 전부) — ZIP 다운로드
-# ============================================================
-def _get_data_dir_stats() -> dict:
-    """data/ 폴더 통계 (UI 표시용)"""
-    result = {
-        "db_size_kb": 0,
-        "receipt_count": 0,
-        "receipt_size_kb": 0,
-        "company_count": 0,
-        "company_size_kb": 0,
-        "worker_count": 0,
-        "worker_size_kb": 0,
-        "total_size_kb": 0,
-    }
-    try:
-        db_path = Path(DB_PATH)
-        if db_path.exists():
-            result["db_size_kb"] = round(db_path.stat().st_size / 1024, 1)
-
-        for key, subdir in [
-            ("receipt", "receipts"),
-            ("company", "company"),
-            ("worker", "worker_photos"),
-        ]:
-            p = Path(DATA_DIR) / subdir
-            if p.exists():
-                files = [f for f in p.rglob("*") if f.is_file()]
-                result[f"{key}_count"] = len(files)
-                result[f"{key}_size_kb"] = round(sum(f.stat().st_size for f in files) / 1024, 1)
-        result["total_size_kb"] = round(
-            result["db_size_kb"] + result["receipt_size_kb"]
-            + result["company_size_kb"] + result["worker_size_kb"], 1
-        )
-    except Exception:
-        pass
-    return result
-
-
-@router.get("/backup/full-download")
-def backup_full_download(request: Request):
-    """DB + 영수증 + 로고 + 직원사진 전부를 하나의 ZIP으로 다운로드.
-    복원 시 그대로 업로드하면 완전 복원 가능.
-    """
-    require_admin_user(request)
-
-    # 메모리에 zip 생성 (파일 크기 보통 수 MB ~ 수십 MB)
-    buf = io.BytesIO()
-    manifest = {
-        "backup_type": "full_backup_v1",
-        "created_at": datetime.now().isoformat(),
-        "app_name": "정산관리 시스템",
-        "notes": "복원 시 관리자만 /backup 페이지에서 '완전 복원'으로 업로드하세요.",
-        "files": [],
-    }
-
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-        # 1) DB 파일 — SQLite 동시 접근 안전을 위해 임시 복사 후 zip
-        db_src = Path(DB_PATH)
-        if db_src.exists():
-            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-                tmp_path = tmp.name
-            try:
-                # SQLite는 파일 복사가 안전 (WAL 모드가 아니면)
-                shutil.copy2(str(db_src), tmp_path)
-                zf.write(tmp_path, arcname="data/app.db")
-                manifest["files"].append({
-                    "path": "data/app.db",
-                    "size": Path(tmp_path).stat().st_size,
-                })
-            finally:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-
-        # 2) 이미지 폴더들 (receipts, company, worker_photos)
-        for subdir in ["receipts", "company", "worker_photos"]:
-            src = Path(DATA_DIR) / subdir
-            if not src.exists():
-                continue
-            for f in src.rglob("*"):
-                if not f.is_file():
-                    continue
-                # data/receipts/xxx.jpg 형식으로 zip 내부 저장
-                rel = f.relative_to(Path(DATA_DIR))
-                arcname = f"data/{rel.as_posix()}"
-                zf.write(str(f), arcname=arcname)
-                manifest["files"].append({
-                    "path": arcname,
-                    "size": f.stat().st_size,
-                })
-
-        # 3) manifest.json (파일 목록 · 생성 시각)
-        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-
-    buf.seek(0)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"정산관리_완전백업_{ts}.zip"
-    from urllib.parse import quote
-    headers = {
-        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"
-    }
-    return StreamingResponse(buf, media_type="application/zip", headers=headers)
-
-
-@router.post("/backup/full-restore")
-async def backup_full_restore(
-    request: Request,
-    file: UploadFile = File(...),
-    confirm: str = Form(""),
-):
-    """완전 백업 ZIP 파일에서 DB + 이미지 전부 복원.
-    ⚠️ 기존 데이터는 완전히 대체됨 — 관리자 전용 + 확인 필수.
-    """
-    require_admin_user(request)
-
-    if confirm != "REPLACE_ALL":
-        raise HTTPException(400, "복원 확인 문자열이 일치하지 않습니다.")
-
-    # 업로드 파일 임시 저장
-    contents = await file.read()
-    if not contents:
-        raise HTTPException(400, "빈 파일입니다.")
-    if len(contents) > 500 * 1024 * 1024:  # 500MB 상한
-        raise HTTPException(400, "파일이 너무 큽니다 (500MB 초과).")
-
-    try:
-        zf = zipfile.ZipFile(io.BytesIO(contents), "r")
-    except zipfile.BadZipFile:
-        raise HTTPException(400, "ZIP 파일이 손상되었거나 형식이 잘못되었습니다.")
-
-    # manifest 검증
-    if "manifest.json" not in zf.namelist():
-        raise HTTPException(400, "완전 백업 ZIP이 아닙니다 (manifest.json 없음).")
-    try:
-        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
-        if manifest.get("backup_type") != "full_backup_v1":
-            raise HTTPException(400, "지원하지 않는 백업 형식입니다.")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        raise HTTPException(400, "manifest.json 형식이 잘못되었습니다.")
-
-    # 복원 전 현재 데이터를 백업 (안전장치)
-    safety_dir = Path(DATA_DIR) / "_pre_restore_backup"
-    safety_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safety_backup = safety_dir / f"before_restore_{ts}.db"
-    if Path(DB_PATH).exists():
-        try:
-            shutil.copy2(DB_PATH, safety_backup)
-        except OSError:
-            pass  # 안전 백업 실패해도 복원은 진행
-
-    # 기존 이미지 폴더 백업 (rename)
-    for subdir in ["receipts", "company", "worker_photos"]:
-        src = Path(DATA_DIR) / subdir
-        if src.exists() and any(src.iterdir()):
-            bak = safety_dir / f"{subdir}_{ts}"
-            try:
-                shutil.move(str(src), str(bak))
-                src.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                pass
-
-    # 실제 복원 — DB는 마지막에 (실행 중 파일 잠금 우려)
-    db_content = None
-    restored_files = 0
-    for name in zf.namelist():
-        if name == "manifest.json":
-            continue
-        # 경로 순회 공격 방지
-        if name.startswith("/") or ".." in name.split("/"):
-            continue
-        # data/ 하위만 허용
-        if not name.startswith("data/"):
-            continue
-        rel = name[5:]  # 'data/' 제거
-        if not rel:
-            continue
-        target = Path(DATA_DIR) / rel
-
-        if rel == "app.db":
-            db_content = zf.read(name)  # 나중에 처리
-            continue
-
-        # 디렉토리 안전 생성
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with zf.open(name) as src_f, open(target, "wb") as dst_f:
-                shutil.copyfileobj(src_f, dst_f)
-            restored_files += 1
-        except OSError:
-            pass
-
-    # DB 최후 교체
-    if db_content is not None:
-        try:
-            # 임시 파일로 쓰고 rename (원자적 교체)
-            tmp_path = str(Path(DB_PATH).with_suffix(".db.restore_tmp"))
-            with open(tmp_path, "wb") as f:
-                f.write(db_content)
-            # engine을 dispose하고 파일 교체
-            try:
-                engine.dispose()
-            except Exception:
-                pass
-            shutil.move(tmp_path, DB_PATH)
-            restored_files += 1
-        except OSError as ex:
-            raise HTTPException(500, f"DB 복원 실패: {ex}")
-
-    return templates.TemplateResponse(request, "backup_restored.html", {
-        "message": f"✅ 완전 복원 완료 — {restored_files}개 파일 복원됨",
-        "detail": (
-            f"복원 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}<br>"
-            f"백업 생성 시각: {manifest.get('created_at', '(알 수 없음)')}<br>"
-            f"안전 백업 저장 위치: <code>{safety_dir}</code><br><br>"
-            f"⚠️ <b>중요:</b> 사용자 세션이 오래된 정보를 유지할 수 있으니, "
-            f"로그아웃 후 다시 로그인해주세요."
-        ),
     })
 
 

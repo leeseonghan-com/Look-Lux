@@ -152,58 +152,23 @@ def _calc_vat(amount: int, mode: str) -> tuple[int, int, int]:
 
 
 @router.get("/projects", response_class=HTMLResponse)
-def project_list(
-    request: Request,
-    cats: str = "",
-    q: str = "",
-    sort: str = "created_desc",   # 정렬 기준
-    month: str = "",              # YYYY-MM 필터 (행사일 기준)
-    year: str = "",               # YYYY 필터
-):
+def project_list(request: Request, cats: str = "", q: str = "", sort: str = "recent"):
     """프로젝트 목록.
     cats: 쉼표로 구분된 카테고리 필터
-    q: 키워드 검색
-    sort: created_desc(최신 등록), event_desc(행사일 최신), event_asc(행사일 오래된), code_asc(코드), name_asc(이름)
-    month: YYYY-MM 형식 — 해당 월의 행사만
-    year: YYYY 형식 — 해당 년도의 행사만
+    q: 키워드 검색 (프로젝트명·코드·거래처명·장소·메모)
+    sort: 정렬 방식 (recent=최신등록, event_desc=행사일 최신순, event_asc=행사일 오래된순,
+          month=월별 그룹, code=프로젝트 코드순, revenue_desc=매출 큰 순)
     """
     user = _user_with_perm(request, "projects")
     selected_cats = [c.strip() for c in cats.split(",") if c.strip()] if cats else []
     search_q = (q or "").strip().lower()
+    sort = (sort or "recent").strip()
+    if sort not in ("recent", "event_desc", "event_asc", "month", "code", "revenue_desc"):
+        sort = "recent"
 
     with Session(engine, expire_on_commit=False) as s:
-        # 정렬 기준별 order_by
-        stmt = select(Project)
-        sort = (sort or "created_desc").strip()
-        if sort == "event_desc":
-            stmt = stmt.order_by(Project.event_date.desc().nullslast() if hasattr(Project.event_date.desc(), 'nullslast') else Project.event_date.desc(), Project.created_at.desc())
-        elif sort == "event_asc":
-            stmt = stmt.order_by(Project.event_date.asc().nullslast() if hasattr(Project.event_date.asc(), 'nullslast') else Project.event_date.asc(), Project.created_at.desc())
-        elif sort == "code_asc":
-            stmt = stmt.order_by(Project.code.asc())
-        elif sort == "code_desc":
-            stmt = stmt.order_by(Project.code.desc())
-        elif sort == "name_asc":
-            stmt = stmt.order_by(Project.name.asc())
-        else:  # created_desc (기본)
-            sort = "created_desc"
-            stmt = stmt.order_by(Project.created_at.desc())
-        all_projects = s.exec(stmt).all()
-
-        # 월/년 필터 (행사일 기준)
-        if month:  # "YYYY-MM"
-            try:
-                y, m = month.split("-")
-                y_i, m_i = int(y), int(m)
-                all_projects = [p for p in all_projects if p.event_date and p.event_date.year == y_i and p.event_date.month == m_i]
-            except (ValueError, TypeError):
-                pass
-        elif year:  # "YYYY"
-            try:
-                y_i = int(year)
-                all_projects = [p for p in all_projects if p.event_date and p.event_date.year == y_i]
-            except (ValueError, TypeError):
-                pass
+        # 초기 조회는 created_at desc — 이후 rows 완성 후 재정렬
+        all_projects = s.exec(select(Project).order_by(Project.created_at.desc())).all()
         # 거래처 사전 (검색용)
         vendors_map = {v.id: v.name for v in s.exec(select(Vendor)).all()}
         # 키워드 필터
@@ -262,6 +227,50 @@ def project_list(
                 "categories": project_cats,
             })
 
+        # ── 정렬 적용 ─────────────────────────────
+        from datetime import date as _d
+        _FAR = _d(9999, 12, 31)
+        _OLD = _d(1900, 1, 1)
+        # 프로젝트 id 순으로 초기 안정 정렬 (동률일 때 일관된 순서 유지)
+        project_created_map = {p.id: p.created_at for p in all_projects}
+        for r in rows:
+            r["_created_at"] = project_created_map.get(r["id"])
+        if sort == "event_desc":
+            rows.sort(key=lambda r: (r["event_date"] or _OLD), reverse=True)
+        elif sort == "event_asc":
+            rows.sort(key=lambda r: (r["event_date"] or _FAR))
+        elif sort == "month":
+            # 월별 그룹 — 행사일이 있는 항목은 그 월로, 없으면 최하단
+            rows.sort(key=lambda r: (
+                0 if r["event_date"] else 1,
+                -(r["event_date"].year if r["event_date"] else 0),
+                -(r["event_date"].month if r["event_date"] else 0),
+                -(r["event_date"].day if r["event_date"] else 0),
+            ))
+        elif sort == "code":
+            rows.sort(key=lambda r: (r["code"] or ""))
+        elif sort == "revenue_desc":
+            rows.sort(key=lambda r: (r["revenue"] or 0), reverse=True)
+        else:  # recent
+            rows.sort(key=lambda r: (r["_created_at"] or _OLD), reverse=True)
+
+        # 월별 모드: 각 행에 그룹 라벨 부여 (템플릿에서 헤더 렌더링)
+        if sort == "month":
+            last_key = None
+            for r in rows:
+                if r["event_date"]:
+                    key = f"{r['event_date'].year}-{r['event_date'].month:02d}"
+                    label = f"{r['event_date'].year}년 {r['event_date'].month}월"
+                else:
+                    key = "no-event"
+                    label = "행사일 미정"
+                if key != last_key:
+                    r["_group_start"] = True
+                    r["_group_label"] = label
+                    last_key = key
+                else:
+                    r["_group_start"] = False
+
         # 필터링된 결과 집계
         filtered_count = len(rows)
         filtered_revenue = sum(r["revenue"] for r in rows)
@@ -280,6 +289,7 @@ def project_list(
         "filtered_profit": filtered_profit,
         "total_count": len(all_projects),
         "search_q": search_q,
+        "sort": sort,
     })
 
 

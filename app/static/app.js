@@ -221,40 +221,19 @@ class ItemAutocomplete {
 
   renderEmpty() {
     this.dropdown = document.createElement('div');
-    this.dropdown.className = 'ac-dropdown ac-empty';
+    this.dropdown.className = 'ac-dropdown';
     this.dropdown.style.cssText = `
       position: absolute; z-index: 50; background: white;
       border: 1px solid #cbd5e1; border-radius: 6px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      padding: 8px 12px; font-size: 12px; color: #64748b;
-      display: flex; align-items: center; gap: 8px;
-      transition: opacity 0.3s;
+      padding: 10px 12px; font-size: 12px; color: #94a3b8;
     `;
     const rect = this.input.getBoundingClientRect();
     this.dropdown.style.left = (window.scrollX + rect.left) + 'px';
     this.dropdown.style.top = (window.scrollY + rect.bottom + 2) + 'px';
     this.dropdown.style.minWidth = Math.max(rect.width, 280) + 'px';
-    this.dropdown.innerHTML = `
-      <span style="flex:1;">💭 단가표에 없는 항목입니다 (직접 입력)</span>
-      <button type="button" class="ac-close-btn" style="background:none; border:none; font-size:16px; cursor:pointer; color:#94a3b8; padding:0 4px; line-height:1;">×</button>
-    `;
+    this.dropdown.textContent = '💭 단가표에 없는 항목입니다 (직접 입력하세요)';
     document.body.appendChild(this.dropdown);
-    // 닫기 버튼
-    const closeBtn = this.dropdown.querySelector('.ac-close-btn');
-    if (closeBtn) {
-      closeBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        this.close();
-      });
-    }
-    // ⏱️ 2초 후 자동 페이드아웃 후 닫힘
-    if (this._emptyTimer) clearTimeout(this._emptyTimer);
-    this._emptyTimer = setTimeout(() => {
-      if (this.dropdown && this.dropdown.classList.contains('ac-empty')) {
-        this.dropdown.style.opacity = '0';
-        setTimeout(() => this.close(), 300);
-      }
-    }, 2000);
   }
 
   highlight() {
@@ -291,10 +270,6 @@ class ItemAutocomplete {
   }
 
   close() {
-    if (this._emptyTimer) {
-      clearTimeout(this._emptyTimer);
-      this._emptyTimer = null;
-    }
     if (this.dropdown) {
       this.dropdown.remove();
       this.dropdown = null;
@@ -309,10 +284,3 @@ class ItemAutocomplete {
 }
 
 window.ItemAutocomplete = ItemAutocomplete;
-
-// 문서 전역 클릭: 자동완성 dropdown 밖을 클릭하면 모두 닫힘
-document.addEventListener('mousedown', (e) => {
-  document.querySelectorAll('.ac-dropdown').forEach(d => {
-    if (!d.contains(e.target)) d.remove();
-  });
-});
