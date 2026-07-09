@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}근무 수정{% endblock %}
+{% block content %}
+
+<div class="mb-4">
+  <a href="/attendance" class="text-sm text-slate-500">← 근무 내역</a>
+  <h1 class="text-2xl font-bold text-slate-800 mt-2">✏️ 근무 수정</h1>
+</div>
+
+<form method="post" action="/attendance/{{ a.id }}/edit" class="card space-y-4 max-w-2xl">
+  <div class="grid md:grid-cols-2 gap-4">
+    <div>
+      <label class="label">프로젝트 *</label>
+      <select name="project_id" class="input" required>
+        {% for p in projects %}
+        <option value="{{ p.id }}" {% if p.id == a.project_id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="label">근무일 *</label>
+      <input type="date" name="work_date" class="input" value="{{ a.work_date }}" required>
+    </div>
+  </div>
+
+  <div>
+    <label class="label">근무자 *</label>
+    <select name="worker_id" class="input" required>
+      {% for w in workers %}
+      <option value="{{ w.id }}" {% if w.id == a.worker_id %}selected{% endif %}>{{ w.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div>
+      <label class="label">근무 일수 *</label>
+      <input type="number" name="days" step="0.5" min="0.5" class="input num" value="{{ a.days }}" required>
+    </div>
+    <div>
+      <label class="label">일당 (원) *</label>
+      <input type="text" name="daily_wage" id="daily_wage" class="input num money-input" value="{{ a.daily_wage }}" required>
+    </div>
+  </div>
+
+  <!-- 오퍼비/추가금액 -->
+  <div class="card" style="background:#FAF5FF; border-color:#DDD6FE; padding: 14px;">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+      <span style="font-size: 14px; font-weight: 700; color: #6D28D9;">💰 추가금액 / 오퍼비 (별도 책정)</span>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+      <div>
+        <label class="label" style="color:#6D28D9;">금액 (원)</label>
+        <input type="text" name="bonus_amount" id="bonus_amount" class="input num money-input" value="{{ a.bonus_amount or 0 }}">
+      </div>
+      <div>
+        <label class="label" style="color:#6D28D9;">사유 / 메모</label>
+        <input name="bonus_memo" class="input" value="{{ a.bonus_memo or '' }}" placeholder="예: 오퍼비, 야간수당">
+      </div>
+    </div>
+  </div>
+
+  <div class="card bg-slate-50">
+    <div class="flex justify-between items-center">
+      <span class="text-sm font-semibold text-slate-600">총 지급액 <span class="text-xs text-slate-400">(일당×일수 + 추가금액)</span></span>
+      <span class="text-2xl font-bold text-slate-800 num" id="total-display">0원</span>
+    </div>
+    <div id="breakdown" class="text-xs mt-2" style="color:#6B7280;"></div>
+  </div>
+
+  <div>
+    <label class="label">메모</label>
+    <input name="memo" class="input" value="{{ a.memo }}">
+  </div>
+
+  <div class="flex gap-2 pt-2">
+    <button class="btn-primary flex-1">저장</button>
+    <a href="/attendance" class="btn-secondary">취소</a>
+  </div>
+</form>
+
+<script>
+function calcTotal() {
+  const days = parseFloat(document.querySelector('input[name=days]').value) || 0;
+  const wage = parseMoney(document.getElementById('daily_wage').value);
+  const bonus = parseMoney(document.getElementById('bonus_amount').value);
+  const wageTotal = Math.round(days * wage);
+  const total = wageTotal + bonus;
+  document.getElementById('total-display').textContent = formatMoney(total) + '원';
+  const bd = document.getElementById('breakdown');
+  bd.textContent = (bonus > 0)
+    ? `일당 ${formatMoney(wageTotal)}원 + 추가 ${formatMoney(bonus)}원`
+    : '';
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('input[name=days]').addEventListener('input', calcTotal);
+  document.getElementById('daily_wage').addEventListener('input', calcTotal);
+  document.getElementById('bonus_amount').addEventListener('input', calcTotal);
+  calcTotal();
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "mobile/base.html" %}
+{% set back_url = '/m/project/' ~ e.project_id %}
+{% block page_title %}비용 수정{% endblock %}
+
+{% block content %}
+
+<form method="post" action="/m/expense/{{ e.id }}/edit" class="m-form" enctype="multipart/form-data">
+  <div class="m-card">
+    <div class="m-field">
+      <label class="m-label">프로젝트</label>
+      <select name="project_id" class="m-input" required>
+        {% for p in projects %}
+        <option value="{{ p.id }}" {% if p.id == e.project_id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="m-field">
+      <label class="m-label">분류</label>
+      <select name="category" class="m-input" required>
+        {% for c in ['자재','장비대여','운반/물류','식비','교통비','기타'] %}
+        <option value="{{ c }}" {% if e.category == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="m-field">
+      <label class="m-label">금액 (원)</label>
+      <input name="amount" type="text" inputmode="numeric" class="m-input money-input" value="{{ '{:,}'.format(e.amount) }}" required>
+    </div>
+    <div class="m-field">
+      <label class="m-label">내용</label>
+      <textarea name="description" rows="2" class="m-input">{{ e.description }}</textarea>
+    </div>
+    <div class="m-field">
+      <label class="m-label">증빙</label>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <label class="m-evi-opt">
+          <input type="radio" name="has_evidence" value="yes" {% if e.has_evidence %}checked{% endif %} style="display:none;">
+          <span>✓ 증빙 있음</span>
+        </label>
+        <label class="m-evi-opt">
+          <input type="radio" name="has_evidence" value="no" {% if not e.has_evidence %}checked{% endif %} style="display:none;">
+          <span>⚠ 증빙 없음</span>
+        </label>
+      </div>
+    </div>
+    {% if not e.has_evidence %}
+    <div class="m-field">
+      <label class="m-label">세무 메모</label>
+      <input name="tax_excluded_note" class="m-input" value="{{ e.tax_excluded_note }}">
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+    <a href="/m/project/{{ e.project_id }}" style="background:#F3F4F6; color:#18181B; padding:14px; border-radius:10px; text-align:center; font-weight:700; text-decoration:none;">취소</a>
+    <button type="submit" style="background:#2563EB; color:white; padding:14px; border:none; border-radius:10px; font-weight:700; font-size:15px;">💾 저장</button>
+  </div>
+
+  <form method="post" action="/m/expense/{{ e.id }}/delete" style="margin-top: 8px;"
+        onsubmit="return confirm('이 비용을 삭제하시겠습니까?');">
+    <button style="width:100%; background:#FEE2E2; color:#991B1B; padding:12px; border:none; border-radius:10px; font-weight:700;">🗑 비용 삭제</button>
+  </form>
+</form>
+
+<style>
+.m-evi-opt { display:block; padding:14px; text-align:center; background:white; border:1.5px solid #E4E4E7; border-radius:10px; font-weight:700; cursor:pointer; color:#71717A; }
+.m-evi-opt:has(input:checked) { background:#0A0E1A; border-color:#0A0E1A; color:white; }
+</style>
+
+<script>
+document.querySelectorAll('.money-input').forEach(input => {
+  input.addEventListener('blur', e => {
+    const raw = e.target.value.replace(/[^\d]/g, '');
+    if (raw) e.target.value = parseInt(raw, 10).toLocaleString('ko-KR');
+  });
+});
+</script>
+
+{% endblock %}

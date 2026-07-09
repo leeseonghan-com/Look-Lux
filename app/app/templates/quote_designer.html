@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+{% block title %}견적서 디자이너{% endblock %}
+{% block content %}
+
+<div class="mb-5 flex items-center justify-between flex-wrap gap-3">
+  <div>
+    <a href="/settings" class="text-sm" style="color: var(--ink-4);">← 회사 설정</a>
+    <h1 class="page-title mt-2">🎨 견적서 디자이너</h1>
+    <p class="page-sub">로고·도장·텍스트·표를 마우스로 드래그해서 자유롭게 배치하세요.</p>
+  </div>
+  <div class="flex gap-2 flex-wrap">
+    <button type="button" id="btn-reset" class="btn-secondary">↺ 기본 위치로</button>
+    <button type="button" id="btn-save" class="btn-primary">💾 저장</button>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="flex items-center gap-4 text-sm flex-wrap" style="color: var(--ink-3);">
+    <div><span style="color: var(--ink);" class="font-bold">💡 사용법:</span></div>
+    <div>① 요소 <strong>드래그</strong>로 이동</div>
+    <div>② <strong>⤡ 핸들 드래그</strong>로 크기 조절</div>
+    <div>③ 더블클릭으로 <strong>잠금/해제</strong></div>
+    <div>④ <strong>💾 저장</strong>하면 인쇄 화면에 그대로 적용됨</div>
+    <div class="ml-auto"><span id="status-label" style="color: var(--ink-4);">변경사항 없음</span></div>
+  </div>
+</div>
+
+<!-- A4 캔버스 (800 x 1131 = A4 비율) -->
+<div class="canvas-wrap">
+  <div id="quote-canvas" class="quote-canvas">
+
+    <!-- 1. 로고 -->
+    <div class="qe" data-key="logo" data-default-x="40" data-default-y="40" data-default-w="160" data-default-h="60">
+      <div class="qe-label">로고</div>
+      <div class="qe-inner" style="display:flex; align-items:center; justify-content:center; background: #FAFAFA; height: 100%; border: 1px dashed #D6CFC0; color: #B8B5A8; font-size: 12px;">
+        {% if c.logo_image %}
+        <img src="/company/{{ c.logo_image }}" style="max-width: 100%; max-height: 100%; object-fit: contain;" alt="logo">
+        {% else %}
+        로고 이미지<br>(설정에서 업로드)
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 2. 견적서 타이틀 -->
+    <div class="qe" data-key="title" data-default-x="200" data-default-y="40" data-default-w="400" data-default-h="80">
+      <div class="qe-label">제목</div>
+      <h1 style="font-size: 32pt; letter-spacing: 0.3em; text-align: center; font-weight: bold; color: #1F3A5F; margin: 0; line-height: 80px;">
+        {{ c.quote_title_normal }}
+      </h1>
+    </div>
+
+    <!-- 3. 견적번호 / 일자 -->
+    <div class="qe" data-key="meta" data-default-x="600" data-default-y="50" data-default-w="160" data-default-h="60">
+      <div class="qe-label">견적번호/일자</div>
+      <div style="text-align: right; font-size: 11pt; font-weight: bold; padding: 6px; color: #1F3A5F;">
+        <div>Q-2026-001</div>
+        <div style="font-size: 10pt; font-weight: 500; color: #5A6B85; margin-top: 4px;">2026-01-15</div>
+      </div>
+    </div>
+
+    <!-- 4. 받는이 / 공급자 박스 -->
+    <div class="qe" data-key="parties" data-default-x="40" data-default-y="160" data-default-w="720" data-default-h="180">
+      <div class="qe-label">받는이 / 공급자 박스</div>
+      <table style="width: 100%; height: 100%; border-collapse: collapse; font-size: 10pt;">
+        <thead>
+          <tr>
+            <th colspan="2" style="background: #1F3A5F; color: white; padding: 6px; text-align: center;">공 급 받 는 자</th>
+            <th colspan="2" style="background: #1F3A5F; color: white; padding: 6px; text-align: center;">공 급 자</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="background: #F4F1EA; padding: 5px; font-weight: bold; width: 18%;">거래처명</td>
+            <td style="border: 1px solid #DDD; padding: 5px;">샘플 거래처</td>
+            <td style="background: #F4F1EA; padding: 5px; font-weight: bold; width: 18%;">상호</td>
+            <td style="border: 1px solid #DDD; padding: 5px;"><strong>{{ c.company_name or '(주)회사명' }}</strong></td>
+          </tr>
+          <tr>
+            <td style="background: #F4F1EA; padding: 5px; font-weight: bold;">담당자</td>
+            <td style="border: 1px solid #DDD; padding: 5px;">김담당</td>
+            <td style="background: #F4F1EA; padding: 5px; font-weight: bold;">대표자</td>
+            <td style="border: 1px solid #DDD; padding: 5px;">{{ c.representative or '대표자' }}</td>
+          </tr>
+          <tr>
+            <td style="background: #F4F1EA; padding: 5px; font-weight: bold;">연락처</td>
+            <td style="border: 1px solid #DDD; padding: 5px;">010-0000-0000</td>
+            <td style="background: #F4F1EA; padding: 5px; font-weight: bold;">사업자번호</td>
+            <td style="border: 1px solid #DDD; padding: 5px;">{{ c.biz_number or '000-00-00000' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 5. 인사문구 -->
+    <div class="qe" data-key="greeting" data-default-x="40" data-default-y="355" data-default-w="720" data-default-h="40">
+      <div class="qe-label">인사문구</div>
+      <div style="text-align: center; font-size: 12pt; font-weight: bold; line-height: 40px; color: #1F3A5F;">{{ c.quote_greeting }}</div>
+    </div>
+
+    <!-- 6. 품목 테이블 -->
+    <div class="qe" data-key="items" data-default-x="40" data-default-y="410" data-default-w="720" data-default-h="260">
+      <div class="qe-label">품목 테이블</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 10pt;">
+        <thead>
+          <tr>
+            <th style="background: #1F3A5F; color: white; padding: 6px; border: 1px solid #1F3A5F;">No</th>
+            <th style="background: #1F3A5F; color: white; padding: 6px; border: 1px solid #1F3A5F;">품명</th>
+            <th style="background: #1F3A5F; color: white; padding: 6px; border: 1px solid #1F3A5F;">규격</th>
+            <th style="background: #1F3A5F; color: white; padding: 6px; border: 1px solid #1F3A5F;">수량</th>
+            <th style="background: #1F3A5F; color: white; padding: 6px; border: 1px solid #1F3A5F;">단가</th>
+            <th style="background: #1F3A5F; color: white; padding: 6px; border: 1px solid #1F3A5F;">금액</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td style="border: 1px solid #BBB; padding: 5px; text-align: center;">1</td><td style="border: 1px solid #BBB; padding: 5px;">LED 무빙라이트</td><td style="border: 1px solid #BBB; padding: 5px;">Beam</td><td style="border: 1px solid #BBB; padding: 5px; text-align: right;">4</td><td style="border: 1px solid #BBB; padding: 5px; text-align: right;">800,000</td><td style="border: 1px solid #BBB; padding: 5px; text-align: right;">3,200,000</td></tr>
+          <tr><td style="border: 1px solid #BBB; padding: 5px; text-align: center;">2</td><td style="border: 1px solid #BBB; padding: 5px;">라인어레이</td><td style="border: 1px solid #BBB; padding: 5px;">12인치</td><td style="border: 1px solid #BBB; padding: 5px; text-align: right;">1</td><td style="border: 1px solid #BBB; padding: 5px; text-align: right;">1,500,000</td><td style="border: 1px solid #BBB; padding: 5px; text-align: right;">1,500,000</td></tr>
+          <tr><td style="border: 1px solid #BBB; padding: 5px; text-align: center;">3</td><td style="border: 1px solid #BBB; padding: 5px;">무선마이크</td><td style="border: 1px solid #BBB; padding: 5px;">UHF</td><td style="border: 1px solid #BBB; padding: 5px; text-align: right;">1</td><td style="border: 1px solid #BBB; padding: 5px; text-align: right;">300,000</td><td style="border: 1px solid #BBB; padding: 5px; text-align: right;">300,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 7. 합계 박스 -->
+    <div class="qe" data-key="summary" data-default-x="380" data-default-y="685" data-default-w="380" data-default-h="140">
+      <div class="qe-label">합계 박스</div>
+      <div style="font-size: 10pt;">
+        <div style="display: flex; border: 1px solid #BBB;"><div style="flex: 1; background: #F4F1EA; padding: 5px 10px; text-align: right; font-weight: bold;">공급가액 합계</div><div style="width: 40%; padding: 5px 10px; text-align: right; font-weight: bold;">5,000,000원</div></div>
+        <div style="display: flex; border: 1px solid #BBB; border-top: none;"><div style="flex: 1; background: #F4F1EA; padding: 5px 10px; text-align: right; font-weight: bold;">부가세 (10%)</div><div style="width: 40%; padding: 5px 10px; text-align: right; font-weight: bold;">500,000원</div></div>
+        <div style="display: flex; border: 2px solid #1F3A5F;"><div style="flex: 1; background: #1F3A5F; color: white; padding: 7px 10px; text-align: right; font-weight: bold; font-size: 12pt;">총 합 계 금 액</div><div style="width: 40%; background: #1F3A5F; color: #C9A961; padding: 7px 10px; text-align: right; font-weight: bold; font-size: 14pt;">5,500,000원</div></div>
+      </div>
+    </div>
+
+    <!-- 8. 견적 조건 -->
+    <div class="qe" data-key="conditions" data-default-x="40" data-default-y="840" data-default-w="720" data-default-h="120">
+      <div class="qe-label">견적 조건</div>
+      <h3 style="color: #1F3A5F; font-size: 11pt; margin: 0 0 6px;">■ 견적 조건</h3>
+      <table style="width: 100%; border-collapse: collapse; font-size: 9pt;">
+        <tr><td style="background: #F4F1EA; padding: 4px 8px; font-weight: bold; border: 1px solid #DDD; width: 20%;">유효기간</td><td style="padding: 4px 8px; border: 1px solid #DDD;">견적일로부터 30일</td></tr>
+        <tr><td style="background: #F4F1EA; padding: 4px 8px; font-weight: bold; border: 1px solid #DDD;">결제조건</td><td style="padding: 4px 8px; border: 1px solid #DDD;">{{ c.default_payment_terms }}</td></tr>
+        {% if c.bank_account %}
+        <tr><td style="background: #F4F1EA; padding: 4px 8px; font-weight: bold; border: 1px solid #DDD;">입금계좌</td><td style="padding: 4px 8px; border: 1px solid #DDD;">{{ c.bank_account }}</td></tr>
+        {% endif %}
+      </table>
+    </div>
+
+    <!-- 9. 도장 (별도 이동 가능) -->
+    <div class="qe" data-key="stamp" data-default-x="640" data-default-y="985" data-default-w="100" data-default-h="100">
+      <div class="qe-label">도장</div>
+      <div style="display:flex; align-items:center; justify-content:center; height: 100%;">
+        {% if c.stamp_image %}
+        <img src="/company/{{ c.stamp_image }}" style="max-width: 100%; max-height: 100%; object-fit: contain;" alt="stamp">
+        {% else %}
+        <div style="border: 2px solid #D6CFC0; border-radius: 50%; width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; color: #B8B5A8; font-size: 11px;">도장</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 10. 서명 텍스트 -->
+    <div class="qe" data-key="signature" data-default-x="380" data-default-y="1010" data-default-w="280" data-default-h="40">
+      <div class="qe-label">서명</div>
+      <div style="text-align: right; font-size: 11pt; font-weight: bold; line-height: 40px; color: #1F3A5F;">
+        {{ c.company_name or '(주)회사명' }} &nbsp; 대표 &nbsp; {{ c.representative or '대표자' }} (인)
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+  .canvas-wrap {
+    background: #E8E5DD;
+    padding: 30px 0;
+    border-radius: 12px;
+    overflow-x: auto;
+    display: flex;
+    justify-content: center;
+  }
+  .quote-canvas {
+    width: 800px;
+    height: 1131px;
+    background: white;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.15);
+    position: relative;
+    overflow: hidden;
+  }
+  .qe {
+    position: absolute;
+    box-sizing: border-box;
+    background: transparent;
+    border: 1.5px dashed transparent;
+    border-radius: 4px;
+    cursor: move;
+    user-select: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .qe:hover { border-color: #71717A; }
+  .qe.selected { border-color: #0A0E1A; border-style: solid; box-shadow: 0 0 0 3px rgba(10,14,26,0.08); }
+  .qe.locked { opacity: 0.55; border-color: #D6CFC0; cursor: not-allowed; }
+  .qe.locked:hover { border-color: #D6CFC0; }
+  .qe-label {
+    position: absolute;
+    top: -22px; left: 0;
+    background: #0A0E1A;
+    color: #FFF;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  .qe:hover .qe-label, .qe.selected .qe-label { opacity: 1; }
+  .qe.locked .qe-label { background: #71717A; opacity: 0.6; }
+
+  /* 리사이즈 핸들 */
+  .qe::after {
+    content: '⤡';
+    position: absolute;
+    right: 2px; bottom: 0px;
+    width: 16px; height: 16px;
+    background: #0A0E1A;
+    color: white;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    cursor: nwse-resize;
+  }
+  .qe:hover::after, .qe.selected::after { opacity: 1; }
+  .qe.locked::after { display: none; }
+
+  .qe-inner { width: 100%; height: 100%; overflow: hidden; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+<script>
+const SAVED_LAYOUT = {{ (c.quote_layout_json or '{}')|safe }};
+
+// 각 요소에 초기 위치/크기 적용
+function applyLayout(layout) {
+  document.querySelectorAll('.qe').forEach(el => {
+    const key = el.dataset.key;
+    const cfg = (layout && layout[key]) || {
+      x: parseFloat(el.dataset.defaultX),
+      y: parseFloat(el.dataset.defaultY),
+      w: parseFloat(el.dataset.defaultW),
+      h: parseFloat(el.dataset.defaultH),
+      locked: false,
+    };
+    el.style.left = cfg.x + 'px';
+    el.style.top = cfg.y + 'px';
+    el.style.width = cfg.w + 'px';
+    el.style.height = cfg.h + 'px';
+    if (cfg.locked) el.classList.add('locked');
+  });
+}
+
+function currentLayout() {
+  const out = {};
+  document.querySelectorAll('.qe').forEach(el => {
+    out[el.dataset.key] = {
+      x: parseFloat(el.style.left) || 0,
+      y: parseFloat(el.style.top) || 0,
+      w: parseFloat(el.style.width) || 100,
+      h: parseFloat(el.style.height) || 30,
+      locked: el.classList.contains('locked'),
+    };
+  });
+  return out;
+}
+
+function markDirty() {
+  document.getElementById('status-label').textContent = '⚠ 저장되지 않음';
+  document.getElementById('status-label').style.color = '#B45309';
+}
+
+function markSaved() {
+  document.getElementById('status-label').textContent = '✓ 저장됨';
+  document.getElementById('status-label').style.color = '#15803D';
+}
+
+// 드래그 + 리사이즈 핸들러
+interact('.qe').draggable({
+  inertia: false,
+  ignoreFrom: '.qe-label',
+  modifiers: [
+    interact.modifiers.restrictRect({
+      restriction: '#quote-canvas',
+      endOnly: false,
+    }),
+  ],
+  listeners: {
+    start(event) {
+      if (event.target.classList.contains('locked')) {
+        event.interaction.stop();
+        return;
+      }
+      document.querySelectorAll('.qe.selected').forEach(e => e.classList.remove('selected'));
+      event.target.classList.add('selected');
+    },
+    move(event) {
+      const el = event.target;
+      const x = (parseFloat(el.style.left) || 0) + event.dx;
+      const y = (parseFloat(el.style.top) || 0) + event.dy;
+      el.style.left = Math.max(0, x) + 'px';
+      el.style.top = Math.max(0, y) + 'px';
+      markDirty();
+    },
+  },
+}).resizable({
+  edges: { right: true, bottom: true, bottomRight: true },
+  modifiers: [
+    interact.modifiers.restrictSize({ min: { width: 40, height: 24 } }),
+  ],
+  listeners: {
+    start(event) {
+      if (event.target.classList.contains('locked')) {
+        event.interaction.stop();
+      }
+    },
+    move(event) {
+      const el = event.target;
+      el.style.width = event.rect.width + 'px';
+      el.style.height = event.rect.height + 'px';
+      markDirty();
+    },
+  },
+});
+
+// 더블클릭 = 잠금 토글
+document.querySelectorAll('.qe').forEach(el => {
+  el.addEventListener('dblclick', () => {
+    el.classList.toggle('locked');
+    markDirty();
+  });
+});
+
+// 캔버스 빈 곳 클릭 시 선택 해제
+document.getElementById('quote-canvas').addEventListener('mousedown', (e) => {
+  if (e.target.id === 'quote-canvas') {
+    document.querySelectorAll('.qe.selected').forEach(el => el.classList.remove('selected'));
+  }
+});
+
+// 저장
+document.getElementById('btn-save').addEventListener('click', async () => {
+  const layout = currentLayout();
+  const r = await fetch('/settings/quote-layout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ layout: JSON.stringify(layout) }),
+  });
+  if (r.ok) {
+    markSaved();
+  } else {
+    alert('저장 실패. 다시 시도해주세요.');
+  }
+});
+
+// 초기화
+document.getElementById('btn-reset').addEventListener('click', async () => {
+  if (!confirm('드래그한 위치를 완전히 지우고 기본 인쇄 레이아웃으로 되돌리시겠습니까?\n\n저장한 위치 정보가 모두 삭제됩니다.')) return;
+  // 서버에서 layout_json도 빈값으로 초기화 (그래야 인쇄가 기본 모드로 돌아감)
+  const r = await fetch('/settings/quote-layout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ layout: '' }),
+  });
+  if (r.ok) {
+    applyLayout(null);
+    document.getElementById('status-label').textContent = '✓ 기본 레이아웃으로 초기화됨';
+    document.getElementById('status-label').style.color = '#15803D';
+  } else {
+    alert('초기화 실패');
+  }
+});
+
+// 초기 로드
+applyLayout(SAVED_LAYOUT);
+</script>
+
+{% endblock %}

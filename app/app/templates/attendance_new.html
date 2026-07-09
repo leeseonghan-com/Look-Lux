@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}근무 등록{% endblock %}
+{% block content %}
+
+<div class="mb-4">
+  <a href="/attendance" class="text-sm text-slate-500">← 근무 내역</a>
+  <h1 class="text-2xl font-bold text-slate-800 mt-2">👥 새 근무 등록</h1>
+  <p class="text-sm text-slate-500 mt-1">일당 × 일수로 자동 계산됩니다.</p>
+</div>
+
+<form method="post" action="/attendance/new" class="card space-y-4 max-w-2xl">
+
+  <!-- 프로젝트 검색 가능한 콤보박스 -->
+  <div class="grid md:grid-cols-2 gap-4">
+    <div>
+      <label class="label">프로젝트 *
+        <span class="text-xs" style="color:#6B7280;">(검색 가능, 최신순)</span>
+        {% if preselect_project %}
+        <span class="text-xs" style="color: #059669; font-weight: 700;">✨ 자동 선택됨</span>
+        {% endif %}
+      </label>
+      <div class="searchable-select" data-name="project_id" data-required="true">
+        <input type="text" class="input ss-search" placeholder="프로젝트명 검색 또는 클릭" autocomplete="off"
+               value="{{ preselect_project.name if preselect_project else '' }}"
+               {% if preselect_project %}class="input ss-search ss-selected"{% endif %}>
+        <input type="hidden" name="project_id" class="ss-value" required
+               value="{{ preselect_project.id if preselect_project else '' }}">
+        <div class="ss-dropdown" style="display:none;">
+          {% for p in projects %}
+          <div class="ss-option" data-value="{{ p.id }}" data-label="{{ p.name }}">
+            <div style="font-weight:600;">{{ p.name }}</div>
+            <div style="font-size:11px; color:#6B7280; margin-top:1px;">{{ p.code }}{% if p.event_date %} · {{ p.event_date }}{% endif %}</div>
+          </div>
+          {% endfor %}
+          {% if not projects %}
+          <div style="padding:14px; color:#6B7280; text-align:center; font-size:13px;">등록된 프로젝트가 없습니다.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div>
+      <label class="label">근무일 *</label>
+      <input type="date" name="work_date" class="input" value="{{ today }}" required>
+    </div>
+  </div>
+
+  <!-- 근무자 검색 가능한 콤보박스 -->
+  <div>
+    <label class="label">근무자 * <span class="text-xs" style="color:#6B7280;">(검색 가능, 최신순)</span></label>
+    <div class="searchable-select" data-name="worker_id" data-required="true" id="worker-select">
+      <input type="text" class="input ss-search" placeholder="이름 검색 또는 클릭" autocomplete="off">
+      <input type="hidden" name="worker_id" class="ss-value" required>
+      <div class="ss-dropdown" style="display:none;">
+        {% for w in workers %}
+        <div class="ss-option" data-value="{{ w.id }}" data-label="{{ w.name }}"
+             data-wage="{{ w.default_daily_wage }}">
+          <div style="font-weight:600;">
+            {{ w.name }}
+            <span style="display:inline-block; margin-left:6px; padding:1px 6px; font-size:10px; border-radius:3px; font-weight:700; {% if w.employee_type == '정직원' %}background:#DBEAFE; color:#1E40AF;{% else %}background:#FEF3C7; color:#92400E;{% endif %}">{{ '💼' if w.employee_type == '정직원' else '🧢' }} {{ w.employee_type }}</span>
+          </div>
+          {% if request.state.can_view_amounts and w.default_daily_wage %}
+          <div style="font-size:11px; color:#6B7280; margin-top:1px;">일당 {{ w.default_daily_wage|money }}원</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mt-1">근무자를 선택하면 기본 일당이 자동 입력됩니다.</p>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div>
+      <label class="label">근무 일수 *</label>
+      <input type="number" name="days" step="0.5" min="0.5" class="input num" value="1" required>
+      <p class="text-xs text-slate-500 mt-1">반나절은 0.5, 하루는 1, 2일은 2</p>
+    </div>
+    <div>
+      <label class="label">일당 (원) *</label>
+      <input type="text" name="daily_wage" id="daily_wage" class="input num money-input" placeholder="150,000" value="150,000" required>
+    </div>
+  </div>
+
+  <!-- 오퍼비/추가금액 (별도 책정) -->
+  <div class="card" style="background:#FAF5FF; border-color:#DDD6FE; padding: 14px;">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+      <span style="font-size: 14px; font-weight: 700; color: #6D28D9;">💰 추가금액 / 오퍼비 (별도 책정)</span>
+      <span style="font-size: 11px; color: #7C3AED;">일당과 별개로 책정되는 비용 (선택)</span>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+      <div>
+        <label class="label" style="color:#6D28D9;">금액 (원)</label>
+        <input type="text" name="bonus_amount" id="bonus_amount" class="input num money-input" placeholder="0" value="0">
+      </div>
+      <div>
+        <label class="label" style="color:#6D28D9;">사유 / 메모</label>
+        <input name="bonus_memo" class="input" placeholder="예: 오퍼비, 야간수당, 식대">
+      </div>
+    </div>
+  </div>
+
+  <div class="card bg-slate-50">
+    <div class="flex justify-between items-center">
+      <span class="text-sm font-semibold text-slate-600">총 지급액 <span class="text-xs text-slate-400">(일당×일수 + 추가금액)</span></span>
+      <span class="text-2xl font-bold text-slate-800 num" id="total-display">150,000원</span>
+    </div>
+    <div id="breakdown" class="text-xs mt-2" style="color:#6B7280;"></div>
+  </div>
+
+  <div>
+    <label class="label">메모</label>
+    <input name="memo" class="input" placeholder="예: 행사 보조, 무대 셋업">
+  </div>
+
+  <div class="flex gap-2 pt-2">
+    <button class="btn-primary flex-1">저장</button>
+    <a href="/attendance" class="btn-secondary">취소</a>
+  </div>
+</form>
+
+<!-- ============================================== -->
+<!-- 검색 가능한 select 컴포넌트 스타일 + JS         -->
+<!-- ============================================== -->
+<style>
+  .searchable-select { position: relative; }
+  .ss-dropdown {
+    position: absolute; z-index: 50; top: 100%; left: 0; right: 0;
+    margin-top: 2px; max-height: 280px; overflow-y: auto;
+    background: white; border: 1px solid #E5E7EB; border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+  }
+  .ss-option {
+    padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #F3F4F6;
+    transition: background 0.1s;
+  }
+  .ss-option:hover, .ss-option.ss-highlighted { background: #F0F9FF; }
+  .ss-option:last-child { border-bottom: none; }
+  .ss-option.ss-hidden { display: none; }
+  .ss-search.ss-selected { background: #ECFDF5; border-color: #6EE7B7; font-weight: 600; }
+</style>
+
+<script>
+function initSearchableSelect(root) {
+  const search = root.querySelector('.ss-search');
+  const hidden = root.querySelector('.ss-value');
+  const dropdown = root.querySelector('.ss-dropdown');
+  const options = Array.from(root.querySelectorAll('.ss-option'));
+
+  function showDropdown() { dropdown.style.display = 'block'; }
+  function hideDropdown() { dropdown.style.display = 'none'; }
+
+  function filter(text) {
+    const q = (text || '').toLowerCase().trim();
+    let visibleCount = 0;
+    options.forEach(opt => {
+      const label = (opt.dataset.label || '').toLowerCase();
+      const matches = !q || label.includes(q);
+      opt.classList.toggle('ss-hidden', !matches);
+      if (matches) visibleCount++;
+    });
+    return visibleCount;
+  }
+
+  function selectOption(opt) {
+    hidden.value = opt.dataset.value;
+    search.value = opt.dataset.label;
+    search.classList.add('ss-selected');
+    hideDropdown();
+    // 커스텀 이벤트 (근무자 선택 시 일당 자동 입력용)
+    root.dispatchEvent(new CustomEvent('ss-change', { detail: { value: opt.dataset.value, option: opt } }));
+  }
+
+  search.addEventListener('focus', () => {
+    filter(''); // 모든 옵션 표시
+    showDropdown();
+  });
+
+  search.addEventListener('input', () => {
+    hidden.value = ''; // 검색 중에는 선택 해제
+    search.classList.remove('ss-selected');
+    filter(search.value);
+    showDropdown();
+  });
+
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { hideDropdown(); search.blur(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const firstVisible = options.find(o => !o.classList.contains('ss-hidden'));
+      if (firstVisible) selectOption(firstVisible);
+    }
+  });
+
+  options.forEach(opt => {
+    opt.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // blur 방지
+      selectOption(opt);
+    });
+  });
+
+  // 바깥 클릭 시 닫기
+  document.addEventListener('mousedown', (e) => {
+    if (!root.contains(e.target)) hideDropdown();
+  });
+}
+
+document.querySelectorAll('.searchable-select').forEach(initSearchableSelect);
+
+// 근무자 선택 시 → 일당 자동 입력
+const workerSelect = document.getElementById('worker-select');
+if (workerSelect) {
+  workerSelect.addEventListener('ss-change', (e) => {
+    const wage = e.detail.option.dataset.wage;
+    if (wage && parseInt(wage) > 0) {
+      const input = document.getElementById('daily_wage');
+      input.value = formatMoney(parseInt(wage));
+      calcTotal();
+    }
+  });
+}
+
+function calcTotal() {
+  const days = parseFloat(document.querySelector('input[name=days]').value) || 0;
+  const wage = parseMoney(document.getElementById('daily_wage').value);
+  const bonus = parseMoney(document.getElementById('bonus_amount').value);
+  const wageTotal = Math.round(days * wage);
+  const total = wageTotal + bonus;
+  document.getElementById('total-display').textContent = formatMoney(total) + '원';
+  const bd = document.getElementById('breakdown');
+  if (bonus > 0) {
+    bd.textContent = `일당 ${formatMoney(wageTotal)}원 + 추가 ${formatMoney(bonus)}원`;
+  } else {
+    bd.textContent = '';
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('input[name=days]').addEventListener('input', calcTotal);
+  document.getElementById('daily_wage').addEventListener('input', calcTotal);
+  document.getElementById('bonus_amount').addEventListener('input', calcTotal);
+  calcTotal();
+});
+</script>
+
+{% endblock %}

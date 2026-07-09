@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}견적서{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold text-slate-800">📝 견적서</h1>
+  <div class="flex gap-2">
+    <a href="/quotes/new?type=납품" class="btn-secondary">+ 📦 납품 견적</a>
+    <a href="/quotes/new?type=렌탈" class="btn-primary">+ 🎬 렌탈 견적</a>
+  </div>
+</div>
+
+{% set can_view = request.state.can_view_amounts %}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+  <div class="card"><div class="text-xs text-slate-500">전체</div><div class="text-2xl font-bold mt-1 num">{{ total_count }}건</div></div>
+  <div class="card"><div class="text-xs text-slate-500">수주</div><div class="text-2xl font-bold mt-1 text-emerald-600 num">{{ won_count }}건</div></div>
+  {% if can_view %}
+  <div class="card"><div class="text-xs text-slate-500">수주 금액</div><div class="text-lg font-bold mt-1 num">{{ won_amount|money }}원</div></div>
+  {% else %}
+  <div class="card" style="background:#F3F4F6;"><div class="text-xs text-slate-500">수주 금액</div><div class="text-lg font-bold mt-1" style="color:var(--ink-5);">권한 없음</div></div>
+  {% endif %}
+  <div class="card"><div class="text-xs text-slate-500">수주율</div><div class="text-2xl font-bold mt-1 text-slate-800 num">{{ "%.1f"|format(win_rate) }}%</div></div>
+</div>
+
+<div class="card mb-3" style="padding: 12px 16px;">
+  <form method="get" style="display:flex; gap:8px; align-items:end;">
+    <div style="flex:1;">
+      <label class="label">🔍 견적서 검색 (견적번호·거래처·프로젝트명·메모)</label>
+      <input name="q" class="input" value="{{ search_q or '' }}" placeholder="예: Q-2026, ABC상사, 신년행사" autocomplete="off">
+    </div>
+    <button class="btn-primary" type="submit">검색</button>
+    {% if search_q %}<a href="/quotes" class="btn-secondary">초기화</a>{% endif %}
+  </form>
+</div>
+
+<div class="card overflow-x-auto">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th>견적번호</th><th>유형</th><th>날짜</th><th>거래처</th>
+        <th class="mobile-hide">프로젝트</th><th class="text-right">총액</th>
+        <th>상태</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in quotes %}
+      <tr class="cursor-pointer" onclick="location.href='/quotes/{{ q.id }}'">
+        <td class="text-xs font-semibold">{{ q.quote_number }}</td>
+        <td>
+          <span class="badge {% if q.quote_type == '렌탈' %}badge-orange{% else %}badge-blue{% endif %}">
+            {% if q.quote_type == '렌탈' %}🎬 렌탈{% else %}📦 납품{% endif %}
+          </span>
+        </td>
+        <td class="text-xs">{{ q.quote_date }}</td>
+        <td>{{ q.vendor_name }}</td>
+        <td class="mobile-hide text-xs">{{ q.project_name }}</td>
+        <td class="text-right num font-bold">{% if can_view %}{{ q.total|money }}원{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}</td>
+        <td>
+          <span class="badge {% if q.status == '수주' %}badge-green{% elif q.status == '실주' %}badge-red{% elif q.status == '견적' %}badge-orange{% else %}badge-gray{% endif %}">{{ q.status }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not quotes %}
+      <tr><td colspan="7" class="text-center py-8 text-slate-400">아직 견적서가 없습니다.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}{% if e %}직원 수정{% else %}직원 추가{% endif %}{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <a href="/employees" class="text-sm" style="color: var(--ink-4);">← 직원 목록</a>
+  <h1 class="page-title mt-2">
+    {% if e %}✏️ {{ e.name }} 정보 수정{% else %}+ 새 직원 추가{% endif %}
+  </h1>
+</div>
+
+<form method="post" action="{% if e %}/employees/{{ e.id }}/edit{% else %}/employees/new{% endif %}" class="space-y-5 max-w-3xl" id="emp-form">
+
+  <!-- 권한 폼이 제출되었음을 백엔드에 알리는 마커 (체크박스 미체크도 명시적으로 처리하기 위함) -->
+  <input type="hidden" name="perms_submitted" value="1">
+
+  <!-- 기본 정보 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4">📝 기본 정보</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="label">아이디 *</label>
+        <input name="username" class="input" required value="{{ e.username if e else '' }}"
+               {% if e %}readonly style="background:#F3F4F6; cursor:not-allowed;"{% endif %}>
+        {% if e %}<div class="text-xs mt-1" style="color: var(--ink-4);">아이디는 변경할 수 없습니다.</div>{% endif %}
+      </div>
+      <div>
+        <label class="label">{% if e %}비밀번호 변경 (선택){% else %}비밀번호 * (4자 이상){% endif %}</label>
+        <input name="password" type="password" class="input"
+               {% if not e %}required minlength="4"{% endif %}
+               placeholder="{% if e %}변경 시에만 입력{% else %}4자 이상{% endif %}">
+      </div>
+      <div>
+        <label class="label">이름 *</label>
+        <input name="name" class="input" required value="{{ e.name if e else '' }}">
+      </div>
+      <div>
+        <label class="label">전화번호</label>
+        <input name="phone" class="input" value="{{ e.phone if e else '' }}" placeholder="010-0000-0000">
+      </div>
+      <div>
+        <label class="label">근무 구분</label>
+        <select name="employee_type" class="input">
+          {% for t in ['정직원', '알바생', '관리자'] %}
+          <option value="{{ t }}" {% if e and e.employee_type == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label">역할 *</label>
+        {% if e and e.is_self %}
+          {# 자기 자신: 역할 변경 금지. disabled select 대신 readonly 표시 + hidden 값 #}
+          <select class="input" disabled>
+            <option>{% if e.role == 'admin' %}🛡 관리자 (모든 권한){% else %}👤 직원 (제한된 권한){% endif %}</option>
+          </select>
+          <input type="hidden" name="role" value="{{ e.role }}">
+          <div class="text-xs mt-1" style="color: var(--ink-4);">자기 자신의 역할은 변경할 수 없습니다.</div>
+        {% else %}
+          <select name="role" class="input" id="role-select">
+            <option value="staff" {% if not e or e.role == 'staff' %}selected{% endif %}>👤 직원 (제한된 권한)</option>
+            <option value="admin" {% if e and e.role == 'admin' %}selected{% endif %}>🛡 관리자 (모든 권한)</option>
+          </select>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 권한 설정 -->
+  <div class="card" id="perm-card">
+    <h2 class="text-lg font-bold mb-2">🔐 권한 설정</h2>
+    <p class="text-xs mb-4" style="color: var(--ink-4);">
+      직원이 접근할 수 있는 메뉴와 금액 조회 권한을 설정합니다. <b>관리자</b>는 모든 권한이 자동 부여됩니다.
+    </p>
+
+    {# 현재 저장된 권한 상태 미리보기 (수정 화면일 때만) #}
+    {% if e %}
+    <div class="mb-3 text-xs" style="background: #F0F9FF; border:1px solid #BAE6FD; color:#075985; padding:8px 12px; border-radius:6px;">
+      💾 현재 저장된 권한: <b id="saved-count">{{ perms.values()|select|list|length }}</b>개 활성화됨
+      <span style="color:#0C4A6E; margin-left:6px;">(이 체크박스 상태가 실제 저장값입니다)</span>
+    </div>
+    {% endif %}
+
+    <div class="mb-3">
+      <button type="button" onclick="toggleAllPerms(true)" class="text-xs font-semibold" style="background:#DBEAFE; color:#1E40AF; padding: 4px 12px; border-radius: 4px; border: none; cursor: pointer; margin-right: 6px;">전체 선택</button>
+      <button type="button" onclick="toggleAllPerms(false)" class="text-xs font-semibold" style="background:#F3F4F6; color:#6B7280; padding: 4px 12px; border-radius: 4px; border: none; cursor: pointer;">전체 해제</button>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-3" id="perm-grid">
+      {% for key, label in permission_keys.items() %}
+      {% set is_checked = perms.get(key, False) %}
+      <label class="perm-row flex items-start gap-2 cursor-pointer"
+             data-key="{{ key }}"
+             style="padding: 10px 14px; background: {% if is_checked %}#EFF6FF{% else %}#F8FAFC{% endif %}; border: 1px solid {% if is_checked %}#BFDBFE{% else %}var(--line){% endif %}; border-radius: 8px; transition: background .15s, border-color .15s;">
+        <input type="checkbox" name="perm_{{ key }}" value="on" {% if is_checked %}checked{% endif %} class="perm-check" style="margin-top: 2px;">
+        <div>
+          <div class="text-sm font-semibold" style="color: var(--ink);">{{ label }}</div>
+          <div class="text-xs" style="color: var(--ink-4);">
+            {% if key == 'view_amounts' %}
+            매출액, 이익, 단가표 가격 등 조회 (체크 안 하면 금액 자리에 "—" 표시)
+            {% elif key == 'projects_edit' %}
+            프로젝트 정보 수정 및 삭제 권한 (projects 권한 필요)
+            {% elif key == 'view_expenses' %}
+            비용 금액 조회 (expenses 권한 필요)
+            {% elif key == 'view_wages' %}
+            근무자 일당/시급 조회
+            {% else %}
+            {{ label }}
+            {% endif %}
+          </div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="flex justify-end gap-3">
+    <a href="/employees" class="btn-secondary">취소</a>
+    <button type="submit" class="btn-primary" style="padding: 10px 28px;">💾 저장</button>
+  </div>
+</form>
+
+<script>
+function toggleAllPerms(checked) {
+  document.querySelectorAll('.perm-check').forEach(c => {
+    c.checked = checked;
+    syncRowStyle(c);
+  });
+}
+
+// 체크 상태에 따라 행 배경/테두리 색 동기화
+function syncRowStyle(checkbox) {
+  const row = checkbox.closest('.perm-row');
+  if (!row) return;
+  if (checkbox.checked) {
+    row.style.background = '#EFF6FF';
+    row.style.borderColor = '#BFDBFE';
+  } else {
+    row.style.background = '#F8FAFC';
+    row.style.borderColor = 'var(--line)';
+  }
+}
+
+// 체크박스 변경 시 시각적 동기화
+document.querySelectorAll('.perm-check').forEach(c => {
+  c.addEventListener('change', () => syncRowStyle(c));
+});
+
+// 역할이 admin이면 권한 카드 비활성화 (시각적으로만 — 실제 백엔드는 admin이면 권한 무시)
+const roleSelect = document.getElementById('role-select');
+const permCard = document.getElementById('perm-card');
+function updatePermCardState() {
+  const role = roleSelect ? roleSelect.value : 'staff';
+  if (role === 'admin') {
+    permCard.style.opacity = '0.4';
+    permCard.style.pointerEvents = 'none';
+  } else {
+    permCard.style.opacity = '1';
+    permCard.style.pointerEvents = 'auto';
+  }
+}
+if (roleSelect) {
+  roleSelect.addEventListener('change', updatePermCardState);
+  updatePermCardState();
+}
+</script>
+
+{% endblock %}

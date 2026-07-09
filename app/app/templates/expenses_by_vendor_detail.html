@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ vendor.name }} - 비용 내역{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/expenses/by-vendor" class="text-sm" style="color: var(--ink-4);">← 거래처별 집계</a>
+  <div class="flex items-start justify-between mt-2 flex-wrap gap-3">
+    <div>
+      <h1 class="page-title">🏢 {{ vendor.name }}</h1>
+      <p class="page-sub">
+        {% if vendor.biz_number %}{{ vendor.biz_number }} · {% endif %}
+        {% if vendor.contact_person %}담당: {{ vendor.contact_person }} · {% endif %}
+        {% if vendor.phone %}{{ vendor.phone }}{% endif %}
+      </p>
+    </div>
+    <div class="flex gap-2">
+      <a href="/vendors/{{ vendor.id }}/edit" class="btn-secondary text-sm">거래처 수정</a>
+    </div>
+  </div>
+</div>
+
+<!-- 합계 KPI -->
+<div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+  <div class="kpi-card">
+    <div class="label">거래 건수</div>
+    <div class="value value-sm num">{{ rows|length }}<span class="unit">건</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">총 지출액</div>
+    <div class="value value-sm num">{% if request.state.can_view_amounts %}{{ total|money }}{% else %}—{% endif %}<span class="unit">원</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">평균 거래액</div>
+    <div class="value value-sm num">
+      {% if request.state.can_view_amounts and rows %}{{ (total // rows|length)|money }}{% else %}—{% endif %}<span class="unit">원</span>
+    </div>
+  </div>
+</div>
+
+<div class="card overflow-x-auto">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th>날짜</th>
+        <th>항목</th>
+        <th class="mobile-hide">프로젝트</th>
+        <th>내용</th>
+        <th class="mobile-hide">결제수단</th>
+        <th class="text-center mobile-hide">증빙</th>
+        <th class="text-right">금액</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="whitespace-nowrap text-xs">{{ r.date }}</td>
+        <td><span class="badge badge-blue">{{ r.category }}</span></td>
+        <td class="mobile-hide text-xs">
+          <a href="/projects/{{ r.project_id }}" style="color:var(--link);">{{ r.project_name }}</a>
+        </td>
+        <td>{{ r.description }}</td>
+        <td class="mobile-hide text-xs">{{ r.payment_method }}</td>
+        <td class="text-center mobile-hide">
+          {% if r.has_evidence %}
+          <span style="color:#059669;">✓</span>
+          {% else %}
+          <span style="color:#92400E;" title="증빙없음">⚠</span>
+          {% endif %}
+        </td>
+        <td class="text-right num font-bold">
+          {% if request.state.can_view_amounts %}{{ r.amount|money }}{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
+        </td>
+        <td class="text-center text-xs">
+          <a href="/expenses/{{ r.id }}/edit" style="color:var(--link);">수정</a>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not rows %}
+      <tr><td colspan="8" class="text-center py-8 text-slate-400">이 거래처에 대한 비용 내역이 없습니다.</td></tr>
+      {% endif %}
+    </tbody>
+    {% if rows %}
+    <tfoot>
+      <tr style="border-top: 2px solid var(--ink); background: var(--surface-2);">
+        <th colspan="6" class="text-right">합계</th>
+        <th class="text-right num">{% if request.state.can_view_amounts %}{{ total|money }}{% else %}—{% endif %}</th>
+        <th></th>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</div>
+
+{% endblock %}

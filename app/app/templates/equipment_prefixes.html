@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}장비 관리코드 설정{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <a href="/equipment" class="text-sm" style="color: var(--ink-4);">← 보유장비로 돌아가기</a>
+  <h1 class="page-title mt-2">🏷️ 장비 관리코드 설정</h1>
+  <p class="page-sub">카테고리별로 관리코드 prefix를 정해두면 새 장비 등록 시 자동으로 코드가 생성됩니다.</p>
+</div>
+
+{% if request.query_params.get('saved') %}
+<div class="card mb-4" style="background: #ECFDF5; border-color: #A7F3D0; padding: 12px 16px;">
+  <div class="text-sm font-semibold" style="color: #047857;">✓ 관리코드 설정이 저장되었습니다.</div>
+</div>
+{% endif %}
+
+<!-- 안내 -->
+<div class="card mb-5" style="background: linear-gradient(135deg, #0A0E1A 0%, #1E293B 100%); color: white; padding: 18px 22px; border: none;">
+  <div class="text-sm font-bold mb-2">✨ 코드 생성 규칙</div>
+  <div class="text-xs" style="opacity: 0.85; line-height: 1.7;">
+    <div><b>형식</b>: PREFIX-연도-일련번호 4자리</div>
+    <div><b>예시</b>: 음향 장비 → <code style="background:rgba(255,255,255,0.15); padding:1px 6px; border-radius:3px;">SC-{{ "2026" }}-0001</code> · 조명 장비 → <code style="background:rgba(255,255,255,0.15); padding:1px 6px; border-radius:3px;">LB-{{ "2026" }}-0001</code></div>
+    <div class="mt-2" style="opacity: 0.7;">※ 새 장비 등록 시 prefix가 자동 적용되며, 일련번호는 매년 자동 증가합니다.</div>
+  </div>
+</div>
+
+<form method="post" action="/settings/equipment-prefixes">
+
+<div class="card">
+  <h2 class="text-lg font-bold mb-4">카테고리별 Prefix</h2>
+
+  <table class="dt">
+    <thead>
+      <tr>
+        <th style="width: 140px;">카테고리</th>
+        <th style="width: 140px;">Prefix</th>
+        <th>코드 예시</th>
+        <th style="width: 120px;">기본값</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cat in categories %}
+      {% set current = prefixes.get(cat, defaults.get(cat, 'EQ')) %}
+      {% set default_val = defaults.get(cat, 'EQ') %}
+      <tr>
+        <td class="font-semibold">
+          {% set icons = {'음향':'🎵','조명':'💡','영상':'🎬','구조물':'🏗️','전원':'⚡','기타':'📦'} %}
+          {{ icons.get(cat, '📌') }} {{ cat }}
+        </td>
+        <td>
+          <input type="text" name="prefix_{{ cat }}" value="{{ current }}"
+                 class="input num" maxlength="6"
+                 style="text-transform: uppercase; font-weight: 700; font-family: 'D2Coding', 'Consolas', monospace;"
+                 oninput="updateExample(this, '{{ cat }}')"
+                 placeholder="{{ default_val }}">
+        </td>
+        <td>
+          <code id="example-{{ cat }}" style="background: #F4F4F5; padding: 4px 10px; border-radius: 4px; font-size: 13px; font-weight: 700; color: #18181B;">
+            {{ current }}-2026-0001
+          </code>
+        </td>
+        <td>
+          <span class="text-xs" style="color: var(--ink-4); font-family: monospace;">{{ default_val }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="text-xs mt-3" style="color: var(--ink-4);">
+    💡 prefix는 영문 대문자 1~6자 권장. 비워두면 기본값이 적용됩니다.
+  </div>
+</div>
+
+<div class="flex justify-end gap-3 mt-5">
+  <a href="/equipment" class="btn-secondary">취소</a>
+  <button type="submit" class="btn-primary" style="padding: 10px 28px;">💾 설정 저장</button>
+</div>
+
+</form>
+
+<!-- 자주 사용하는 prefix 예시 -->
+<div class="card mt-6" style="background: #F8FAFC;">
+  <h2 class="text-base font-bold mb-3">💡 추천 Prefix 약어</h2>
+  <div class="grid md:grid-cols-2 gap-3 text-xs">
+    <div>
+      <div class="font-bold mb-1">🎵 음향 (Sound)</div>
+      <div style="color: var(--ink-4);">SC (Sound Card) · SP (Speaker) · MIC (Mic) · AMP</div>
+    </div>
+    <div>
+      <div class="font-bold mb-1">💡 조명 (Lighting)</div>
+      <div style="color: var(--ink-4);">LB (Light Bar) · LED · MV (Moving) · PAR</div>
+    </div>
+    <div>
+      <div class="font-bold mb-1">🎬 영상 (Video)</div>
+      <div style="color: var(--ink-4);">VC (Video Camera) · LED (LED Wall) · PRJ (Projector) · CAM</div>
+    </div>
+    <div>
+      <div class="font-bold mb-1">🏗️ 구조물 (Structure)</div>
+      <div style="color: var(--ink-4);">ST (Stage) · TR (Truss) · BD (Backdrop) · RG (Rigging)</div>
+    </div>
+    <div>
+      <div class="font-bold mb-1">⚡ 전원 (Power)</div>
+      <div style="color: var(--ink-4);">PW (Power) · DB (Distribution Box) · CB (Cable) · GEN</div>
+    </div>
+    <div>
+      <div class="font-bold mb-1">📦 기타 (Equipment)</div>
+      <div style="color: var(--ink-4);">EQ (Equipment) · ETC · MISC</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function updateExample(input, cat) {
+  let val = input.value.trim().toUpperCase();
+  if (!val) val = input.placeholder;
+  // 입력값을 자동으로 대문자로 변환
+  input.value = val;
+  const example = document.getElementById('example-' + cat);
+  if (example) {
+    example.textContent = val + '-2026-0001';
+  }
+}
+</script>
+
+{% endblock %}

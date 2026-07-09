@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}데이터 관리{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/settings" class="text-sm" style="color: var(--ink-4);">← 회사 설정</a>
+  <h1 class="page-title mt-2">📦 데이터 백업 · 복원</h1>
+  <p class="text-sm mt-1" style="color: var(--ink-4);">Excel 파일로 전체 데이터를 저장하고 다른 환경으로 옮길 수 있습니다.</p>
+</div>
+
+<div class="grid md:grid-cols-2 gap-5 max-w-5xl">
+
+  <!-- 내보내기 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-2" style="color: var(--ink);">⬇️ Excel로 내보내기</h2>
+    <p class="text-sm mb-4" style="color: var(--ink-4); line-height: 1.6;">
+      두 가지 양식 중 선택해 백업할 수 있습니다. 둘 다 다시 불러올 수 있습니다.
+    </p>
+
+    <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 14px; margin-bottom: 12px;">
+      <div class="font-bold text-sm mb-1" style="color: #1E40AF;">📊 정산관리 양식 (사람이 읽기 쉬움) — 추천</div>
+      <p class="text-xs mb-3" style="color: #1E3A8A; line-height: 1.5;">
+        프로젝트목록·비용처리·알바인건비·거래처·물품·견적이력 6시트.<br>
+        이전에 사용하시던 양식과 동일합니다. 엑셀에서 직접 보고 수정하기 편합니다.
+      </p>
+      <a href="/backup/export-legacy" class="btn-primary inline-flex" style="background:#1E40AF; border-color:#1E40AF;">📥 정산관리 양식 다운로드</a>
+    </div>
+
+    <div class="text-xs mb-2 p-3 rounded" style="background: var(--surface-2); color: var(--ink-3);">
+      <div class="font-bold mb-1">📑 전체 백업 양식 (시트 {{ schema|length }}개):</div>
+      <p class="mb-2">시스템이 인식하는 모든 필드를 포함합니다. 완전 백업/이전용.</p>
+      <details class="text-xs">
+        <summary class="cursor-pointer" style="color: var(--ink-4);">시트 목록 보기</summary>
+        <ul class="list-disc list-inside space-y-0.5 mt-2">
+          {% for sheet_name in schema.keys() %}
+          <li>{{ sheet_name }}</li>
+          {% endfor %}
+        </ul>
+      </details>
+    </div>
+    <a href="/backup/export" class="btn-secondary inline-flex">📥 전체 백업 다운로드</a>
+  </div>
+
+  <!-- 불러오기 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-2" style="color: var(--ink);">⬆️ Excel에서 불러오기</h2>
+    <p class="text-sm mb-4" style="color: var(--ink-4); line-height: 1.6;">
+      두 양식 모두 자동 인식해서 데이터를 일괄 추가합니다.
+      <strong>기존 데이터는 보존</strong>되며, 같은 코드는 중복으로 간주되어 건너뜁니다.
+    </p>
+
+    <form method="post" action="/backup/preview" enctype="multipart/form-data" class="space-y-3">
+      <div>
+        <label class="label">Excel 파일 (.xlsx)</label>
+        <input type="file" name="file" accept=".xlsx,.xlsm" class="input" required>
+        <div class="text-xs mt-1" style="color: var(--ink-4);">
+          ✓ 정산관리 양식 (📋 프로젝트목록·💰 비용처리·👥 알바인건비 등)<br>
+          ✓ 전체 백업 양식 (프로젝트·비용·근무자 등)<br>
+          ✓ 이전 정산관리 엑셀 파일도 호환됩니다
+        </div>
+      </div>
+      <button class="btn-primary inline-flex">📤 미리보기</button>
+    </form>
+
+    <div class="mt-4 p-3 rounded text-xs" style="background: #FEF3C7; color: #92400E; line-height: 1.6;">
+      ⚠️ <strong>안전 안내</strong><br>
+      · 업로드 후 미리보기 화면에서 확인할 수 있습니다<br>
+      · 기존 데이터는 절대 삭제·수정되지 않습니다<br>
+      · 중복 행은 자동으로 건너뜁니다 (코드/이름 기준)
+    </div>
+  </div>
+
+</div>
+
+<!-- 시트별 unique 키 안내 -->
+<div class="card mt-5 max-w-5xl">
+  <h3 class="text-base font-bold mb-3" style="color: var(--ink);">📋 시트별 중복 판정 기준</h3>
+  <div class="overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>시트</th>
+          <th>중복 판정 키</th>
+          <th>설명</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for name, spec in schema.items() %}
+        <tr>
+          <td class="font-semibold">{{ name }}</td>
+          <td><code style="font-size: 11px; padding: 2px 6px; background: var(--surface-2); border-radius: 4px;">{{ spec.unique_field or '— (없음)' }}</code></td>
+          <td class="text-xs" style="color: var(--ink-4);">
+            {% if spec.unique_field %}
+              같은 {{ spec.unique_field }}가 이미 있으면 건너뜀
+            {% else %}
+              중복 검사 없이 무조건 추가
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

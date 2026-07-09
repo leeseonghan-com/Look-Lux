@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}출퇴근 시간 수정{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <a href="/attendance?tab=fulltime" class="text-sm" style="color: var(--ink-4);">← 정직원 출퇴근</a>
+  <h1 class="page-title mt-2">⏰ {{ ci.worker_name }} 출퇴근 시간 수정</h1>
+  <p class="page-sub">실제 출퇴근 시각과 다르면 직접 수정할 수 있습니다.</p>
+</div>
+
+<form method="post" action="/attendance/checkin/{{ ci.id }}/edit" class="card space-y-5 max-w-xl">
+  <div>
+    <label class="label">근무일자</label>
+    <input type="date" name="work_date" class="input" value="{{ ci.work_date }}" required>
+    <div class="text-xs mt-1" style="color: var(--ink-4);">기준 날짜 (출근/퇴근 시간 표기와 동일하게 유지하는 것이 일반적)</div>
+  </div>
+
+  <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 16px;">
+    <div class="text-sm font-bold mb-3" style="color: #1E40AF;">📥 출근 시각</div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="label" style="color: #1E3A8A;">날짜</label>
+        <input type="date" name="check_in_date" class="input" value="{{ ci.check_in_date }}">
+      </div>
+      <div>
+        <label class="label" style="color: #1E3A8A;">시각 (HH:MM)</label>
+        <input type="time" name="check_in_time" class="input" value="{{ ci.check_in_time }}">
+      </div>
+    </div>
+    <div class="text-xs mt-2" style="color: #1E40AF;">비워두면 출근 기록이 삭제됩니다.</div>
+  </div>
+
+  <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 10px; padding: 16px;">
+    <div class="text-sm font-bold mb-3" style="color: #047857;">📤 퇴근 시각</div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="label" style="color: #065F46;">날짜</label>
+        <input type="date" name="check_out_date" class="input" value="{{ ci.check_out_date }}">
+      </div>
+      <div>
+        <label class="label" style="color: #065F46;">시각 (HH:MM)</label>
+        <input type="time" name="check_out_time" class="input" value="{{ ci.check_out_time }}">
+      </div>
+    </div>
+    <div class="text-xs mt-2" style="color: #047857;">야간 근무 등 다음날 퇴근하는 경우 날짜를 다음날로 설정하세요.</div>
+  </div>
+
+  <div>
+    <label class="label">메모</label>
+    <textarea name="memo" rows="2" class="input" placeholder="예: 야간 행사, 외근 등">{{ ci.memo }}</textarea>
+  </div>
+
+  <div class="flex gap-3 max-w-md ml-auto">
+    <a href="/attendance?tab=fulltime" class="btn-secondary">취소</a>
+    <button type="submit" class="btn-primary flex-1">💾 저장</button>
+  </div>
+
+  {% if is_admin %}
+  <div style="border-top: 1px dashed var(--line); padding-top: 16px; margin-top: 8px;">
+    <form method="post" action="/attendance/checkin/{{ ci.id }}/delete"
+          onsubmit="return confirm('{{ ci.worker_name }}의 {{ ci.work_date }} 출퇴근 기록을 완전히 삭제하시겠습니까?\n복구할 수 없습니다.');">
+      <button type="submit" style="background:none; border:1px solid #FCA5A5; color:#DC2626; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer;">🗑 이 출퇴근 기록 완전 삭제 (관리자)</button>
+    </form>
+  </div>
+  {% endif %}
+</form>
+
+{% endblock %}

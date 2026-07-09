@@ -1,0 +1,110 @@
+{% extends "mobile/base.html" %}
+{% set active_tab = 'home' %}
+{% block page_title %}정산관리{% endblock %}
+{% block header_right %}{{ user.name }}{% endblock %}
+
+{% block content %}
+
+{% if request.query_params.get('expense_saved') %}
+<div class="alert">✓ 비용이 등록되었습니다</div>
+{% endif %}
+
+{% if request.state.can_view_amounts %}
+<!-- 매출/부가세 (강조 카드) — 금액 권한자만 -->
+<div class="m-card" style="background: #0A0E1A; color: white; padding: 14px 16px; margin-bottom: 10px;">
+  <div style="font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px;">매출 분해</div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+    <div>
+      <div style="font-size: 10px; color: rgba(255,255,255,0.5);">공급가</div>
+      <div style="font-size: 17px; font-weight: 800; margin-top: 2px;">{{ '{:,}'.format(total_supply) }}</div>
+    </div>
+    <div>
+      <div style="font-size: 10px; color: rgba(255,255,255,0.5);">부가세</div>
+      <div style="font-size: 17px; font-weight: 800; margin-top: 2px; color: #C9A961;">{{ '{:,}'.format(total_vat) }}</div>
+    </div>
+  </div>
+  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15);">
+    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+      <span style="font-size: 11px; color: rgba(255,255,255,0.6);">총 매출 (VAT 포함)</span>
+      <span style="font-size: 19px; font-weight: 800;">{{ '{:,}'.format(total_revenue) }}</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="kpi-grid">
+  <div class="kpi accent">
+    <div class="label">진행 중 프로젝트</div>
+    <div class="value">{{ active_count }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">오늘 출근</div>
+    <div class="value">{{ today_workers }}</div>
+    <div class="sub">명</div>
+  </div>
+  {% if request.state.can_view_amounts %}
+  <div class="kpi">
+    <div class="label">미수금</div>
+    <div class="value" style="color: #DC2626;">{{ unpaid_count }}</div>
+    <div class="sub">건</div>
+  </div>
+  {% else %}
+  <div class="kpi" style="opacity: 0.5;">
+    <div class="label">미수금</div>
+    <div class="value" style="font-size: 14px; color: #94A3B8;">권한 없음</div>
+  </div>
+  {% endif %}
+  <div class="kpi">
+    <div class="label">장비 현황</div>
+    <div class="value">{{ eq_on_rent }}/{{ eq_total }}</div>
+    <div class="sub">대여 / 보유</div>
+  </div>
+</div>
+
+{% set perms = request.state.perms or {} %}
+{% set is_admin = request.state.is_admin %}
+<div class="m-card">
+  <div class="m-card-title">빠른 작업</div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+    {% if is_admin or perms.get('projects') %}
+    <a href="/m/project/new" class="m-quick-btn" style="background:#0A0E1A; color:white;">+ 프로젝트</a>
+    {% endif %}
+    {% if is_admin or perms.get('quotes') %}
+    <a href="/m/quote/new" class="m-quick-btn" style="background:#FED7AA; color:#9A3412;">📄 견적서 작성</a>
+    {% endif %}
+    {% if is_admin or perms.get('expenses') %}
+    <a href="/m/expense/new" class="m-quick-btn" style="background:#DBEAFE; color:#1E40AF;">💸 비용 등록</a>
+    {% endif %}
+    {% if is_admin or perms.get('attendance') %}
+    <a href="/m/attendance" class="m-quick-btn" style="background:#D1FAE5; color:#047857;">⏱ 근태</a>
+    {% endif %}
+    {% if is_admin or perms.get('equipment') or perms.get('products') %}
+    <a href="/m/equipment" class="m-quick-btn" style="background:#F3F4F6; color:#18181B;">📦 장비</a>
+    {% endif %}
+    <a href="/m/scan" class="m-quick-btn" style="background:#FEF3C7; color:#92400E;">📷 QR 스캔</a>
+  </div>
+</div>
+
+<style>
+.m-quick-btn { display:flex; align-items:center; justify-content:center; padding:14px; border-radius:12px; text-decoration:none; font-weight:700; font-size:14px; min-height:56px; text-align:center; }
+.m-quick-btn:active { opacity: 0.7; }
+</style>
+
+{% if active_projects %}
+<div class="m-card" style="padding: 0;">
+  <div style="padding: 14px 16px 8px;">
+    <div class="m-card-title" style="margin: 0;">진행 중 프로젝트</div>
+  </div>
+  {% for p in active_projects %}
+  <a href="/m/project/{{ p.id }}" class="list-item">
+    <div class="list-item-inner">
+      <div class="list-item-title">{{ p.name }}</div>
+      <div class="list-item-sub">{{ p.event_date or '날짜 미정' }} · {{ p.code }}</div>
+    </div>
+    <span class="chev">›</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

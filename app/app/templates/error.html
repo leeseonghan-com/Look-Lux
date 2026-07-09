@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ title or '오류' }}{% endblock %}
+{% block content %}
+
+<div class="max-w-2xl mx-auto mt-12">
+  <div class="card-luxe text-center" style="padding: 48px 32px;">
+    <div style="font-size: 56px; line-height: 1;">⚠️</div>
+    <h1 class="font-serif font-bold mt-4" style="color: var(--navy); font-size: 26px; letter-spacing: -0.02em;">
+      {{ title or '오류가 발생했습니다' }}
+    </h1>
+    <div class="divider-gold" style="margin: 18px auto; width: 100px;"></div>
+    <p class="text-base whitespace-pre-line" style="color: var(--text-mid); line-height: 1.6;">{{ message }}</p>
+
+    {% if suggestion_code %}
+    <div class="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-lg" style="background: #FAF3DD; border: 1px solid #E8D8A8;">
+      <span class="text-sm" style="color: #8B7510;">💡 추천 코드:</span>
+      <code style="font-size: 16px; font-weight: 700; color: var(--navy);">{{ suggestion_code }}</code>
+    </div>
+    {% endif %}
+
+    <div class="flex gap-3 justify-center mt-8">
+      {% if back_url %}
+      <a href="{{ back_url }}" class="btn-primary">← 돌아가기</a>
+      {% endif %}
+      <a href="/" class="btn-secondary">대시보드로</a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

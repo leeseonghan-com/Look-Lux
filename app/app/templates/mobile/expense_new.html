@@ -1,0 +1,392 @@
+{% extends "mobile/base.html" %}
+{% set back_url = '/m/' %}
+{% block page_title %}비용 등록{% endblock %}
+
+{% block content %}
+
+<div class="m-card">
+  {% if request.query_params.get('err') == 'project' %}
+  <div style="background:#FEE2E2; border:1px solid #FCA5A5; color:#991B1B; padding:10px 12px; border-radius:8px; margin-bottom:12px; font-size:13px;">
+    ⚠ 프로젝트를 선택해주세요.
+  </div>
+  {% elif request.query_params.get('err') == 'save' %}
+  <div style="background:#FEE2E2; border:1px solid #FCA5A5; color:#991B1B; padding:10px 12px; border-radius:8px; margin-bottom:12px; font-size:13px;">
+    ⚠ 저장 중 오류가 발생했습니다. 다시 시도하거나 PC에서 등록해주세요.
+  </div>
+  {% endif %}
+  <form method="post" action="/m/expense/new" enctype="multipart/form-data" id="m-expense-form" onsubmit="return onMobileExpenseSubmit(this)">
+    <div class="field">
+      <label>프로젝트 *</label>
+      <select name="project_id" required>
+        <option value="">선택하세요</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}">
+          {{ p.name }}{% if p.vendor_name %} · 🏢 {{ p.vendor_name }}{% endif %}{% if p.event_date %} ({{ p.event_date }}){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>분류 *</label>
+      <select name="category" required>
+        <option value="자재">자재</option>
+        <option value="장비대여">장비대여</option>
+        <option value="운반/물류">운반/물류</option>
+        <option value="식비">식비</option>
+        <option value="교통비">교통비</option>
+        <option value="기타">기타</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>금액 (원) *</label>
+      <!-- type=text: OCR로 들어오는 숫자도 안전, 콤마 자동 포맷 -->
+      <input type="text" name="amount" id="amount-input" required inputmode="numeric"
+             placeholder="0" oninput="formatAmount(this)">
+    </div>
+
+    <!-- OCR로 채워진 날짜 (선택). 비우면 오늘로 자동 입력 -->
+    <div class="field">
+      <label>지출일자 (선택 — 영수증 사진 인식 또는 직접 입력)</label>
+      <input type="date" name="expense_date" id="expense-date-input">
+      <div style="font-size:11px; color:#6B7280; margin-top:3px;">비워두면 오늘 날짜로 저장됩니다.</div>
+    </div>
+
+    <!-- OCR 시 저장된 사진 파일명 (재업로드 방지) -->
+    <input type="hidden" name="receipt_filename" id="receipt-filename-hidden" value="">
+    <div class="field" style="position:relative;" id="m-vendor-field">
+      <label>거래처 (선택)</label>
+      <input type="text" id="vendor-search" placeholder="🔍 거래처 검색 / 직접 입력"
+             autocomplete="off" oninput="onMobileVendorInput()"
+             style="font-size:16px; padding:12px; border-radius:10px; border:1px solid #E4E4E7; width:100%;">
+      <input type="hidden" name="vendor_id" id="vendor-id-hidden" value="">
+      <input type="hidden" name="vendor_name" id="vendor-name-hidden" value="">
+      <div id="m-vendor-results" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50; background:white; border:1px solid #E4E4E7; border-radius:10px; margin-top:4px; max-height:300px; overflow-y:auto; box-shadow:0 4px 14px rgba(0,0,0,0.08);"></div>
+      <div style="font-size: 11px; color: #6B7280; margin-top: 4px;">
+        {% if vendors %}🏢 등록 {{ vendors|length }}개 · 검색 후 결과 없으면 즉시 등록 가능
+        {% else %}등록된 거래처가 없습니다. 직접 입력하면 등록됩니다.{% endif %}
+      </div>
+    </div>
+
+    <!-- 모바일 거래처 즉시 등록 모달 -->
+    <div id="m-vendor-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:200; align-items:center; justify-content:center; padding:16px;">
+      <div style="background:white; border-radius:14px; padding:18px; max-width:420px; width:100%;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <h3 style="font-size:17px; font-weight:700; margin:0;">➕ 새 거래처 등록</h3>
+          <button type="button" onclick="closeMVendorModal()" style="background:none;border:none;font-size:24px;color:#6B7280;cursor:pointer;">×</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div><label style="font-size:12px; font-weight:600; color:#52525B;">거래처명 *</label>
+            <input id="mqv-name" style="width:100%; padding:11px; border-radius:9px; border:1px solid #E4E4E7; font-size:15px; margin-top:4px;"></div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div><label style="font-size:12px; font-weight:600; color:#52525B;">담당자</label>
+              <input id="mqv-contact" style="width:100%; padding:11px; border-radius:9px; border:1px solid #E4E4E7; font-size:15px; margin-top:4px;"></div>
+            <div><label style="font-size:12px; font-weight:600; color:#52525B;">연락처</label>
+              <input id="mqv-phone" type="tel" style="width:100%; padding:11px; border-radius:9px; border:1px solid #E4E4E7; font-size:15px; margin-top:4px;"></div>
+          </div>
+          <div><label style="font-size:12px; font-weight:600; color:#52525B;">사업자번호</label>
+            <input id="mqv-biz" style="width:100%; padding:11px; border-radius:9px; border:1px solid #E4E4E7; font-size:15px; margin-top:4px;"></div>
+          <div id="mqv-error" style="display:none; background:#FEE2E2; color:#991B1B; padding:8px 12px; border-radius:6px; font-size:13px;"></div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:16px;">
+          <button type="button" onclick="closeMVendorModal()" style="flex:1; padding:13px; background:#E4E4E7; color:#18181B; border:none; border-radius:10px; font-weight:700; font-size:15px;">취소</button>
+          <button type="button" onclick="submitMVendorQuick()" id="mqv-submit" style="flex:1; padding:13px; background:#0A0E1A; color:white; border:none; border-radius:10px; font-weight:700; font-size:15px;">💾 등록 후 사용</button>
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label>내용 (선택)</label>
+      <textarea name="description" rows="2" placeholder="예: A4용지 1박스"></textarea>
+    </div>
+    <!-- 증빙 여부 -->
+    <div class="field">
+      <label>증빙 자료</label>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <label style="cursor: pointer;">
+          <input type="radio" name="has_evidence" value="yes" checked onchange="toggleEvi()" style="display:none;">
+          <div class="m-evi-opt" data-val="yes">✓ 증빙 있음</div>
+        </label>
+        <label style="cursor: pointer;">
+          <input type="radio" name="has_evidence" value="no" onchange="toggleEvi()" style="display:none;">
+          <div class="m-evi-opt" data-val="no">⚠ 증빙 없음</div>
+        </label>
+      </div>
+    </div>
+
+    <div class="field" id="m-evi-yes">
+      <label>📷 영수증 사진 (선택)</label>
+      <input type="file" name="receipt" id="receipt-file" accept="image/*" capture="environment" onchange="onReceiptChange(event)">
+      {% if ocr_ready %}
+      <div style="font-size: 11px; color: #2563EB; margin-top: 4px; font-weight: 600;">
+        ✨ 자동 인식: 영수증 촬영 후 금액·날짜·상호가 자동 입력됩니다 (수정 가능)
+      </div>
+      {% else %}
+      <div style="font-size: 11px; color: #A1A1AA; margin-top: 4px;">카메라로 즉시 촬영 가능</div>
+      {% endif %}
+      <div id="ocr-status" style="display:none; margin-top:8px; padding:10px; border-radius:8px; font-size:12px;"></div>
+    </div>
+
+    <div class="field" id="m-evi-no" style="display: none;">
+      <div style="background: #FEF3C7; border: 1.5px solid #FCD34D; border-radius: 10px; padding: 12px;">
+        <div style="font-size: 12px; font-weight: 700; color: #92400E; margin-bottom: 6px;">⚠ 세무 신고 시 비용 인정 안 됨</div>
+        <div style="font-size: 11px; color: #78350F; line-height: 1.5; margin-bottom: 8px;">증빙이 없으면 비용 공제 불가 — 메모를 꼭 남기세요.</div>
+        <label style="font-size: 12px; font-weight: 600; color: #78350F; display: block; margin-bottom: 4px;">📝 메모</label>
+        <textarea name="tax_excluded_note" rows="2" style="width:100%; padding:10px; border-radius:8px; border:1px solid #FCD34D; font-size:14px;" placeholder="예: 현장 주차비"></textarea>
+      </div>
+    </div>
+    <style>
+      .m-evi-opt { padding: 14px; border: 1.5px solid #E4E4E7; border-radius: 10px; text-align: center; font-size: 14px; font-weight: 700; background: white; transition: all 0.15s; }
+      input[type=radio]:checked + .m-evi-opt[data-val="yes"] { border-color: #0A0E1A; background: #0A0E1A; color: white; }
+      input[type=radio]:checked + .m-evi-opt[data-val="no"] { border-color: #B45309; background: #FEF3C7; color: #92400E; }
+    </style>
+    <script>
+      // 금액 입력: 한국식 콤마 자동 포맷 (사용자 입력 + OCR 결과 모두)
+      function formatAmount(input) {
+        const raw = (input.value || '').replace(/[^0-9]/g, '');
+        if (!raw) { input.value = ''; return; }
+        const num = parseInt(raw, 10);
+        if (isNaN(num)) { input.value = ''; return; }
+        input.value = num.toLocaleString('ko-KR');
+      }
+
+      function toggleEvi() {
+        const v = document.querySelector('input[name="has_evidence"]:checked').value;
+        document.getElementById('m-evi-yes').style.display = (v === 'yes') ? '' : 'none';
+        document.getElementById('m-evi-no').style.display = (v === 'no') ? '' : 'none';
+      }
+
+      // ────── 모바일 거래처 검색 + 즉시 등록 ──────
+      let mvSearchTimer = null;
+      function onMobileVendorInput() {
+        const input = document.getElementById('vendor-search');
+        const idHidden = document.getElementById('vendor-id-hidden');
+        const nameHidden = document.getElementById('vendor-name-hidden');
+        if (!input) return;
+        idHidden.value = '';  // 입력 시 ID 초기화
+        nameHidden.value = input.value.trim();
+        clearTimeout(mvSearchTimer);
+        mvSearchTimer = setTimeout(() => mobileSearchVendor(input.value), 200);
+      }
+      function syncVendorHidden() {
+        // 외부 호출 호환 (OCR 등)
+        const input = document.getElementById('vendor-search');
+        const idHidden = document.getElementById('vendor-id-hidden');
+        const nameHidden = document.getElementById('vendor-name-hidden');
+        if (!input) return;
+        nameHidden.value = input.value.trim();
+        // ID는 기존 검색 결과 클릭으로만 설정됨
+      }
+      async function mobileSearchVendor(q) {
+        const results = document.getElementById('m-vendor-results');
+        if (!results) return;
+        try {
+          const res = await fetch('/api/vendors/search?q=' + encodeURIComponent(q || '') + '&limit=10');
+          if (!res.ok) { results.style.display = 'none'; return; }
+          const items = await res.json();
+          let html = '';
+          if (items.length === 0) {
+            html += `<div style="padding:10px 12px; color:#6B7280; font-size:13px;">"${q}"에 일치하는 거래처가 없습니다</div>`;
+          } else {
+            html += items.map(v => `<div class="mv-item" data-id="${v.id}" data-name="${v.name.replace(/"/g,'&quot;')}" style="padding:11px 14px; cursor:pointer; border-bottom:1px solid #F3F4F6;"><div style="font-weight:600; font-size:14px;">🏢 ${v.name}</div><div style="font-size:11px; color:#6B7280; margin-top:2px;">${[v.contact_person, v.phone].filter(Boolean).join(' · ') || '상세정보 없음'}</div></div>`).join('');
+          }
+          if (q.trim()) {
+            html += `<button type="button" onclick="openMVendorModal('${q.replace(/'/g,"\\'")}')" style="width:100%; padding:12px; background:#ECFDF5; color:#047857; border:none; border-top:1px dashed #34D399; font-weight:700; font-size:13px; cursor:pointer;">➕ "${q}" 거래처 즉시 등록</button>`;
+          }
+          results.innerHTML = html;
+          results.style.display = 'block';
+          results.querySelectorAll('.mv-item').forEach(el => {
+            el.addEventListener('mousedown', e => {
+              e.preventDefault();
+              document.getElementById('vendor-id-hidden').value = el.dataset.id;
+              document.getElementById('vendor-name-hidden').value = el.dataset.name;
+              document.getElementById('vendor-search').value = el.dataset.name;
+              document.getElementById('vendor-search').style.background = '#ECFDF5';
+              results.style.display = 'none';
+            });
+          });
+        } catch (e) {
+          results.style.display = 'none';
+        }
+      }
+      // 모바일 거래처 검색 결과 영역 밖 클릭 시 닫기
+      document.addEventListener('mousedown', e => {
+        const field = document.getElementById('m-vendor-field');
+        const results = document.getElementById('m-vendor-results');
+        if (field && results && !field.contains(e.target)) results.style.display = 'none';
+      });
+      // 거래처 검색 input focus 시 빈 검색
+      const _vsearch = document.getElementById('vendor-search');
+      if (_vsearch) _vsearch.addEventListener('focus', () => mobileSearchVendor(_vsearch.value));
+
+      // 모바일 거래처 즉시 등록 모달
+      function openMVendorModal(prefill) {
+        document.getElementById('mqv-name').value = prefill || '';
+        document.getElementById('mqv-contact').value = '';
+        document.getElementById('mqv-phone').value = '';
+        document.getElementById('mqv-biz').value = '';
+        document.getElementById('mqv-error').style.display = 'none';
+        document.getElementById('m-vendor-modal').style.display = 'flex';
+        setTimeout(() => document.getElementById('mqv-name').focus(), 100);
+      }
+      function closeMVendorModal() { document.getElementById('m-vendor-modal').style.display = 'none'; }
+      async function submitMVendorQuick() {
+        const name = document.getElementById('mqv-name').value.trim();
+        const errBox = document.getElementById('mqv-error');
+        const btn = document.getElementById('mqv-submit');
+        if (!name) { errBox.textContent = '거래처명을 입력하세요'; errBox.style.display = 'block'; return; }
+        btn.disabled = true; btn.textContent = '⏳ 등록 중...';
+        try {
+          const form = new FormData();
+          form.append('name', name);
+          form.append('contact_person', document.getElementById('mqv-contact').value.trim());
+          form.append('phone', document.getElementById('mqv-phone').value.trim());
+          form.append('biz_number', document.getElementById('mqv-biz').value.trim());
+          const res = await fetch('/api/vendors/quick-create', {method:'POST', body: form});
+          const data = await res.json();
+          if (data.ok) {
+            document.getElementById('vendor-id-hidden').value = data.id;
+            document.getElementById('vendor-name-hidden').value = data.name;
+            document.getElementById('vendor-search').value = data.name;
+            document.getElementById('vendor-search').style.background = '#ECFDF5';
+            document.getElementById('m-vendor-results').style.display = 'none';
+            closeMVendorModal();
+          } else {
+            errBox.textContent = data.error || '등록 실패'; errBox.style.display = 'block';
+          }
+        } catch (e) {
+          errBox.textContent = '네트워크 오류: ' + e.message; errBox.style.display = 'block';
+        } finally {
+          btn.disabled = false; btn.textContent = '💾 등록 후 사용';
+        }
+      }
+
+      // OCR 진행 상태 추적: true 이면 등록 버튼 클릭 시 대기 안내
+      let ocrInProgress = false;
+
+      // 영수증 OCR 자동 인식 + 사진 보존
+      async function onReceiptChange(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const status = document.getElementById('ocr-status');
+        if (!status) return;
+
+        // 사진 미리보기 표시 (즉시)
+        showReceiptPreview(file);
+
+        ocrInProgress = true;
+        status.style.display = 'block';
+        status.style.background = '#EFF6FF';
+        status.style.color = '#1E40AF';
+        status.innerHTML = '⏳ 영수증 분석 + 저장 중... <span style="font-size:10px;">(잠시만 기다려주세요)</span>';
+
+        const formData = new FormData();
+        formData.append('receipt', file);
+
+        try {
+          const res = await fetch('/m/expense/ocr', {method: 'POST', body: formData});
+          const data = await res.json();
+
+          // ★ 사진은 OCR 응답에서 받은 파일명을 hidden에 저장 → 폼 submit 시 그대로 사용
+          if (data.saved_filename) {
+            document.getElementById('receipt-filename-hidden').value = data.saved_filename;
+          }
+
+          const filled = [];
+          // 금액 자동 입력 (콤마 포맷)
+          if (data.amount && data.amount > 0) {
+            const amountInput = document.getElementById('amount-input');
+            amountInput.value = data.amount.toLocaleString('ko-KR');
+            filled.push(`💰 ${data.amount.toLocaleString('ko-KR')}원`);
+          }
+          // 거래처: 자동완성에 넣고 hidden 동기화
+          if (data.vendor) {
+            const vendorSearch = document.getElementById('vendor-search');
+            if (vendorSearch && !vendorSearch.value) {
+              vendorSearch.value = data.vendor;
+              document.getElementById('vendor-name-hidden').value = data.vendor;
+            }
+            const descEl = document.querySelector('textarea[name=description]');
+            if (descEl && !descEl.value) descEl.value = data.vendor;
+            filled.push(`🏪 ${data.vendor}`);
+          }
+          // 날짜
+          if (data.date) {
+            const dateInput = document.getElementById('expense-date-input');
+            if (dateInput && !dateInput.value) dateInput.value = data.date;
+            filled.push(`📅 ${data.date}`);
+          }
+
+          if (filled.length > 0) {
+            status.style.background = '#ECFDF5';
+            status.style.color = '#047857';
+            status.innerHTML = '✓ 자동 인식: ' + filled.join(' · ') + (data.saved_filename ? '<br>📷 사진 저장 완료' : '') + '<br><span style="font-size:10px; opacity:0.8;">※ 정확도를 확인하고 필요하면 수정하세요</span>';
+          } else if (data.saved_filename) {
+            status.style.background = '#FEF3C7';
+            status.style.color = '#92400E';
+            status.innerHTML = '📷 사진은 저장되었지만 자동 인식 정보가 부족합니다. 직접 입력해주세요.';
+          } else {
+            status.style.background = '#FEE2E2';
+            status.style.color = '#991B1B';
+            status.innerHTML = '✗ 처리 실패: ' + (data.error || '알 수 없는 오류') + ' — 직접 입력해주세요.';
+          }
+        } catch (e) {
+          status.style.background = '#FEE2E2';
+          status.style.color = '#991B1B';
+          status.innerHTML = '✗ 네트워크 오류: ' + e.message + ' — 다시 시도해주세요.';
+        } finally {
+          ocrInProgress = false;
+        }
+      }
+
+      // 사진 미리보기 (FileReader)
+      function showReceiptPreview(file) {
+        try {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            let preview = document.getElementById('receipt-preview');
+            if (!preview) {
+              preview = document.createElement('div');
+              preview.id = 'receipt-preview';
+              preview.style.cssText = 'margin-top:8px; padding:8px; background:#F8FAFC; border:1px solid #E4E4E7; border-radius:8px; text-align:center;';
+              const ocrStatus = document.getElementById('ocr-status');
+              ocrStatus.parentNode.insertBefore(preview, ocrStatus);
+            }
+            preview.innerHTML = `<img src="${e.target.result}" style="max-width:100%; max-height:200px; border-radius:6px;"><div style="font-size:11px; color:#6B7280; margin-top:4px;">📷 첨부된 영수증</div>`;
+          };
+          reader.readAsDataURL(file);
+        } catch (e) { console.error('preview:', e); }
+      }
+
+      // 폼 submit 직전 안전 처리
+      function onMobileExpenseSubmit(form) {
+        // OCR 진행 중이면 사용자에게 대기 요청
+        if (ocrInProgress) {
+          alert('⏳ 영수증 자동 인식이 끝날 때까지 잠시만 기다려주세요.');
+          return false;
+        }
+        // 거래처 hidden 값 마지막 동기화 (사용자가 입력만 하고 onInput이 안 탄 경우 대비)
+        syncVendorHidden();
+        // amount의 콤마 제거 후 전송 (서버는 콤마 제거 처리하지만 명시적으로 정리)
+        const amountInput = document.getElementById('amount-input');
+        if (amountInput) {
+          const raw = (amountInput.value || '').replace(/[^0-9]/g, '');
+          if (!raw || parseInt(raw, 10) <= 0) {
+            alert('💰 금액을 입력해주세요.');
+            amountInput.focus();
+            return false;
+          }
+          amountInput.value = raw;  // 서버 전송 시 순수 숫자만
+        }
+        // submit 버튼 중복 클릭 방지
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '⏳ 저장 중...';
+        }
+        return true;
+      }
+    </script>
+    <button type="submit" class="btn btn-primary">💾 비용 저장</button>
+  </form>
+</div>
+
+{% endblock %}

@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}{{ eq.name }}{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/equipment" class="text-sm" style="color: var(--ink-4);">← 보유 장비</a>
+  <div class="flex items-start justify-between mt-2 flex-wrap gap-3">
+    <div>
+      <span class="badge badge-gray text-xs">{{ eq.category }}</span>
+      <h1 class="page-title mt-1">{{ eq.name }}</h1>
+      <p class="page-sub">
+        {{ eq.manufacturer }} {{ eq.model }}
+        {% if eq.spec %}· {{ eq.spec }}{% endif %}
+      </p>
+    </div>
+    <div class="flex gap-2 flex-wrap">
+      <a href="/equipment/{{ eq.id }}/edit" class="btn-secondary">✏️ 종류 수정</a>
+      <button type="button" onclick="printSelected()" class="btn-primary">🏷️ 선택 QR 라벨 인쇄</button>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+  <div class="kpi-card"><div class="label">총 보유</div><div class="value value-sm num">{{ units|length }}<span class="unit">대</span></div></div>
+  <div class="kpi-card"><div class="label">보유중</div><div class="value value-sm num" style="color: var(--positive);">{{ available }}<span class="unit">대</span></div></div>
+  <div class="kpi-card"><div class="label">대여중</div><div class="value value-sm num" style="color: var(--warning);">{{ on_rent }}<span class="unit">대</span></div></div>
+  <div class="kpi-card"><div class="label">총 구입가</div><div class="value value-sm num">{{ total_purchase|money }}<span class="unit">원</span></div></div>
+</div>
+
+<!-- 개체 추가 -->
+<div class="card mb-5">
+  <div class="flex items-start justify-between mb-3 flex-wrap gap-2">
+    <h2 class="text-base font-bold" style="color: var(--ink);">+ 개체 추가 (같은 종류 한 대 추가)</h2>
+    {% if units %}
+    <div class="text-xs px-3 py-1.5 rounded-md" style="background: #FEF3C7; color: #78350F; border: 1px solid #FDE68A;">
+      💡 이전 개체 정보가 자동으로 채워져 있습니다. 필요한 항목만 수정하세요.
+    </div>
+    {% endif %}
+  </div>
+  <form method="post" action="/equipment/{{ eq.id }}/units/new" class="space-y-3">
+    <div class="grid md:grid-cols-3 gap-3">
+      <div>
+        <label class="label">관리코드 (자동)</label>
+        <input name="asset_code" class="input" value="{{ defaults.asset_code }}" placeholder="비우면 자동 생성">
+      </div>
+      <div>
+        <label class="label">시리얼 번호</label>
+        <input name="serial_number" class="input" value="{{ defaults.serial_number }}" placeholder="개체별 고유 S/N">
+      </div>
+      <div>
+        <label class="label">관리 부서</label>
+        <input name="department" class="input" value="{{ defaults.department }}" placeholder="예: 운영팀">
+      </div>
+      <div>
+        <label class="label">담당자</label>
+        <input name="manager" class="input" value="{{ defaults.manager }}" placeholder="이름">
+      </div>
+      <div>
+        <label class="label">구입처</label>
+        <input name="purchase_vendor" class="input" value="{{ defaults.purchase_vendor }}">
+      </div>
+      <div>
+        <label class="label">구입일자</label>
+        <input name="purchase_date" type="date" class="input" value="{{ defaults.purchase_date }}">
+      </div>
+      <div>
+        <label class="label">구입금액</label>
+        <input name="purchase_price" type="text" class="input num money-input" value="{{ defaults.purchase_price }}">
+      </div>
+      <div>
+        <label class="label">1일 렌탈가</label>
+        <input name="rental_price_daily" type="text" class="input num money-input" value="{{ defaults.rental_price_daily }}">
+      </div>
+      <div>
+        <label class="label">보관 위치</label>
+        <input name="location" class="input" value="{{ defaults.location }}" placeholder="예: 창고 A-3">
+      </div>
+      <div class="md:col-span-3">
+        <label class="label">메모</label>
+        <input name="memo" class="input">
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button class="btn-primary">+ 개체 추가</button>
+      {% if units %}
+      <button type="reset" class="btn-secondary" onclick="clearForm(event)">↺ 빈 폼으로</button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+<script>
+function clearForm(e) {
+  e.preventDefault();
+  const form = e.target.closest('form');
+  // 관리코드만 다음 자동코드로, 나머지는 비움
+  form.querySelector('[name="asset_code"]').value = '{{ defaults.asset_code }}';
+  ['serial_number','department','manager','purchase_vendor','purchase_date','location','memo'].forEach(n => {
+    const i = form.querySelector(`[name="${n}"]`); if (i) i.value = '';
+  });
+  ['purchase_price','rental_price_daily'].forEach(n => {
+    const i = form.querySelector(`[name="${n}"]`); if (i) i.value = '0';
+  });
+}
+</script>
+
+<!-- 일괄 수정 알림 -->
+{% if request.query_params.get('bulk_updated') %}
+<div class="card mb-3" style="background: #ECFDF5; border-color: #A7F3D0; padding: 12px 16px;">
+  <div class="text-sm font-semibold" style="color: #047857;">✓ {{ request.query_params.get('bulk_updated') }}개 개체가 일괄 수정되었습니다.</div>
+</div>
+{% endif %}
+
+<!-- 개체 목록 (체크박스 + 일괄 작업) -->
+<div class="card">
+  <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+    <h2 class="text-base font-bold" style="color: var(--ink);">📋 개체 목록 ({{ units|length }}대)</h2>
+    <div class="flex items-center gap-3">
+      <label class="text-xs flex items-center gap-1 cursor-pointer">
+        <input type="checkbox" id="check-all" onchange="toggleAll(this)">
+        전체 선택
+      </label>
+      <span class="text-xs" style="color: var(--ink-4);">선택 <span id="selected-count" class="font-bold" style="color: var(--ink);">0</span>개</span>
+    </div>
+  </div>
+
+  <!-- 일괄 작업 바 (선택 시에만 표시) -->
+  <div id="bulk-bar" style="display:none; padding: 10px 12px; margin-bottom: 12px; background: #0A0E1A; color: white; border-radius: 8px;">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+      <span style="font-size: 13px; font-weight: 700;">📝 <span id="bulk-count">0</span>개 선택됨</span>
+      <span style="opacity: 0.5;">|</span>
+      <select id="bulk-field" onchange="updateBulkValueUI()" style="padding: 6px 10px; border-radius: 6px; border: none; background: white; color: #18181B; font-size: 12px; font-weight: 600;">
+        <option value="">— 변경 항목 선택 —</option>
+        <optgroup label="상태/위치">
+          <option value="status">상태</option>
+          <option value="location">보관 위치</option>
+          <option value="department">관리 부서</option>
+          <option value="manager">담당자</option>
+        </optgroup>
+        <optgroup label="구입 정보">
+          <option value="purchase_vendor">구입처</option>
+          <option value="purchase_date">구입일</option>
+          <option value="purchase_price">구입금액</option>
+          <option value="serial_number">시리얼번호 (개체별 다르면 권장X)</option>
+        </optgroup>
+        <optgroup label="가격/점검">
+          <option value="rental_price_daily">렌탈 1일 단가</option>
+          <option value="last_check_date">최근 점검일</option>
+        </optgroup>
+        <option value="memo">메모</option>
+      </select>
+      <div id="bulk-value-wrap" style="display: none; flex: 1; min-width: 150px;">
+        <select id="bulk-value-status" class="bulk-value-input" style="display:none; padding: 6px 10px; border-radius: 6px; border: none; font-size: 12px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+          <option value="보유중">보유중</option>
+          <option value="대여중">대여중</option>
+          <option value="수리중">수리중</option>
+          <option value="폐기">폐기</option>
+        </select>
+        <input id="bulk-value-text" type="text" class="bulk-value-input" placeholder="새 값 입력"
+               style="padding: 6px 10px; border-radius: 6px; border: none; font-size: 12px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+        <input id="bulk-value-number" type="text" inputmode="numeric" class="bulk-value-input money-input" placeholder="금액 (콤마)"
+               style="display:none; padding: 6px 10px; border-radius: 6px; border: none; font-size: 12px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+        <input id="bulk-value-date" type="date" class="bulk-value-input"
+               style="display:none; padding: 6px 10px; border-radius: 6px; border: none; font-size: 12px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+      </div>
+      <button type="button" onclick="submitBulk()" class="btn"
+              style="background: #C9A961; color: #0A0E1A; padding: 7px 16px; border: none; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">✓ 일괄 적용</button>
+      <button type="button" onclick="clearSelection()" class="btn"
+              style="background: transparent; color: white; padding: 7px 12px; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 12px; cursor: pointer;">선택 해제</button>
+    </div>
+  </div>
+  {% if units %}
+  <div class="overflow-x-auto">
+    <table class="dt">
+      <thead>
+        <tr>
+          <th style="width: 36px;"></th>
+          <th>관리코드</th><th>시리얼</th><th>관리부서</th>
+          <th>담당자</th><th>구입처</th>
+          <th>구입일</th><th class="text-right">구입가</th>
+          <th>위치</th><th>상태</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in units %}
+        <tr>
+          <td><input type="checkbox" class="unit-check" value="{{ u.id }}" onchange="updateCount()"></td>
+          <td class="font-bold text-sm cursor-pointer" style="color: var(--ink);" onclick="location.href='/equipment/unit/{{ u.id }}'">{{ u.asset_code }}</td>
+          <td class="text-xs">{{ u.serial_number or '—' }}</td>
+          <td class="text-xs">{{ u.department or '—' }}</td>
+          <td class="text-xs">{{ u.manager or '—' }}</td>
+          <td class="text-xs">{{ u.purchase_vendor or '—' }}</td>
+          <td class="text-xs">{{ u.purchase_date or '—' }}</td>
+          <td class="text-right num">{{ u.purchase_price|money }}</td>
+          <td class="text-xs">{{ u.location or '—' }}</td>
+          <td>
+            <span class="badge badge-dot {% if u.status == '보유중' %}badge-green{% elif u.status == '대여중' %}badge-orange{% elif u.status == '수리중' %}badge-red{% else %}badge-gray{% endif %}">{{ u.status }}</span>
+          </td>
+          <td class="text-xs">
+            <a href="/equipment/unit/{{ u.id }}" style="color: var(--link);">상세 →</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-center py-8 text-sm" style="color: var(--ink-4);">
+    아직 개체가 등록되지 않았습니다.<br>
+    위의 "+ 개체 추가" 폼에서 한 대씩 등록하세요.
+  </div>
+  {% endif %}
+</div>
+
+<!-- 일괄 수정 폼 (숨김, JS로 submit) -->
+<form id="bulk-form" method="post" action="/equipment/units/bulk-update" style="display: none;">
+  <input type="hidden" name="unit_ids" id="bulk-ids">
+  <input type="hidden" name="field" id="bulk-field-hidden">
+  <input type="hidden" name="value" id="bulk-value-hidden">
+</form>
+
+<script>
+function toggleAll(master) {
+  document.querySelectorAll('.unit-check').forEach(c => c.checked = master.checked);
+  updateCount();
+}
+function updateCount() {
+  const checked = document.querySelectorAll('.unit-check:checked');
+  const n = checked.length;
+  document.getElementById('selected-count').textContent = n;
+  document.getElementById('bulk-count').textContent = n;
+  document.getElementById('bulk-bar').style.display = n > 0 ? '' : 'none';
+}
+function clearSelection() {
+  document.querySelectorAll('.unit-check').forEach(c => c.checked = false);
+  const master = document.getElementById('check-all');
+  if (master) master.checked = false;
+  updateCount();
+}
+const NUMBER_FIELDS = new Set(['purchase_price', 'rental_price_daily']);
+const DATE_FIELDS   = new Set(['purchase_date', 'last_check_date']);
+
+function updateBulkValueUI() {
+  const field = document.getElementById('bulk-field').value;
+  const wrap = document.getElementById('bulk-value-wrap');
+  const statusSel = document.getElementById('bulk-value-status');
+  const textIn    = document.getElementById('bulk-value-text');
+  const numIn     = document.getElementById('bulk-value-number');
+  const dateIn    = document.getElementById('bulk-value-date');
+
+  // 모두 숨김
+  [statusSel, textIn, numIn, dateIn].forEach(el => el.style.display = 'none');
+  if (!field) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = '';
+
+  if (field === 'status') {
+    statusSel.style.display = '';
+  } else if (NUMBER_FIELDS.has(field)) {
+    numIn.style.display = '';
+    numIn.placeholder = field === 'purchase_price' ? '구입금액 (원)' : '렌탈 단가 (원)';
+    numIn.value = '';
+  } else if (DATE_FIELDS.has(field)) {
+    dateIn.style.display = '';
+    dateIn.value = '';
+  } else {
+    textIn.style.display = '';
+    textIn.placeholder = ({
+      location: '예: 창고 A-3',
+      department: '예: 운영팀',
+      manager: '담당자 이름',
+      purchase_vendor: '구입처 상호',
+      serial_number: '시리얼 번호',
+      memo: '메모',
+    })[field] || '새 값 입력';
+    textIn.value = '';
+  }
+}
+function submitBulk() {
+  const ids = Array.from(document.querySelectorAll('.unit-check:checked')).map(c => c.value);
+  if (ids.length === 0) { alert('선택된 개체가 없습니다.'); return; }
+  const field = document.getElementById('bulk-field').value;
+  if (!field) { alert('변경할 항목을 선택하세요.'); return; }
+
+  let value;
+  if (field === 'status') {
+    value = document.getElementById('bulk-value-status').value;
+  } else if (NUMBER_FIELDS.has(field)) {
+    value = document.getElementById('bulk-value-number').value.replace(/[^\d]/g, '');
+  } else if (DATE_FIELDS.has(field)) {
+    value = document.getElementById('bulk-value-date').value;
+    if (!value) { alert('날짜를 선택하세요.'); return; }
+  } else {
+    value = document.getElementById('bulk-value-text').value;
+  }
+
+  const fieldLabel = document.querySelector('#bulk-field option:checked').text;
+  const shownVal = NUMBER_FIELDS.has(field)
+    ? Number(value || 0).toLocaleString('ko-KR') + '원'
+    : (value || '(빈 값)');
+  if (!confirm(`선택한 ${ids.length}개 개체의 [${fieldLabel}]를(을) "${shownVal}"로 변경하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+  document.getElementById('bulk-ids').value = ids.join(',');
+  document.getElementById('bulk-field-hidden').value = field;
+  document.getElementById('bulk-value-hidden').value = value;
+  document.getElementById('bulk-form').submit();
+}
+function printSelected() {
+  const ids = Array.from(document.querySelectorAll('.unit-check:checked')).map(c => c.value);
+  if (ids.length === 0) {
+    if (confirm('선택된 개체가 없습니다.\n전체 개체로 라벨을 인쇄할까요?')) {
+      window.location.href = '/equipment/labels?ids=' + [{% for u in units %}{{ u.id }}{% if not loop.last %},{% endif %}{% endfor %}];
+    }
+    return;
+  }
+  window.location.href = '/equipment/labels?ids=' + ids.join(',');
+}
+</script>
+
+{% endblock %}

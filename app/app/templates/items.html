@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}단가표{% endblock %}
+{% block content %}
+
+<div class="mb-6 flex items-center justify-between flex-wrap gap-2">
+  <div>
+    <h1 class="page-title">📋 단가표</h1>
+    <p class="page-sub">한 품목에 납품가와 렌탈가를 함께 입력하세요. 견적서 작성 시 종류에 맞게 자동 적용됩니다.</p>
+  </div>
+  <div class="flex gap-2 flex-wrap">
+    <form method="post" action="/equipment/sync-all-items" style="display:inline;"
+          onsubmit="return confirm('보유장비를 모두 단가표에 일괄 등록합니다.\n\n• 단가표에 없는 장비: 새로 추가 (가격 0, 추후 입력)\n• 이미 연동된 장비: 이름/규격만 동기화 (가격 보존)\n\n계속하시겠습니까?');">
+      <button type="submit" class="btn-secondary" style="background: #EFF6FF; border-color: #BFDBFE; color: #1D4ED8;" title="기존 보유장비를 단가표에 일괄 등록">
+        🔗 보유장비 일괄 연동
+      </button>
+    </form>
+    <a href="/items/new" class="btn-primary">+ 품목 추가</a>
+  </div>
+</div>
+
+{% if request.query_params.get('synced') %}
+<div class="card mb-4" style="background: #ECFDF5; border-color: #A7F3D0; padding: 12px 16px;">
+  <div class="text-sm font-bold" style="color: #047857;">
+    ✓ 보유장비 일괄 연동 완료
+    {% set c = request.query_params.get('created', '0') %}
+    {% set u = request.query_params.get('updated', '0') %}
+    — 신규 추가 <b>{{ c }}건</b>, 정보 업데이트 <b>{{ u }}건</b>
+  </div>
+  {% if c|int > 0 %}
+  <div class="text-xs mt-1" style="color: #065F46;">
+    💡 신규 추가된 품목은 가격이 0입니다. <a href="/items?usage=unset" style="text-decoration: underline; font-weight: 700;">미설정 품목 보기 →</a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if request.query_params.get('deleted') %}
+<div class="card mb-4" style="background: #FEE2E2; border-color: #FCA5A5; padding: 10px 16px;">
+  <div class="text-sm font-semibold" style="color: #991B1B;">✓ 품목 {{ request.query_params.get('deleted') }}건이 삭제(비활성화)되었습니다.</div>
+</div>
+{% endif %}
+
+<!-- 필터 칩 -->
+<div class="flex gap-2 mb-5 flex-wrap">
+  {% set chips = [
+    ('all', '전체', counts.total),
+    ('combo', '💎 겸용 (납품+렌탈)', counts.combo),
+    ('sale', '📦 납품 전용', counts.sale),
+    ('rental', '🎬 렌탈 전용', counts.rental),
+    ('unset', '⚪ 미설정', counts.unset),
+  ] %}
+  {% for key, label, cnt in chips %}
+  <a href="/items?usage={{ key }}" class="cat-chip {% if usage == key %}active{% endif %}">
+    <span>{{ label }}</span>
+    <span class="cat-chip-count">{{ cnt }}</span>
+  </a>
+  {% endfor %}
+  {% if counts.linked > 0 %}
+  <span class="cat-chip" style="background: #EFF6FF; border-color: #BFDBFE; color: #1D4ED8;" title="보유장비와 연동된 품목 수">
+    <span>🔗 장비 연동</span>
+    <span class="cat-chip-count">{{ counts.linked }}</span>
+  </span>
+  {% endif %}
+</div>
+
+<!-- 일괄 작업 바 -->
+<div id="bulk-bar" style="display:none; padding: 12px 16px; margin-bottom: 12px; background: #0A0E1A; color: white; border-radius: 10px;">
+  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+    <span style="font-size: 13px; font-weight: 700;">📝 <span id="bulk-count">0</span>개 선택됨</span>
+    <span style="opacity: 0.5;">|</span>
+    <button type="button" onclick="bulkDelete()"
+            style="background: #DC2626; color: white; padding: 8px 18px; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;">🗑 선택 삭제</button>
+    <button type="button" onclick="clearSelection()"
+            style="background: transparent; color: white; padding: 8px 14px; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 13px; cursor: pointer;">선택 해제</button>
+  </div>
+</div>
+
+<div class="card overflow-x-auto" style="padding: 0;">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th style="width: 36px;"><input type="checkbox" id="check-all" onchange="toggleAll(this)"></th>
+        <th>코드</th>
+        <th>품목명</th>
+        <th class="mobile-hide">규격</th>
+        <th>용도</th>
+        <th class="text-right">납품 단가</th>
+        <th class="text-right">렌탈/1일</th>
+        <th class="text-right mobile-hide">보증금</th>
+        <th class="text-center">관리</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for i in items %}
+      <tr>
+        <td><input type="checkbox" class="item-check" value="{{ i.id }}" onchange="updateCount()"></td>
+        <td class="text-xs font-bold" style="color: var(--gold-2);">{{ i.code }}</td>
+        <td class="font-semibold">
+          {{ i.name }}
+          {% if i.equipment_id %}
+          <a href="/equipment/{{ i.equipment_id }}" title="연동된 보유장비 보기" style="display: inline-block; margin-left: 4px; padding: 1px 6px; background: #EFF6FF; color: #1D4ED8; font-size: 10px; border-radius: 3px; font-weight: 700; text-decoration: none;">🔗 장비</a>
+          {% endif %}
+        </td>
+        <td class="mobile-hide text-xs" style="color: var(--text-mid);">{{ i.spec }}</td>
+        <td>
+          {% if i.usage == '겸용' %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#FEF3C7; color:#92400E; font-size:11px; font-weight:700;">💎 겸용</span>
+          {% elif i.usage == '납품' %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#DBEAFE; color:#1E40AF; font-size:11px; font-weight:700;">📦 납품</span>
+          {% elif i.usage == '렌탈' %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#FED7AA; color:#9A3412; font-size:11px; font-weight:700;">🎬 렌탈</span>
+          {% else %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#F3F4F6; color:#6B7280; font-size:11px; font-weight:700;">⚪ 미설정</span>
+          {% endif %}
+        </td>
+        <td class="text-right num {% if i.consumer_price > 0 %}font-bold{% else %}text-slate-300{% endif %}">{{ i.consumer_price|money if i.consumer_price > 0 else '-' }}</td>
+        <td class="text-right num {% if i.rental_daily > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if i.rental_daily > 0 %}#9A3412{% else %}inherit{% endif %};">{{ i.rental_daily|money if i.rental_daily > 0 else '-' }}</td>
+        <td class="text-right num mobile-hide text-xs" style="color: var(--text-mid);">{{ i.rental_deposit|money if i.rental_deposit > 0 else '-' }}</td>
+        <td class="text-center whitespace-nowrap">
+          <a href="/items/{{ i.id }}/edit" class="text-xs font-semibold hover:underline" style="color: var(--gold-2);">수정</a>
+          <span style="color: var(--line); margin: 0 4px;">·</span>
+          <form method="post" action="/items/{{ i.id }}/hard-delete" style="display:inline;"
+                onsubmit="return confirm('품목 [{{ i.name }}]을(를) 완전 삭제하시겠습니까?\n\n※ 삭제 후 복구할 수 없습니다.');">
+            <button type="submit" style="background: none; border: none; color: #DC2626; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;">삭제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not items %}
+      <tr><td colspan="9" class="text-center py-10" style="color: var(--text-mid);">
+        {% if usage != 'all' %}
+        해당 분류의 품목이 없습니다.
+        {% else %}
+        등록된 품목이 없습니다.<br>
+        <a href="/items/new" class="inline-block mt-3 font-bold" style="color: var(--gold-2);">+ 첫 품목 등록</a> 또는
+        <a href="/equipment/new" class="inline-block mt-3 font-bold" style="color: #1D4ED8;">+ 보유장비 등록 (자동 단가표 등록)</a>
+        {% endif %}
+      </td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 일괄 삭제 폼 -->
+<form id="bulk-delete-form" method="post" action="/items/bulk-delete" style="display:none;">
+  <input type="hidden" name="ids" id="bulk-delete-ids">
+</form>
+
+<script>
+function toggleAll(master) {
+  document.querySelectorAll('.item-check').forEach(c => c.checked = master.checked);
+  updateCount();
+}
+function updateCount() {
+  const n = document.querySelectorAll('.item-check:checked').length;
+  document.getElementById('bulk-count').textContent = n;
+  document.getElementById('bulk-bar').style.display = n > 0 ? '' : 'none';
+}
+function clearSelection() {
+  document.querySelectorAll('.item-check').forEach(c => c.checked = false);
+  document.getElementById('check-all').checked = false;
+  updateCount();
+}
+function bulkDelete() {
+  const ids = Array.from(document.querySelectorAll('.item-check:checked')).map(c => c.value);
+  if (ids.length === 0) { alert('선택된 품목이 없습니다.'); return; }
+  if (!confirm(`선택한 ${ids.length}개 품목을 삭제하시겠습니까?\n\n※ 삭제 후 복구할 수 없습니다.`)) return;
+  document.getElementById('bulk-delete-ids').value = ids.join(',');
+  document.getElementById('bulk-delete-form').submit();
+}
+</script>
+
+<style>
+.cat-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: white;
+  font-size: 13px; font-weight: 600; color: var(--ink-2);
+  text-decoration: none; transition: all 0.15s;
+}
+.cat-chip:hover { background: #F8FAFC; }
+.cat-chip.active { background: #0A0E1A; color: white; border-color: #0A0E1A; }
+.cat-chip-count {
+  display: inline-block; min-width: 22px; padding: 1px 7px;
+  background: rgba(0,0,0,0.08); border-radius: 999px;
+  font-size: 11px; font-weight: 700; text-align: center;
+}
+.cat-chip.active .cat-chip-count { background: rgba(255,255,255,0.2); }
+</style>
+
+{% endblock %}

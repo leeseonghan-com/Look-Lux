@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}완료{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <h1 class="page-title">✅ 불러오기 완료</h1>
+  <p class="text-sm mt-1" style="color: var(--ink-4);">아래와 같이 데이터가 처리되었습니다.</p>
+</div>
+
+<div class="card max-w-3xl">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>시트</th>
+        <th class="text-right">추가됨</th>
+        <th class="text-right">수정됨</th>
+        <th class="text-right">건너뜀</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sheet, n in inserted.items() %}
+      <tr>
+        <td class="font-semibold">{{ sheet }}</td>
+        <td class="text-right num" style="color: var(--positive); font-weight: 700;">+{{ n }}</td>
+        <td class="text-right num" style="color: #1E40AF; font-weight: 700;">↻{{ (updated or {}).get(sheet, 0) }}</td>
+        <td class="text-right num" style="color: var(--ink-4);">{{ skipped.get(sheet, 0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr style="border-top: 2px solid var(--ink);">
+        <th>합계</th>
+        <th class="text-right num" style="color: var(--positive);">+{{ inserted.values()|sum }}</th>
+        <th class="text-right num" style="color: #1E40AF;">↻{{ (updated.values()|sum) if updated else 0 }}</th>
+        <th class="text-right num" style="color: var(--ink-4);">{{ skipped.values()|sum }}</th>
+      </tr>
+    </tfoot>
+  </table>
+
+  {% if errors %}
+  <div class="mt-4 p-3 rounded text-xs" style="background:#FEF3C7; border:1px solid #FCD34D; color:#92400E; max-height:200px; overflow-y:auto;">
+    <div class="font-bold mb-2">⚠ 일부 행 처리 중 발생한 오류 ({{ errors|length }}건)</div>
+    <ul style="font-size:11px; line-height:1.6; padding-left:18px;">
+      {% for err in errors[:30] %}
+      <li>{{ err }}</li>
+      {% endfor %}
+      {% if errors|length > 30 %}
+      <li>... 외 {{ errors|length - 30 }}건</li>
+      {% endif %}
+    </ul>
+    <div class="mt-2" style="font-size:11px; color:#78350F;">
+      💡 위 오류는 일부 행만 영향이며, 나머지 데이터는 정상적으로 복원되었습니다.
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="flex gap-3 mt-5">
+    <a href="/" class="btn-primary flex-1 text-center">전체 현황 보기</a>
+    <a href="/backup" class="btn-secondary">데이터 관리</a>
+  </div>
+</div>
+
+{% endblock %}

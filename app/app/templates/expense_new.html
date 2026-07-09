@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+{% block title %}새 비용 등록{% endblock %}
+{% block content %}
+
+<div class="mb-4">
+  <a href="/expenses" class="text-sm text-slate-500">← 비용처리 목록</a>
+  <h1 class="text-2xl font-bold text-slate-800 mt-2">💰 새 비용 등록</h1>
+  <p class="text-sm text-slate-500 mt-1">현장에서 영수증을 받으면 바로 사진을 첨부하세요.</p>
+</div>
+
+<form method="post" action="/expenses/new" enctype="multipart/form-data" class="card space-y-4 max-w-2xl"
+      onsubmit="return finalizeVendorBeforeSubmit()">
+  <div class="grid md:grid-cols-2 gap-4">
+    <div>
+      <label class="label">프로젝트 *
+        <span class="text-xs" style="color:#6B7280;">(검색 — 프로젝트명·거래처명)</span>
+        {% if preselect_project %}
+        <span class="text-xs" style="color: #059669; font-weight: 700;">✨ 자동 선택됨</span>
+        {% endif %}
+      </label>
+      <div class="searchable-select" data-name="project_id" data-required="true">
+        <input type="text" class="input ss-search" placeholder="프로젝트명 또는 거래처명 검색" autocomplete="off"
+               value="{{ preselect_project.name if preselect_project else '' }}">
+        <input type="hidden" name="project_id" class="ss-value" required
+               value="{{ preselect_project.id if preselect_project else '' }}">
+        <div class="ss-dropdown" style="display:none;">
+          {% for p in projects %}
+          <div class="ss-option" data-value="{{ p.id }}"
+               data-label="{{ p.name }}{% if p.vendor_name %} · {{ p.vendor_name }}{% endif %}">
+            <div style="font-weight:600;">
+              {{ p.name }}
+              {% if p.vendor_name %}
+              <span style="display:inline-block; margin-left:6px; padding:1px 7px; background:#DBEAFE; color:#1E40AF; font-size:10px; font-weight:700; border-radius:3px;">🏢 {{ p.vendor_name }}</span>
+              {% endif %}
+            </div>
+            <div style="font-size:11px; color:#6B7280; margin-top:1px;">{{ p.code }}{% if p.event_date %} · {{ p.event_date }}{% endif %}</div>
+          </div>
+          {% endfor %}
+          {% if not projects %}
+          <div style="padding:14px; color:#6B7280; text-align:center; font-size:13px;">등록된 프로젝트가 없습니다.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div>
+      <label class="label">날짜 *</label>
+      <input type="date" name="expense_date" class="input" value="{{ today }}" required>
+    </div>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div>
+      <label class="label">항목 *</label>
+      <select name="category" class="input" required>
+        <option value="재료비">재료비</option>
+        <option value="식비">식비</option>
+        <option value="교통비">교통비</option>
+        <option value="장비대여">장비대여</option>
+        <option value="숙박비">숙박비</option>
+        <option value="기타">기타</option>
+      </select>
+    </div>
+    <div>
+      <label class="label">결제 수단</label>
+      <select name="payment_method" class="input">
+        <option value="현금">현금</option>
+        <option value="카드">카드</option>
+        <option value="계좌이체">계좌이체</option>
+      </select>
+    </div>
+  </div>
+
+  <div>
+    <label class="label">거래처
+      <span class="text-xs" style="color:#6B7280;">— 검색해서 선택하거나, 미등록 거래처는 즉시 추가</span>
+    </label>
+    <div class="vendor-picker" id="vendor-picker">
+      <input type="text" id="vendor-input" class="input" placeholder="🔍 거래처명·연락처·사업자번호로 검색" autocomplete="off">
+      <input type="hidden" name="vendor_id" id="vendor-id" value="">
+      <input type="hidden" name="vendor_name" id="vendor-name" value="">
+      <div class="vendor-results" id="vendor-results" style="display:none;"></div>
+      <div class="text-xs mt-1" style="color:#6B7280;">
+        🏢 등록된 거래처 {{ vendors|length }}개 · 검색 결과 없으면 <b>"+ 새 거래처 등록"</b> 버튼 표시
+      </div>
+    </div>
+  </div>
+
+  <!-- 거래처 즉시 등록 모달 -->
+  <div id="vendor-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:100; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:white; border-radius:12px; padding:24px; max-width:480px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h3 style="font-size:18px; font-weight:700; margin:0;">➕ 새 거래처 등록</h3>
+        <button type="button" onclick="closeVendorModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#6B7280;">×</button>
+      </div>
+      <p style="font-size:12px; color:#6B7280; margin-bottom:16px;">간단히 등록하고 바로 비용 등록을 계속하세요. 상세 정보는 나중에 거래처 관리에서 추가 가능합니다.</p>
+      <div class="space-y-3">
+        <div>
+          <label class="label">거래처명 *</label>
+          <input id="qv-name" class="input" placeholder="예: ABC상사" required>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="label">담당자</label>
+            <input id="qv-contact" class="input" placeholder="이름">
+          </div>
+          <div>
+            <label class="label">연락처</label>
+            <input id="qv-phone" class="input" placeholder="010-0000-0000">
+          </div>
+        </div>
+        <div>
+          <label class="label">사업자번호</label>
+          <input id="qv-biz" class="input" placeholder="000-00-00000">
+        </div>
+        <div id="qv-error" style="display:none; background:#FEE2E2; color:#991B1B; padding:8px 12px; border-radius:6px; font-size:13px;"></div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:20px;">
+        <button type="button" onclick="closeVendorModal()" class="btn-secondary" style="flex:1;">취소</button>
+        <button type="button" onclick="submitVendorQuick()" class="btn-primary" style="flex:1;" id="qv-submit">💾 등록 후 사용</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <label class="label">내용 *</label>
+    <input name="description" class="input" placeholder="예: 무대 현수막 제작" required>
+  </div>
+
+  <div>
+    <label class="label">금액 (원) *</label>
+    <input name="amount" type="text" class="input num money-input" placeholder="0" required>
+  </div>
+
+  <!-- 증빙 여부 토글 -->
+  <div>
+    <label class="label">증빙 자료 (영수증·세금계산서·카드매출전표)</label>
+    <div class="grid grid-cols-2 gap-2 max-w-md">
+      <label class="cursor-pointer">
+        <input type="radio" name="has_evidence" value="yes" class="sr-only peer" checked onchange="toggleEvidence()">
+        <div class="evi-opt">
+          <div class="font-bold">✓ 증빙 있음</div>
+          <div class="text-xs mt-1" style="color: var(--ink-4);">영수증·세금계산서 첨부</div>
+        </div>
+      </label>
+      <label class="cursor-pointer">
+        <input type="radio" name="has_evidence" value="no" class="sr-only peer" onchange="toggleEvidence()">
+        <div class="evi-opt">
+          <div class="font-bold">⚠ 증빙 없음</div>
+          <div class="text-xs mt-1" style="color: var(--ink-4);">현금 거래 등 영수증 X</div>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <!-- 증빙 있음: 영수증 사진 -->
+  <div id="evi-yes-section">
+    <label class="label">📷 영수증 사진</label>
+    <input name="receipt" type="file" accept="image/*" capture="environment" class="input">
+    <p class="text-xs text-slate-500 mt-1">스마트폰 카메라로 바로 촬영하거나 갤러리에서 선택</p>
+  </div>
+
+  <!-- 증빙 없음: 세무 제외 메모 -->
+  <div id="evi-no-section" style="display: none;">
+    <div style="background: #FEF3C7; border: 1.5px solid #FCD34D; border-radius: 8px; padding: 14px;">
+      <div style="font-size: 13px; font-weight: 700; color: #92400E; margin-bottom: 8px;">⚠ 세무 신고 시 비용 인정 안 됨</div>
+      <p style="font-size: 12px; color: #92400E; line-height: 1.5; margin-bottom: 10px;">
+        세금계산서·신용카드매출전표·현금영수증 같은 적격 증빙이 없는 지출은
+        법인세·종합소득세 신고 시 <strong>비용으로 공제받지 못합니다.</strong>
+        다만 회사 자금 사용 기록 차원에서는 등록해두는 것이 좋습니다.
+      </p>
+      <label class="label" style="color: #78350F;">📝 메모 (사유, 상황 기록)</label>
+      <textarea name="tax_excluded_note" class="input" rows="2"
+        placeholder="예: 현장 주차비 (영수증 없는 미터기 주차) / 거래처 점심 (개인 식당) / 알바 일당 현금 지급"></textarea>
+    </div>
+  </div>
+
+  <div class="flex gap-2 pt-2">
+    <button class="btn-primary flex-1">저장</button>
+    <a href="/expenses" class="btn-secondary">취소</a>
+  </div>
+</form>
+
+<style>
+  .evi-opt { padding: 14px; border: 1.5px solid var(--line); border-radius: 8px; background: white; transition: all 0.15s; text-align: center; }
+  input[type=radio]:checked + .evi-opt { border-color: var(--ink); background: var(--ink); color: white; }
+  input[type=radio]:checked + .evi-opt .text-xs { color: rgba(255,255,255,0.7) !important; }
+  input[type=radio][value="no"]:checked + .evi-opt { border-color: #B45309; background: #FEF3C7; color: #92400E; }
+  input[type=radio][value="no"]:checked + .evi-opt .text-xs { color: #78350F !important; }
+
+  /* 검색 가능한 select */
+  .searchable-select { position: relative; }
+  .ss-dropdown {
+    position: absolute; z-index: 50; top: 100%; left: 0; right: 0;
+    margin-top: 2px; max-height: 280px; overflow-y: auto;
+    background: white; border: 1px solid #E5E7EB; border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+  }
+  .ss-option { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #F3F4F6; transition: background 0.1s; }
+  .ss-option:hover, .ss-option.ss-highlighted { background: #F0F9FF; }
+  .ss-option:last-child { border-bottom: none; }
+  .ss-option.ss-hidden { display: none; }
+  .ss-search.ss-selected { background: #ECFDF5; border-color: #6EE7B7; font-weight: 600; }
+
+  /* Vendor picker (검색 + 즉시 등록) */
+  .vendor-picker { position: relative; }
+  .vendor-results {
+    position: absolute; z-index: 50; top: 100%; left: 0; right: 0;
+    margin-top: 2px; max-height: 320px; overflow-y: auto;
+    background: white; border: 1px solid #E5E7EB; border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+  }
+  .vp-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #F3F4F6; transition: background 0.1s; }
+  .vp-item:hover { background: #F0F9FF; }
+  .vp-empty { padding: 10px 12px; }
+  .vp-add-btn {
+    width: 100%; padding: 10px; background: #ECFDF5; color: #047857;
+    border: 1px dashed #34D399; border-radius: 8px; font-weight: 700; cursor: pointer;
+    font-size: 13px; margin-top: 4px;
+  }
+  .vp-add-btn:hover { background: #D1FAE5; }
+  #vendor-input.vp-selected { background: #ECFDF5; border-color: #6EE7B7; font-weight: 600; }
+</style>
+
+<script>
+function toggleEvidence() {
+  const val = document.querySelector('input[name="has_evidence"]:checked').value;
+  document.getElementById('evi-yes-section').style.display = (val === 'yes') ? '' : 'none';
+  document.getElementById('evi-no-section').style.display = (val === 'no') ? '' : 'none';
+}
+document.addEventListener('DOMContentLoaded', toggleEvidence);
+
+// 검색 가능한 select
+function initSearchableSelect(root) {
+  const search = root.querySelector('.ss-search');
+  const hidden = root.querySelector('.ss-value');
+  const dropdown = root.querySelector('.ss-dropdown');
+  const options = Array.from(root.querySelectorAll('.ss-option'));
+  function show(){ dropdown.style.display='block'; }
+  function hide(){ dropdown.style.display='none'; }
+  function filter(text) {
+    const q = (text||'').toLowerCase().trim();
+    options.forEach(o => o.classList.toggle('ss-hidden', q && !(o.dataset.label||'').toLowerCase().includes(q)));
+  }
+  function pick(opt) {
+    hidden.value = opt.dataset.value;
+    search.value = opt.dataset.label;
+    search.classList.add('ss-selected');
+    hide();
+  }
+  search.addEventListener('focus', () => { filter(''); show(); });
+  search.addEventListener('input', () => {
+    hidden.value = ''; search.classList.remove('ss-selected');
+    filter(search.value); show();
+  });
+  search.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { hide(); search.blur(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const first = options.find(o => !o.classList.contains('ss-hidden'));
+      if (first) pick(first);
+    }
+  });
+  options.forEach(opt => opt.addEventListener('mousedown', e => { e.preventDefault(); pick(opt); }));
+  document.addEventListener('mousedown', e => { if (!root.contains(e.target)) hide(); });
+}
+document.querySelectorAll('.searchable-select').forEach(initSearchableSelect);
+
+// submit 직전: 사용자가 검색 후 등록 안 하고 텍스트만 남긴 경우 → vendor_name으로 전송
+// ★ 절대 false 반환 안 함 - submit 차단 방지
+function finalizeVendorBeforeSubmit() {
+  try {
+    const v = document.getElementById('vendor-input');
+    const idH = document.getElementById('vendor-id');
+    const nH = document.getElementById('vendor-name');
+    if (v && nH) {
+      if (idH && !idH.value) {
+        nH.value = (v.value || '').trim();
+      }
+    }
+  } catch (e) { console.error('vendor submit:', e); }
+  return true;
+}
+
+// ────── 거래처 검색 + 즉시 등록 ──────
+const vInput = document.getElementById('vendor-input');
+const vIdHidden = document.getElementById('vendor-id');
+const vNameHidden = document.getElementById('vendor-name');
+const vResults = document.getElementById('vendor-results');
+let vSearchTimer = null;
+
+function renderVendorResults(items, query) {
+  if (items.length === 0) {
+    vResults.innerHTML = `
+      <div class="vp-empty">
+        <div style="color:#6B7280; padding:8px 12px;">"${query}"에 일치하는 거래처가 없습니다</div>
+        ${query ? `<button type="button" class="vp-add-btn" onclick="openVendorModal('${query.replace(/'/g, "\\'")}')">➕ "${query}" 거래처 즉시 등록</button>` : ''}
+      </div>`;
+  } else {
+    let html = items.map(v => `
+      <div class="vp-item" data-id="${v.id}" data-name="${v.name.replace(/"/g, '&quot;')}">
+        <div style="font-weight:600;">🏢 ${v.name}</div>
+        <div style="font-size:11px; color:#6B7280;">${[v.contact_person, v.phone, v.biz_number].filter(Boolean).join(' · ') || '상세정보 없음'}</div>
+      </div>
+    `).join('');
+    if (query) {
+      html += `<div class="vp-empty"><button type="button" class="vp-add-btn" onclick="openVendorModal('${query.replace(/'/g, "\\'")}')">➕ 위 결과에 없으면 "${query}" 즉시 등록</button></div>`;
+    }
+    vResults.innerHTML = html;
+    // 클릭 핸들러
+    vResults.querySelectorAll('.vp-item').forEach(el => {
+      el.addEventListener('mousedown', e => {
+        e.preventDefault();
+        const id = el.dataset.id;
+        const name = el.dataset.name;
+        vIdHidden.value = id;
+        vNameHidden.value = name;
+        vInput.value = name;
+        vInput.classList.add('vp-selected');
+        vResults.style.display = 'none';
+      });
+    });
+  }
+  vResults.style.display = 'block';
+}
+
+async function searchVendor(q) {
+  try {
+    const res = await fetch('/api/vendors/search?q=' + encodeURIComponent(q || '') + '&limit=15');
+    if (!res.ok) { vResults.style.display = 'none'; return; }
+    const items = await res.json();
+    renderVendorResults(items, q);
+  } catch (e) {
+    vResults.style.display = 'none';
+  }
+}
+
+if (vInput) {
+  vInput.addEventListener('focus', () => searchVendor(vInput.value));
+  vInput.addEventListener('input', () => {
+    vIdHidden.value = '';  // 입력 변경 시 ID 초기화
+    vNameHidden.value = vInput.value.trim();  // 직접 입력값 보존
+    vInput.classList.remove('vp-selected');
+    clearTimeout(vSearchTimer);
+    vSearchTimer = setTimeout(() => searchVendor(vInput.value), 200);
+  });
+  document.addEventListener('mousedown', e => {
+    if (!document.getElementById('vendor-picker').contains(e.target)) {
+      vResults.style.display = 'none';
+    }
+  });
+}
+
+// 모달
+function openVendorModal(prefill) {
+  document.getElementById('qv-name').value = prefill || '';
+  document.getElementById('qv-contact').value = '';
+  document.getElementById('qv-phone').value = '';
+  document.getElementById('qv-biz').value = '';
+  document.getElementById('qv-error').style.display = 'none';
+  const m = document.getElementById('vendor-modal');
+  m.style.display = 'flex';
+  setTimeout(() => document.getElementById('qv-name').focus(), 50);
+}
+function closeVendorModal() {
+  document.getElementById('vendor-modal').style.display = 'none';
+}
+async function submitVendorQuick() {
+  const name = document.getElementById('qv-name').value.trim();
+  const errBox = document.getElementById('qv-error');
+  const btn = document.getElementById('qv-submit');
+  if (!name) {
+    errBox.textContent = '거래처명을 입력하세요';
+    errBox.style.display = 'block';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '⏳ 등록 중...';
+  try {
+    const form = new FormData();
+    form.append('name', name);
+    form.append('contact_person', document.getElementById('qv-contact').value.trim());
+    form.append('phone', document.getElementById('qv-phone').value.trim());
+    form.append('biz_number', document.getElementById('qv-biz').value.trim());
+    const res = await fetch('/api/vendors/quick-create', {method:'POST', body: form});
+    const data = await res.json();
+    if (data.ok) {
+      vIdHidden.value = data.id;
+      vNameHidden.value = data.name;
+      vInput.value = data.name;
+      vInput.classList.add('vp-selected');
+      vResults.style.display = 'none';
+      closeVendorModal();
+    } else {
+      errBox.textContent = data.error || '등록 실패';
+      errBox.style.display = 'block';
+    }
+  } catch (e) {
+    errBox.textContent = '네트워크 오류: ' + e.message;
+    errBox.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 등록 후 사용';
+  }
+}
+</script>
+
+{% endblock %}

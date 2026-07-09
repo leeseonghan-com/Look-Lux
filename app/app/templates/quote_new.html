@@ -1,0 +1,675 @@
+{% extends "base.html" %}
+{% block title %}{% if quote %}견적서 수정{% else %}새 견적서{% endif %}{% endblock %}
+{% block content %}
+
+<div class="mb-4">
+  <a href="/quotes" class="text-sm text-slate-500">← 견적서 목록</a>
+  <h1 class="text-2xl font-bold text-slate-800 mt-2">
+    {% if quote %}✏️ 견적서 수정{% else %}📝 새 견적서{% endif %}
+  </h1>
+</div>
+
+<form method="post" action="{% if quote %}/quotes/{{ quote.id }}/edit{% else %}/quotes/new{% endif %}" id="quote-form" class="space-y-4"
+      onkeydown="return preventEnterSubmit(event)">
+
+  <!-- 견적서 유형 선택 -->
+  <div class="card bg-slate-50 border-slate-300">
+    <label class="label">📋 견적서 유형</label>
+    <div class="grid grid-cols-2 gap-2">
+      <label class="quote-type-card cursor-pointer">
+        <input type="radio" name="quote_type" value="납품" class="sr-only peer"
+               {% if quote_type == '납품' %}checked{% endif %} onchange="onTypeChange()">
+        <div class="p-4 border-2 border-slate-300 rounded-lg text-center peer-checked:border-blue-500 peer-checked:bg-blue-50 transition">
+          <div class="text-2xl">📦</div>
+          <div class="font-bold mt-1">납품용 견적서</div>
+          <div class="text-xs text-slate-500 mt-1">물품 판매 견적</div>
+        </div>
+      </label>
+      <label class="quote-type-card cursor-pointer">
+        <input type="radio" name="quote_type" value="렌탈" class="sr-only peer"
+               {% if quote_type == '렌탈' %}checked{% endif %} onchange="onTypeChange()">
+        <div class="p-4 border-2 border-slate-300 rounded-lg text-center peer-checked:border-amber-500 peer-checked:bg-amber-50 transition">
+          <div class="text-2xl">🎬</div>
+          <div class="font-bold mt-1">렌탈용 견적서</div>
+          <div class="text-xs text-slate-500 mt-1">장비 대여 견적</div>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <div class="card grid md:grid-cols-2 gap-4">
+    <div>
+      <label class="label">견적번호 *</label>
+      <input name="quote_number" class="input" value="{{ quote.quote_number if quote else default_no }}" required>
+    </div>
+    <div>
+      <label class="label">견적일자 *</label>
+      <input name="quote_date" type="date" class="input" value="{{ quote.quote_date if quote else today }}" required>
+    </div>
+    <div>
+      <label class="label">🗓️ 행사일</label>
+      <input name="event_date" type="date" class="input" value="{{ quote.event_date if quote and quote.event_date else '' }}">
+      <p class="text-xs text-slate-500 mt-1">행사가 진행되는 날짜 (선택, 수주 시 프로젝트로 자동 등록됨)</p>
+    </div>
+
+    <!-- 부가세 모드 선택 -->
+    <div class="md:col-span-2">
+      <label class="label">💰 부가세 처리 방식 *</label>
+      <div class="grid grid-cols-3 gap-2">
+        <label class="vat-opt">
+          <input type="radio" name="vat_mode" value="supply" {% if not quote or quote.vat_mode == 'supply' %}checked{% endif %} onchange="calc()">
+          <div class="vat-opt-inner">
+            <div class="vat-opt-title">📋 공급가 입력</div>
+            <div class="vat-opt-sub">VAT 10% 자동 추가</div>
+          </div>
+        </label>
+        <label class="vat-opt">
+          <input type="radio" name="vat_mode" value="total" {% if quote and quote.vat_mode == 'total' %}checked{% endif %} onchange="calc()">
+          <div class="vat-opt-inner">
+            <div class="vat-opt-title">💵 총액 입력</div>
+            <div class="vat-opt-sub">VAT 포함 → 자동 분리</div>
+          </div>
+        </label>
+        <label class="vat-opt">
+          <input type="radio" name="vat_mode" value="cash" {% if quote and quote.vat_mode == 'cash' %}checked{% endif %} onchange="calc()">
+          <div class="vat-opt-inner">
+            <div class="vat-opt-title">💴 현금 무증빙</div>
+            <div class="vat-opt-sub">VAT 없음</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- 렌탈일 때만 표시 -->
+    <div id="rental-days-field" class="md:col-span-2" style="display: {% if quote_type == '렌탈' %}block{% else %}none{% endif %};">
+      <label class="label">📅 렌탈 일수 *</label>
+      <input name="rental_days" type="number" min="1" class="input num" value="{{ quote.rental_days if quote else 1 }}">
+      <p class="text-xs text-amber-700 mt-1">⚠️ 각 품목의 단가는 1일 단가입니다. 견적서 금액은 일수만큼 곱해서 표시됩니다.</p>
+    </div>
+
+    <style>
+      .vat-opt { cursor: pointer; }
+      .vat-opt input { display: none; }
+      .vat-opt-inner {
+        padding: 12px;
+        border: 1.5px solid var(--line);
+        border-radius: 10px;
+        text-align: center;
+        background: white;
+        transition: all 0.15s;
+      }
+      .vat-opt input:checked + .vat-opt-inner {
+        border-color: #0A0E1A;
+        background: #0A0E1A;
+        color: white;
+        box-shadow: 0 4px 12px rgba(10,14,26,0.15);
+      }
+      .vat-opt-title { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
+      .vat-opt-sub { font-size: 11px; opacity: 0.7; }
+    </style>
+
+    <div style="position:relative;" id="q-vendor-picker">
+      <label class="label">거래처명 *
+        <span class="text-xs" style="color:#6B7280;">— 검색해서 선택하거나 직접 입력 / 새 거래처는 즉시 등록</span>
+      </label>
+      <input id="q-vendor-input" name="vendor_name" class="input {% if quote and quote.vendor_name %}qv-selected{% endif %}"
+             placeholder="🔍 거래처명·연락처·사업자번호로 검색" autocomplete="off"
+             value="{{ quote.vendor_name if quote else '' }}" required>
+      <div id="q-vendor-results" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50; background:white; border:1px solid #E5E7EB; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.08); max-height:320px; overflow-y:auto; margin-top:2px;"></div>
+    </div>
+    <div>
+      <label class="label">담당자</label>
+      <input id="q-vendor-contact" name="vendor_contact" class="input" value="{{ quote.vendor_contact if quote else '' }}">
+    </div>
+    <div>
+      <label class="label">연락처</label>
+      <input id="q-vendor-phone" name="vendor_phone" class="input" value="{{ quote.vendor_phone if quote else '' }}">
+    </div>
+    <div>
+      <label class="label">프로젝트명</label>
+      <input name="project_name" class="input" placeholder="행사명" value="{{ quote.project_name if quote else '' }}">
+    </div>
+  </div>
+
+  <style>
+    .qv-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #F3F4F6; }
+    .qv-item:hover { background: #F0F9FF; }
+    .qv-empty { padding: 10px 12px; }
+    .qv-add-btn {
+      width: 100%; padding: 10px; background: #ECFDF5; color: #047857;
+      border: 1px dashed #34D399; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px;
+    }
+    .qv-add-btn:hover { background: #D1FAE5; }
+    #q-vendor-input.qv-selected { background: #ECFDF5; border-color: #6EE7B7; font-weight: 600; }
+  </style>
+
+  <script>
+  // ────── 견적서 거래처 검색 + 즉시 등록 ──────
+  (function() {
+    const input = document.getElementById('q-vendor-input');
+    const results = document.getElementById('q-vendor-results');
+    const contactInput = document.getElementById('q-vendor-contact');
+    const phoneInput = document.getElementById('q-vendor-phone');
+    const picker = document.getElementById('q-vendor-picker');
+    if (!input || !results) return;
+    let timer = null;
+
+    async function search(q) {
+      try {
+        const res = await fetch('/api/vendors/search?q=' + encodeURIComponent(q || '') + '&limit=15');
+        if (!res.ok) { results.style.display = 'none'; return; }
+        const items = await res.json();
+        let html = '';
+        if (items.length === 0) {
+          html += `<div class="qv-empty"><div style="color:#6B7280; padding:8px 12px;">"${q}"에 일치하는 거래처가 없습니다</div></div>`;
+        } else {
+          html += items.map(v => `<div class="qv-item" data-name="${v.name.replace(/"/g,'&quot;')}" data-contact="${(v.contact_person||'').replace(/"/g,'&quot;')}" data-phone="${(v.phone||'').replace(/"/g,'&quot;')}"><div style="font-weight:600;">🏢 ${v.name}</div><div style="font-size:11px; color:#6B7280;">${[v.contact_person, v.phone, v.biz_number].filter(Boolean).join(' · ') || '상세정보 없음'}</div></div>`).join('');
+        }
+        if (q && q.trim()) {
+          html += `<div class="qv-empty"><button type="button" class="qv-add-btn" onclick="qvOpenModal('${q.replace(/'/g, "\\'")}')">➕ "${q}" 거래처 즉시 등록</button></div>`;
+        }
+        results.innerHTML = html;
+        results.style.display = 'block';
+        results.querySelectorAll('.qv-item').forEach(el => {
+          el.addEventListener('mousedown', e => {
+            e.preventDefault();
+            input.value = el.dataset.name;
+            input.classList.add('qv-selected');
+            // 담당자·연락처 자동 채움 (기존 비어있을 때만)
+            if (contactInput && !contactInput.value && el.dataset.contact) contactInput.value = el.dataset.contact;
+            if (phoneInput && !phoneInput.value && el.dataset.phone) phoneInput.value = el.dataset.phone;
+            results.style.display = 'none';
+          });
+        });
+      } catch (e) { results.style.display = 'none'; }
+    }
+
+    input.addEventListener('focus', () => search(input.value));
+    input.addEventListener('input', () => {
+      input.classList.remove('qv-selected');
+      clearTimeout(timer);
+      timer = setTimeout(() => search(input.value), 200);
+    });
+    document.addEventListener('mousedown', e => {
+      if (!picker.contains(e.target)) results.style.display = 'none';
+    });
+  })();
+
+  function qvOpenModal(prefill) {
+    document.getElementById('qv-name').value = prefill || '';
+    document.getElementById('qv-contact').value = '';
+    document.getElementById('qv-phone').value = '';
+    document.getElementById('qv-biz').value = '';
+    document.getElementById('qv-error').style.display = 'none';
+    document.getElementById('qv-modal').style.display = 'flex';
+    setTimeout(() => document.getElementById('qv-name').focus(), 50);
+  }
+  function qvCloseModal() { document.getElementById('qv-modal').style.display = 'none'; }
+  async function qvSubmitQuick() {
+    const name = document.getElementById('qv-name').value.trim();
+    const errBox = document.getElementById('qv-error');
+    const btn = document.getElementById('qv-submit-btn');
+    if (!name) { errBox.textContent = '거래처명을 입력하세요'; errBox.style.display = 'block'; return; }
+    btn.disabled = true; btn.textContent = '⏳ 등록 중...';
+    try {
+      const form = new FormData();
+      form.append('name', name);
+      form.append('contact_person', document.getElementById('qv-contact').value.trim());
+      form.append('phone', document.getElementById('qv-phone').value.trim());
+      form.append('biz_number', document.getElementById('qv-biz').value.trim());
+      const res = await fetch('/api/vendors/quick-create', {method:'POST', body: form});
+      const data = await res.json();
+      if (data.ok) {
+        // 견적서 폼에 자동 채움
+        const input = document.getElementById('q-vendor-input');
+        const contactInput = document.getElementById('q-vendor-contact');
+        const phoneInput = document.getElementById('q-vendor-phone');
+        input.value = data.name;
+        input.classList.add('qv-selected');
+        if (contactInput && !contactInput.value) contactInput.value = document.getElementById('qv-contact').value.trim();
+        if (phoneInput && !phoneInput.value) phoneInput.value = document.getElementById('qv-phone').value.trim();
+        document.getElementById('q-vendor-results').style.display = 'none';
+        qvCloseModal();
+      } else {
+        errBox.textContent = data.error || '등록 실패'; errBox.style.display = 'block';
+      }
+    } catch (e) {
+      errBox.textContent = '네트워크 오류: ' + e.message; errBox.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = '💾 등록 후 사용';
+    }
+  }
+  </script>
+
+  <!-- 품목 -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-bold">📦 견적 품목 <span id="type-badge" class="text-xs font-normal text-slate-500"></span></h2>
+      <div class="flex gap-2 items-center">
+        <label class="text-xs flex items-center gap-1 cursor-pointer" id="cost-toggle-label">
+          <input type="checkbox" id="show-cost-col" onchange="toggleCostColumn(this.checked)">
+          <span>💼 원가 컬럼</span>
+        </label>
+        <button type="button" onclick="addRow()" class="btn-secondary text-xs">+ 행 추가</button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="dt w-full" id="items-table">
+        <thead>
+          <tr>
+            <th class="w-8">순서</th>
+            <th>품명 (입력하면 단가표 자동완성)</th>
+            <th class="mobile-hide">규격</th>
+            <th class="w-20">수량</th>
+            <th class="w-16">단위</th>
+            <th class="w-28 text-right cost-col" style="display:none; background:#FEF3C7;">원가</th>
+            <th class="w-32 text-right" id="price-header">단가</th>
+            <th class="w-24 text-right cost-col" style="display:none; background:#D1FAE5;">마진%</th>
+            <th class="w-32 text-right">금액</th>
+            <th class="w-16"></th>
+          </tr>
+        </thead>
+        <tbody id="items-body"></tbody>
+      </table>
+    </div>
+    <p class="text-xs text-slate-500 mt-2">💡 순서: ▲▼ 버튼으로 위/아래 이동. 원가 컬럼을 켜면 마진율이 자동 계산됩니다 (인쇄본에는 포함 안 됨).</p>
+  </div>
+
+  <!-- 합계 -->
+  <div class="card max-w-md ml-auto space-y-2">
+    <div class="flex justify-between text-sm">
+      <span id="subtotal-label">공급가액 합계</span>
+      <span class="num font-bold" id="subtotal-display">0원</span>
+    </div>
+    <div class="flex justify-between items-center text-sm">
+      <span class="text-red-600 font-semibold">할인금액</span>
+      <input name="discount" type="text" class="w-32 px-2 py-1 border border-red-200 rounded text-right num text-red-600 font-bold money-input" value="{{ quote.discount if quote else 0 }}" id="discount-input">
+    </div>
+    <div class="flex justify-between text-sm border-t border-slate-200 pt-2">
+      <span>할인 후 공급가액</span>
+      <span class="num font-bold" id="after-discount-display">0원</span>
+    </div>
+    <div class="flex justify-between text-sm">
+      <span>부가세 10%</span>
+      <span class="num font-bold" id="vat-display">0원</span>
+    </div>
+    <div class="flex justify-between text-lg border-t-2 border-slate-800 pt-2">
+      <span class="font-bold">총 합계금액</span>
+      <span class="num font-bold text-slate-800" id="total-display">0원</span>
+    </div>
+  </div>
+
+  <div class="card grid md:grid-cols-2 gap-4">
+    <div>
+      <label class="label">유효기간</label>
+      <input name="valid_until" type="date" class="input" value="{{ quote.valid_until if quote else valid_until }}">
+    </div>
+    <div>
+      <label class="label">결제조건</label>
+      <input name="payment_terms" class="input" value="{{ default_payment_terms }}">
+    </div>
+    <div class="md:col-span-2">
+      <label class="label">납품기일</label>
+      <input name="delivery_terms" class="input" value="{{ default_delivery_terms }}">
+    </div>
+    <div class="md:col-span-2">
+      <label class="label">특기사항</label>
+      <textarea name="notes" rows="2" class="input">{{ default_notes }}</textarea>
+    </div>
+  </div>
+
+  <input type="hidden" name="items_json" id="items_json">
+
+  <div class="flex gap-2 max-w-md ml-auto">
+    <button class="btn-primary flex-1" type="submit">💾 저장</button>
+    <a href="/quotes" class="btn-secondary">취소</a>
+  </div>
+</form>
+
+<!-- ★ 거래처 즉시 등록 모달 — form 외부에 배치 (form 내부에 있으면 HTML5 required validation이 폼 submit을 차단할 수 있음) -->
+<div id="qv-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:100; align-items:center; justify-content:center; padding:20px;">
+  <div style="background:white; border-radius:12px; padding:24px; max-width:480px; width:100%;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="font-size:18px; font-weight:700; margin:0;">➕ 새 거래처 등록</h3>
+      <button type="button" onclick="qvCloseModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#6B7280;">×</button>
+    </div>
+    <p style="font-size:12px; color:#6B7280; margin-bottom:16px;">간단히 등록하고 바로 견적서 작성을 계속하세요. 상세 정보는 거래처 관리에서 추가 가능합니다.</p>
+    <div class="space-y-3">
+      <div><label class="label">거래처명 *</label><input id="qv-name" class="input"></div>
+      <div class="grid grid-cols-2 gap-2">
+        <div><label class="label">담당자</label><input id="qv-contact" class="input"></div>
+        <div><label class="label">연락처</label><input id="qv-phone" class="input" placeholder="010-0000-0000"></div>
+      </div>
+      <div><label class="label">사업자번호</label><input id="qv-biz" class="input" placeholder="000-00-00000"></div>
+      <div id="qv-error" style="display:none; background:#FEE2E2; color:#991B1B; padding:8px 12px; border-radius:6px; font-size:13px;"></div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:20px;">
+      <button type="button" onclick="qvCloseModal()" class="btn-secondary" style="flex:1;">취소</button>
+      <button type="button" onclick="qvSubmitQuick()" class="btn-primary" style="flex:1;" id="qv-submit-btn">💾 등록 후 사용</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ★ 최우선: 폼 submit 핸들러를 가장 먼저, 가장 단순하게 등록.
+//   다른 JS가 어떤 에러를 던져도 폼 저장은 무조건 작동.
+(function attachSubmitHandlerASAP() {
+  function attach() {
+    const form = document.getElementById('quote-form');
+    if (!form) return false;
+    if (form.__handlerAttached) return true;
+    form.__handlerAttached = true;
+    form.addEventListener('submit', function(e) {
+      try {
+        const items = [];
+        document.querySelectorAll('#items-body tr').forEach(function(tr) {
+          const nameInput = tr.querySelector('input[name=name]');
+          if (!nameInput) return;
+          const name = (nameInput.value || '').trim();
+          if (!name) return;
+          const qInput = tr.querySelector('input[name=quantity]');
+          const sInput = tr.querySelector('input[name=spec]');
+          const uInput = tr.querySelector('input[name=unit]');
+          const pInput = tr.querySelector('input[name=unit_price]');
+          // parseMoney가 없으면 단순 정수 변환
+          const parseMoneyFn = (window.parseMoney) || function(v) {
+            return parseInt(String(v||'').replace(/[^\d]/g, ''), 10) || 0;
+          };
+          const cpInput = tr.querySelector('input[name=cost_price]');
+          items.push({
+            name: name,
+            spec: sInput ? sInput.value : '',
+            quantity: qInput ? (parseInt(qInput.value, 10) || 1) : 1,
+            unit: uInput ? uInput.value : 'EA',
+            unit_price: pInput ? parseMoneyFn(pInput.value) : 0,
+            cost_price: cpInput ? parseMoneyFn(cpInput.value) : 0,
+            amount: parseInt(tr.dataset.amount || 0) || 0,
+          });
+        });
+        const ij = document.getElementById('items_json');
+        if (ij) ij.value = JSON.stringify(items);
+      } catch (err) {
+        console.error('submit prep:', err);
+        try {
+          const ij = document.getElementById('items_json');
+          if (ij && !ij.value) ij.value = '[]';
+        } catch(_) {}
+      }
+      return true;  // 무조건 submit 진행
+    });
+    return true;
+  }
+  // DOM 준비 즉시 시도, 안 되면 DOMContentLoaded 후 재시도
+  if (!attach()) {
+    document.addEventListener('DOMContentLoaded', attach);
+  }
+})();
+
+// DOM 로드 후 실행 보장 (자동완성·계산 등 부가 기능)
+document.addEventListener('DOMContentLoaded', () => {
+  try { initQuoteForm(); } catch (e) { console.error('initQuoteForm:', e); }
+});
+
+// Enter 키로 폼이 제출되는 것을 막음 (textarea, submit 버튼 클릭은 허용)
+function preventEnterSubmit(e) {
+  if (e.key !== 'Enter') return true;
+  const tag = (e.target.tagName || '').toUpperCase();
+  const type = (e.target.type || '').toLowerCase();
+  // 텍스트영역은 줄바꿈 허용
+  if (tag === 'TEXTAREA') return true;
+  // 명시적 submit 버튼만 허용
+  if (tag === 'BUTTON' && type === 'submit') return true;
+  // 그 외(input)에서 Enter 입력 시 차단
+  e.preventDefault();
+  // 다음 입력칸으로 포커스 이동 (UX 개선)
+  const focusables = Array.from(document.querySelectorAll(
+    'input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])'
+  ));
+  const idx = focusables.indexOf(e.target);
+  if (idx >= 0 && idx + 1 < focusables.length) focusables[idx + 1].focus();
+  return false;
+}
+
+let rowSeq = 0;
+
+function currentType() {
+  const checked = document.querySelector('input[name=quote_type]:checked');
+  return checked ? checked.value : '납품';
+}
+
+function onTypeChange() {
+  const t = currentType();
+  document.getElementById('rental-days-field').style.display = (t === '렌탈') ? 'block' : 'none';
+  const badge = document.getElementById('type-badge');
+  badge.textContent = (t === '렌탈') ? '— 1일 단가 기준 (렌탈)' : '— 납품가 기준 (판매)';
+  document.getElementById('price-header').textContent = (t === '렌탈') ? '1일 단가' : '단가';
+  document.getElementById('subtotal-label').textContent = (t === '렌탈')
+    ? '소계 (1일 × 수량) — 일수 적용 전'
+    : '공급가액 합계';
+
+  // 자동완성 인스턴스의 category 업데이트 (이제 검색하면 새 타입의 가격 적용)
+  const cat = (t === '렌탈') ? '렌탈' : '물품';
+  document.querySelectorAll('#items-body input[name=name]').forEach(input => {
+    if (input._autocomplete) {
+      input._autocomplete.category = cat;
+    }
+  });
+
+  // 각 행 재계산
+  document.querySelectorAll('#items-body tr').forEach(tr => {
+    const qInput = tr.querySelector('input[name=quantity]');
+    if (qInput) calcRow(qInput);
+  });
+  calc();
+}
+
+function addRow(data) {
+  data = data || {};
+  rowSeq++;
+  const tr = document.createElement('tr');
+  tr.dataset.row = rowSeq;
+  const initCost = parseInt(data.cost_price) || 0;
+  tr.innerHTML = `
+    <td class="text-center text-xs" style="white-space:nowrap;">
+      <div style="display:flex; flex-direction:column; gap:1px; align-items:center;">
+        <button type="button" onclick="moveRow(this, -1)" title="위로" style="background:none; border:1px solid #D1D5DB; border-radius:3px; padding:0 4px; font-size:9px; cursor:pointer; line-height:1.2;">▲</button>
+        <span class="row-num" style="font-weight:700;">0</span>
+        <button type="button" onclick="moveRow(this, 1)" title="아래로" style="background:none; border:1px solid #D1D5DB; border-radius:3px; padding:0 4px; font-size:9px; cursor:pointer; line-height:1.2;">▼</button>
+      </div>
+    </td>
+    <td><input class="w-full px-2 py-1 border border-slate-200 rounded text-sm ac-input" name="name" placeholder="품명 입력..." value="${data.name||''}"></td>
+    <td class="mobile-hide"><input class="w-full px-2 py-1 border border-slate-200 rounded text-sm" name="spec" placeholder="규격" value="${data.spec||''}"></td>
+    <td><input class="w-full px-2 py-1 border border-slate-200 rounded text-sm num text-right" name="quantity" type="number" min="1" step="1" inputmode="numeric" value="${parseInt(data.quantity)||1}" oninput="calcRow(this)" onchange="this.value=Math.max(1, parseInt(this.value)||1); calcRow(this);"></td>
+    <td><input class="w-full px-2 py-1 border border-slate-200 rounded text-sm text-center" name="unit" value="${data.unit||'EA'}"></td>
+    <td class="cost-col" style="display:none; background:#FFFBEB;"><input class="w-full px-2 py-1 border border-amber-200 rounded text-sm num text-right money-input" name="cost_price" value="${initCost}" oninput="calcRow(this)" placeholder="원가"></td>
+    <td><input class="w-full px-2 py-1 border border-slate-200 rounded text-sm num text-right money-input" name="unit_price" value="${data.unit_price||0}" oninput="calcRow(this)"></td>
+    <td class="cost-col margin-cell text-right num text-xs" style="display:none; background:#F0FDF4;">-</td>
+    <td class="text-right num font-bold amount-cell">0원</td>
+    <td class="text-center"><button type="button" onclick="removeRow(this)" title="삭제" class="text-red-500 text-sm" style="font-weight:700; padding:2px 6px;">✕</button></td>
+  `;
+  document.getElementById('items-body').appendChild(tr);
+
+  // 자동완성 부착
+  const nameInput = tr.querySelector('input[name=name]');
+  new ItemAutocomplete(nameInput, {
+    category: currentType() === '렌탈' ? '렌탈' : '물품',
+    onSelect: (item) => {
+      tr.querySelector('input[name=spec]').value = item.spec || '';
+      tr.querySelector('input[name=unit]').value = item.unit || 'EA';
+      const priceInput = tr.querySelector('input[name=unit_price]');
+      priceInput.value = formatMoney(item.price || 0);
+      calcRow(tr.querySelector('input[name=quantity]'));
+    },
+  });
+
+  // money-input 부착
+  attachMoneyInput(tr.querySelector('input[name=unit_price]'));
+
+  renumber();
+  calcRow(tr.querySelector('input[name=quantity]'));
+}
+
+function removeRow(btn) {
+  btn.closest('tr').remove();
+  renumber();
+  calc();
+}
+
+function renumber() {
+  document.querySelectorAll('#items-body tr').forEach((tr, i) => {
+    tr.querySelector('td').textContent = i + 1;
+  });
+}
+
+function calcRow(input) {
+  const tr = input.closest('tr');
+  const qty = parseInt(tr.querySelector('input[name=quantity]').value, 10) || 0;
+  const price = parseMoney(tr.querySelector('input[name=unit_price]').value);
+  const days = (currentType() === '렌탈') ? (parseInt(document.querySelector('input[name=rental_days]').value) || 1) : 1;
+  const amount = Math.round(qty * price * days);
+  tr.querySelector('.amount-cell').textContent = formatMoney(amount) + '원';
+  tr.dataset.amount = amount;
+  tr.dataset.unitAmount = Math.round(qty * price);  // 일수 미적용
+  calc();
+}
+
+function getVatMode() {
+  const checked = document.querySelector('input[name=vat_mode]:checked');
+  return checked ? checked.value : 'supply';
+}
+
+function calc() {
+  let sub = 0;
+  document.querySelectorAll('#items-body tr').forEach(tr => {
+    sub += parseInt(tr.dataset.amount || 0);
+  });
+  const discount = parseMoney(document.getElementById('discount-input').value);
+  const mode = getVatMode();
+  let afterDisp, vat, total;
+
+  if (mode === 'cash') {
+    afterDisp = sub - discount;
+    vat = 0;
+    total = afterDisp;
+  } else if (mode === 'total') {
+    // 입력 금액이 총액 → VAT 분리
+    total = sub - discount;
+    afterDisp = Math.round(total / 1.1);
+    vat = total - afterDisp;
+  } else {
+    // supply
+    afterDisp = sub - discount;
+    vat = Math.round(afterDisp * 0.1);
+    total = afterDisp + vat;
+  }
+
+  document.getElementById('subtotal-display').textContent = formatMoney(sub) + '원';
+  document.getElementById('after-discount-display').textContent = formatMoney(afterDisp) + '원';
+  document.getElementById('vat-display').textContent = formatMoney(vat) + '원' + (mode === 'cash' ? ' (없음)' : '');
+  document.getElementById('total-display').textContent = formatMoney(total) + '원';
+}
+
+function initQuoteForm() {
+  // ★ ItemAutocomplete 미로드 시에도 폼 제출 핸들러는 반드시 등록되도록
+  //   가드 제거. 자동완성 기능만 비활성화하고 핵심 폼 제출은 계속 동작.
+  if (typeof ItemAutocomplete === 'undefined') {
+    console.warn('ItemAutocomplete 미로드 — 자동완성만 비활성, 폼 제출은 정상 동작');
+    window.ItemAutocomplete = function() { return {}; };  // 더미 — addRow에서 사용해도 무해
+  }
+
+  // 렌탈일수 변경 → 모든 행 재계산
+  const rd = document.querySelector('input[name=rental_days]');
+  if (rd) rd.addEventListener('input', () => {
+    document.querySelectorAll('#items-body tr').forEach(tr => {
+      const qInput = tr.querySelector('input[name=quantity]');
+      if (qInput) calcRow(qInput);
+    });
+  });
+
+  // 할인 변경 → 합계 재계산
+  const di = document.getElementById('discount-input');
+  if (di) di.addEventListener('input', calc);
+
+  // (submit 핸들러는 페이지 최상단 IIFE에서 이미 등록됨)
+
+  // 초기 행 추가
+{% if existing_items %}
+  // 수정 모드 — 기존 품목 로드
+  {% for it in existing_items %}
+  addRow({
+    name: {{ it.name|tojson }},
+    spec: {{ it.spec|tojson }},
+    quantity: {{ it.quantity }},
+    unit: {{ it.unit|tojson }},
+    unit_price: {{ it.unit_price }},
+    cost_price: {{ it.cost_price or 0 }},
+  });
+  {% endfor %}
+  // 원가가 하나라도 입력된 경우 자동으로 원가 컬럼 켜기
+  {% set has_cost = existing_items|selectattr('cost_price')|list|length > 0 %}
+  {% if has_cost %}
+  const _costTgl = document.getElementById('show-cost-col');
+  if (_costTgl) { _costTgl.checked = true; toggleCostColumn(true); }
+  {% endif %}
+{% else %}
+  for (let i = 0; i < 5; i++) addRow();
+{% endif %}
+
+  onTypeChange();  // 초기 라벨 세팅
+}
+
+// ────── 품목 순서 이동 (▲▼ 버튼) ──────
+function moveRow(btn, direction) {
+  const tr = btn.closest('tr');
+  const tbody = tr.parentNode;
+  if (!tr || !tbody) return;
+  if (direction < 0) {
+    const prev = tr.previousElementSibling;
+    if (prev) tbody.insertBefore(tr, prev);
+  } else {
+    const next = tr.nextElementSibling;
+    if (next) tbody.insertBefore(next, tr);
+  }
+  renumber();
+}
+
+// ────── 원가 컬럼 표시/숨김 + 마진 계산 ──────
+function toggleCostColumn(show) {
+  document.querySelectorAll('.cost-col').forEach(el => {
+    el.style.display = show ? '' : 'none';
+  });
+  if (show) {
+    // 이미 있는 모든 행의 마진 재계산
+    document.querySelectorAll('#items-body tr').forEach(tr => {
+      const q = tr.querySelector('input[name=quantity]');
+      if (q) calcRow(q);
+    });
+  }
+}
+
+// calcRow 확장: 마진율 계산 로직 추가 (기존 calcRow 뒤에서 호출됨)
+const _origCalcRow = calcRow;
+calcRow = function(input) {
+  _origCalcRow(input);
+  const tr = input.closest('tr');
+  const cpInput = tr.querySelector('input[name=cost_price]');
+  const upInput = tr.querySelector('input[name=unit_price]');
+  const qInput = tr.querySelector('input[name=quantity]');
+  const marginCell = tr.querySelector('.margin-cell');
+  if (!marginCell) return;
+  const cp = cpInput ? parseMoney(cpInput.value) : 0;
+  const up = upInput ? parseMoney(upInput.value) : 0;
+  const qty = qInput ? (parseInt(qInput.value, 10) || 0) : 0;
+  if (cp > 0 && up > 0 && qty > 0) {
+    const lineCost = cp * qty;
+    const lineSell = up * qty;
+    const lineMargin = lineSell - lineCost;
+    const pct = lineSell ? (lineMargin / lineSell * 100) : 0;
+    marginCell.innerHTML = `<div style="font-weight:700; color:${lineMargin >= 0 ? '#047857' : '#DC2626'};">${pct.toFixed(1)}%</div><div style="font-size:10px; color:#6B7280;">${formatMoney(lineMargin)}원</div>`;
+  } else {
+    marginCell.textContent = '-';
+  }
+};
+</script>
+
+{% endblock %}

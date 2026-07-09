@@ -1,0 +1,568 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }}{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <a href="/products" class="text-sm" style="color: var(--ink-4);">← 물품 등록 목록</a>
+  <div class="flex items-start justify-between mt-2 flex-wrap gap-3">
+    <div>
+      <h1 class="page-title">{{ p.name }}</h1>
+      <div class="page-sub mt-1 flex items-center gap-2 flex-wrap">
+        <span style="font-family: monospace; font-weight: 700; color: var(--gold-2);">{{ p.code }}</span>
+        {% if p.manufacturer or p.model %}
+        <span>·</span>
+        <span>{{ p.manufacturer }} {{ p.model }}</span>
+        {% endif %}
+        {% if p.spec %}
+        <span>·</span>
+        <span>{{ p.spec }}</span>
+        {% endif %}
+      </div>
+      <div class="mt-2 flex items-center gap-2 flex-wrap">
+        {% set cat_colors = {'조명':'#FCD34D', '음향':'#60A5FA', '영상':'#A78BFA', '구조물':'#FB923C', '전원':'#FCA5A5', '특수효과':'#F472B6', '기타':'#94A3B8'} %}
+        <span style="display:inline-block; padding:3px 10px; border-radius:10px; background:{{ cat_colors.get(p.category, '#94A3B8') }}33; color:#1F2937; font-size:12px; font-weight:700;">
+          {{ category_icons.get(p.category, '📦') }} {{ p.category }}
+        </span>
+        {% if p.usage == '겸용' %}
+        <span style="padding:3px 10px; border-radius:10px; background:#FEF3C7; color:#92400E; font-size:12px; font-weight:700;">💎 겸용</span>
+        {% elif p.usage == '납품' %}
+        <span style="padding:3px 10px; border-radius:10px; background:#DBEAFE; color:#1E40AF; font-size:12px; font-weight:700;">📦 납품</span>
+        {% elif p.usage == '렌탈' %}
+        <span style="padding:3px 10px; border-radius:10px; background:#FED7AA; color:#9A3412; font-size:12px; font-weight:700;">🎬 렌탈</span>
+        {% else %}
+        <span style="padding:3px 10px; border-radius:10px; background:#F3F4F6; color:#6B7280; font-size:12px; font-weight:700;">⚪ 미설정</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex gap-2 flex-wrap">
+      {% if p.equipment_id %}
+      <a href="/equipment/labels?ids={{ p.equipment_id }}" target="_blank" class="btn-secondary" title="QR 라벨 인쇄">🏷️ QR 라벨</a>
+      {% endif %}
+      <form method="post" action="/products/{{ p.id }}/delete" style="display:inline;"
+            onsubmit="return confirm('이 물품을 삭제하시겠습니까?');">
+        <button type="submit" class="btn-secondary" style="color: #DC2626;">🗑 삭제</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- KPI -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+  <div class="kpi-card">
+    <div class="label">납품 단가</div>
+    <div class="value value-sm num">{{ p.consumer_price|money if p.consumer_price > 0 else '—' }}<span class="unit">원</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">렌탈/일</div>
+    <div class="value value-sm num" style="color: #9A3412;">{{ p.rental_daily|money if p.rental_daily > 0 else '—' }}<span class="unit">원</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">보유 / 전체</div>
+    {% if p.equipment_id %}
+    <div class="value value-sm num"><span style="color: var(--positive);">{{ available }}</span><span style="color: var(--ink-4); font-size: 14px;"> / {{ total }}</span></div>
+    {% else %}
+    <div class="value value-sm num" style="color: var(--ink-5);">재고 미관리</div>
+    {% endif %}
+  </div>
+  <div class="kpi-card">
+    <div class="label">상태</div>
+    <div class="value value-sm num">
+      {% if p.equipment_id %}
+      <span style="color: var(--warning); font-size: 14px;">대여 {{ on_rent }}</span>
+      <span style="color: var(--ink-4); font-size: 12px;"> · </span>
+      <span style="color: var(--negative); font-size: 14px;">수리 {{ in_repair }}</span>
+      {% else %}
+      <span style="color: var(--ink-5); font-size: 14px;">—</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- 가격/규격 편집 -->
+<div class="card mb-5">
+  <h2 class="text-lg font-bold mb-4">📝 물품 정보 수정</h2>
+  <form method="post" action="/products/{{ p.id }}/edit">
+    <div class="grid md:grid-cols-3 gap-4 mb-4">
+      <div class="md:col-span-2">
+        <label class="label">물품명 *</label>
+        <input name="name" class="input" value="{{ p.name }}" required>
+      </div>
+      <div>
+        <label class="label">카테고리</label>
+        <select name="category" class="input">
+          {% for c in category_options %}
+          <option value="{{ c }}" {% if c == p.category %}selected{% endif %}>{{ category_icons.get(c, '📦') }} {{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="label">제조사</label>
+        <input name="manufacturer" class="input" value="{{ p.manufacturer }}">
+      </div>
+      <div>
+        <label class="label">모델명</label>
+        <input name="model" class="input" value="{{ p.model }}">
+      </div>
+      <div>
+        <label class="label">단위</label>
+        <input name="unit" class="input" value="{{ p.unit }}">
+      </div>
+
+      <div class="md:col-span-3">
+        <label class="label">규격 / 사양</label>
+        <input name="spec" class="input" value="{{ p.spec }}">
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-4 pt-4 border-t" style="border-color: var(--line);">
+      <div>
+        <label class="label" style="color: #1E40AF;">📦 납품 단가</label>
+        <input name="consumer_price" type="text" class="input num money-input" value="{{ p.consumer_price }}">
+      </div>
+      <div>
+        <label class="label" style="color: #9A3412;">🎬 렌탈 1일 단가</label>
+        <input name="rental_daily" type="text" class="input num money-input" value="{{ p.rental_daily }}">
+      </div>
+      <div>
+        <label class="label" style="color: #9A3412;">🎬 렌탈 보증금</label>
+        <input name="rental_deposit" type="text" class="input num money-input" value="{{ p.rental_deposit }}">
+      </div>
+    </div>
+
+    <!-- ───── 상세 사양 (공통 + 카테고리별) ───── -->
+    <div class="mt-4" style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 14px;">
+      <div class="text-sm font-bold mb-3" style="color: #92400E;">
+        📐 상세 사양 <span id="spec-cat-label" style="font-size:11px; color: var(--ink-4); font-weight: 500;">({{ p.category }})</span>
+      </div>
+
+      <!-- 공통 사양 (모든 카테고리) -->
+      <div class="grid md:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="label" style="color:#78350F;">소비 전력 (W)</label>
+          <input name="spec_power_w" class="input" value="{{ p.spec_data.get('power_w', '') }}" placeholder="예: 230">
+        </div>
+        <div>
+          <label class="label" style="color:#78350F;">중량 (kg)</label>
+          <input name="spec_weight_kg" class="input" value="{{ p.spec_data.get('weight_kg', '') }}" placeholder="예: 12.5">
+        </div>
+      </div>
+
+      <!-- 조명 전용 -->
+      <div class="spec-section" data-cat="조명" style="display:none;">
+        <div class="grid md:grid-cols-3 gap-3">
+          <div>
+            <label class="label" style="color:#78350F;">채널 수</label>
+            <input name="spec_ch_count" type="number" class="input" value="{{ p.spec_data.get('ch_count', '16') }}" min="0" max="64">
+          </div>
+        </div>
+        <div class="mt-3">
+          <div class="text-xs font-bold mb-2" style="color:#92400E;">모드 (이름·값 모두 수정 가능)</div>
+          <div class="grid md:grid-cols-2 gap-3">
+            {% for i in range(1, 5) %}
+            <div style="display:flex; gap:6px; align-items:flex-end;">
+              <div style="flex:1;">
+                <label class="label" style="color:#78350F;">MODE {{ i }} 이름</label>
+                <input name="spec_ch{{ i }}_name" class="input" value="{{ p.spec_data.get('ch' + i|string + '_name', 'MODE ' + i|string) }}">
+              </div>
+              <div style="flex:1;">
+                <label class="label" style="color:#78350F;">값/채널</label>
+                <input name="spec_ch{{ i }}_value" class="input" value="{{ p.spec_data.get('ch' + i|string + '_value', '') }}" placeholder="예: 16ch / Beam">
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- 음향 전용 -->
+      <div class="spec-section" data-cat="음향" style="display:none;">
+        <div class="grid md:grid-cols-3 gap-3">
+          <div><label class="label" style="color:#78350F;">SPL (dB)</label><input name="spec_spl_db" class="input" value="{{ p.spec_data.get('spl_db', '') }}"></div>
+          <div><label class="label" style="color:#78350F;">RMS Power (W)</label><input name="spec_rms_power_w" class="input" value="{{ p.spec_data.get('rms_power_w', '') }}"></div>
+          <div><label class="label" style="color:#78350F;">Peak Power (W)</label><input name="spec_peak_power_w" class="input" value="{{ p.spec_data.get('peak_power_w', '') }}"></div>
+          <div><label class="label" style="color:#78350F;">대역폭</label><input name="spec_freq_range" class="input" value="{{ p.spec_data.get('freq_range', '') }}" placeholder="예: 50Hz - 20kHz"></div>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <label class="label" style="color:#78350F;">비고 / 추가 사양</label>
+        <textarea name="spec_notes" rows="2" class="input" placeholder="예: IP65, 색온도 6500K, 빔각 3-30°">{{ p.spec_data.get('notes', '') }}</textarea>
+      </div>
+    </div>
+
+    <div class="mt-4">
+      <label class="label">메모</label>
+      <input name="memo" class="input" value="{{ p.memo }}">
+    </div>
+
+    <div class="text-right mt-4">
+      <button class="btn-primary">💾 저장</button>
+    </div>
+  </form>
+</div>
+
+<script>
+// 카테고리 변경 시 카테고리 전용 사양 섹션 토글
+// (공통 사양인 소비전력/중량은 항상 표시되어 disable 불필요)
+function updateSpecSection() {
+  const sel = document.querySelector('form[action$="/edit"] select[name="category"]');
+  if (!sel) return;
+  const cat = sel.value;
+  const label = document.getElementById('spec-cat-label');
+  if (label) label.textContent = '(' + cat + ')';
+
+  document.querySelectorAll('.spec-section').forEach(s => {
+    s.style.display = 'none';
+    s.querySelectorAll('input, select, textarea').forEach(el => el.disabled = true);
+  });
+
+  const section = document.querySelector(`.spec-section[data-cat="${cat}"]`);
+  if (section) {
+    section.style.display = 'block';
+    section.querySelectorAll('input, select, textarea').forEach(el => el.disabled = false);
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.querySelector('form[action$="/edit"] select[name="category"]');
+  if (sel) {
+    sel.addEventListener('change', updateSpecSection);
+    updateSpecSection();
+  }
+});
+</script>
+
+<!-- 재고 미관리 → 활성화 안내 -->
+{% if not p.equipment_id %}
+<div class="card mb-5" style="background: #F0FDF4; border-color: #BBF7D0;">
+  <h2 class="text-lg font-bold mb-2" style="color: #047857;">📦 재고 관리 활성화</h2>
+  <p class="text-xs mb-3" style="color: #065F46;">
+    이 물품은 현재 가격만 관리되고 있습니다. 개체(일련번호)별 재고를 추적하려면 활성화하세요.
+  </p>
+  <form method="post" action="/products/{{ p.id }}/enable-inventory" class="flex items-end gap-3 flex-wrap">
+    <div>
+      <label class="label">카테고리</label>
+      <select name="category" class="input">
+        {% for c in category_options %}
+        <option value="{{ c }}" {% if c == p.category %}selected{% endif %}>{{ category_icons.get(c, '📦') }} {{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="label">초기 등록 개수</label>
+      <input name="initial_units" type="number" min="0" max="100" class="input" value="1">
+    </div>
+    <button class="btn-primary" style="background: #059669; border-color: #059669;">📦 재고 관리 시작</button>
+  </form>
+</div>
+{% endif %}
+
+<!-- 개체 (Units) -->
+{% if p.equipment_id %}
+<div class="card mb-5" id="units">
+  <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+    <h2 class="text-lg font-bold">📦 개체 목록 ({{ total }}대)</h2>
+    <button type="button" onclick="document.getElementById('add-unit-form').style.display='block'; this.style.display='none';"
+            class="btn-secondary" style="font-size: 13px;">+ 개체 추가</button>
+  </div>
+
+  <!-- 개체 추가 폼 (숨김) -->
+  <form method="post" action="/products/{{ p.id }}/units/new" id="add-unit-form" style="display:none; padding: 14px; background: #F8FAFC; border-radius: 8px; margin-bottom: 12px;">
+    <div class="grid md:grid-cols-4 gap-3 mb-3">
+      <div>
+        <label class="label">관리코드</label>
+        <input name="asset_code" class="input" placeholder="{{ next_asset_code }} (자동)" value="{{ next_asset_code }}">
+      </div>
+      <div>
+        <label class="label">시리얼 번호</label>
+        <input name="serial_number" class="input">
+      </div>
+      <div>
+        <label class="label">보관 위치</label>
+        <input name="location" class="input" placeholder="창고 A-3">
+      </div>
+      <div>
+        <label class="label">담당자</label>
+        <input name="manager" class="input">
+      </div>
+      <div>
+        <label class="label">구입일</label>
+        <input name="purchase_date" type="date" class="input">
+      </div>
+      <div>
+        <label class="label">구입가</label>
+        <input name="purchase_price" type="text" class="input num money-input" value="0">
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">메모</label>
+        <input name="memo" class="input">
+      </div>
+    </div>
+    <div class="flex gap-2 justify-end">
+      <button type="button" onclick="document.getElementById('add-unit-form').style.display='none'; document.querySelector('[onclick*=add-unit-form]').style.display='inline-block';" class="btn-secondary">취소</button>
+      <button class="btn-primary">추가</button>
+    </div>
+  </form>
+
+  <!-- 일괄 수정 알림 -->
+  {% if request.query_params.get('bulk_updated') %}
+  <div class="mb-3" style="background: #ECFDF5; border: 1px solid #A7F3D0; padding: 10px 14px; border-radius: 8px;">
+    <div class="text-sm font-semibold" style="color: #047857;">
+      ✓ {{ request.query_params.get('bulk_updated') }}개 개체의
+      [{{ {'status':'상태','location':'위치','department':'부서','manager':'담당자','purchase_vendor':'구입처','purchase_date':'구입일','purchase_price':'구입금액','rental_price_daily':'렌탈단가','last_check_date':'점검일','serial_number':'시리얼','memo':'메모'}.get(request.query_params.get('bulk_field'), '항목') }}]가 일괄 변경되었습니다.
+    </div>
+  </div>
+  {% endif %}
+
+  {% if units %}
+  <!-- 일괄 작업 바 -->
+  <div class="mb-2 flex items-center justify-between flex-wrap gap-2">
+    <label class="text-xs flex items-center gap-1 cursor-pointer" style="color: var(--ink-4);">
+      <input type="checkbox" id="check-all" onchange="toggleAllUnits(this)">
+      전체 선택 · <span id="selected-count" class="font-bold" style="color: var(--ink);">0</span>개 선택됨
+    </label>
+  </div>
+  <div id="bulk-bar" style="display:none; padding: 10px 12px; margin-bottom: 12px; background: #0A0E1A; color: white; border-radius: 8px;">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+      <span style="font-size: 13px; font-weight: 700;">📝 <span id="bulk-count">0</span>개 선택됨</span>
+      <span style="opacity: 0.5;">|</span>
+      <select id="bulk-field" onchange="updateBulkValueUI()" style="padding: 6px 10px; border-radius: 6px; border: none; background: white; color: #18181B; font-size: 12px; font-weight: 600;">
+        <option value="">— 변경 항목 —</option>
+        <optgroup label="상태/위치">
+          <option value="status">상태</option>
+          <option value="location">보관 위치</option>
+          <option value="department">관리 부서</option>
+          <option value="manager">담당자</option>
+        </optgroup>
+        <optgroup label="구입 정보">
+          <option value="purchase_vendor">구입처</option>
+          <option value="purchase_date">구입일</option>
+          <option value="purchase_price">구입금액</option>
+        </optgroup>
+        <optgroup label="가격/점검">
+          <option value="rental_price_daily">렌탈 1일 단가</option>
+          <option value="last_check_date">최근 점검일</option>
+        </optgroup>
+        <option value="memo">메모</option>
+      </select>
+      <div id="bulk-value-wrap" style="display: none; flex: 1; min-width: 150px;">
+        <select id="bulk-value-status" class="bulk-value-input" style="display:none; padding: 6px 10px; border-radius: 6px; border: none; font-size: 12px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+          <option value="보유중">보유중</option>
+          <option value="대여중">대여중</option>
+          <option value="수리중">수리중</option>
+          <option value="폐기">폐기</option>
+        </select>
+        <input id="bulk-value-text" type="text" class="bulk-value-input" placeholder="새 값 입력"
+               style="padding: 6px 10px; border-radius: 6px; border: none; font-size: 12px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+        <input id="bulk-value-number" type="text" inputmode="numeric" class="bulk-value-input money-input" placeholder="금액 (콤마)"
+               style="display:none; padding: 6px 10px; border-radius: 6px; border: none; font-size: 12px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+        <input id="bulk-value-date" type="date" class="bulk-value-input"
+               style="display:none; padding: 6px 10px; border-radius: 6px; border: none; font-size: 12px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+      </div>
+      <button type="button" onclick="submitBulk()" style="background: #C9A961; color: #0A0E1A; padding: 7px 16px; border: none; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">✓ 일괄 적용</button>
+      <button type="button" onclick="clearSelection()" style="background: transparent; color: white; padding: 7px 12px; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 12px; cursor: pointer;">선택 해제</button>
+    </div>
+  </div>
+  <form id="bulk-form" method="post" action="/equipment/units/bulk-update" style="display: none;">
+    <input type="hidden" name="unit_ids" id="bulk-ids">
+    <input type="hidden" name="field" id="bulk-field-hidden">
+    <input type="hidden" name="value" id="bulk-value-hidden">
+  </form>
+
+  <div class="overflow-x-auto">
+    <table class="dt">
+      <thead>
+        <tr>
+          <th style="width: 36px;"></th>
+          <th>관리코드</th>
+          <th class="mobile-hide">시리얼</th>
+          <th class="mobile-hide">위치</th>
+          <th class="mobile-hide">담당자</th>
+          <th>상태</th>
+          <th class="text-right mobile-hide">구입가</th>
+          <th class="text-center">관리</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in units %}
+        <tr>
+          <td><input type="checkbox" class="unit-check" value="{{ u.id }}" onchange="updateBulkCount()"></td>
+          <td class="font-bold text-xs" style="color: var(--gold-2);">{{ u.asset_code }}</td>
+          <td class="mobile-hide text-xs" style="color: var(--ink-4);">{{ u.serial_number or '-' }}</td>
+          <td class="mobile-hide text-xs" style="color: var(--ink-4);">{{ u.location or '-' }}</td>
+          <td class="mobile-hide text-xs" style="color: var(--ink-4);">{{ u.manager or '-' }}</td>
+          <td>
+            {% set status_colors = {'보유중':'#059669', '대여중':'#C2410C', '수리중':'#DC2626', '폐기':'#6B7280'} %}
+            <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:{{ status_colors.get(u.status, '#6B7280') }}22; color:{{ status_colors.get(u.status, '#6B7280') }}; font-size:11px; font-weight:700;">{{ u.status }}</span>
+          </td>
+          <td class="text-right num mobile-hide text-xs">{{ u.purchase_price|money if u.purchase_price else '-' }}</td>
+          <td class="text-center whitespace-nowrap">
+            <button type="button" onclick="toggleEdit({{ u.id }})" class="text-xs font-semibold hover:underline" style="color: var(--gold-2); background:none; border:none; cursor:pointer;">수정</button>
+            <span style="color: var(--line); margin: 0 4px;">·</span>
+            <form method="post" action="/products/{{ p.id }}/units/{{ u.id }}/delete" style="display:inline;"
+                  onsubmit="return confirm('개체 [{{ u.asset_code }}]을(를) 삭제하시겠습니까?');">
+              <button type="submit" style="background: none; border: none; color: #DC2626; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;">삭제</button>
+            </form>
+          </td>
+        </tr>
+        <tr id="edit-{{ u.id }}" style="display:none; background: #FEFCE8;">
+          <td colspan="8">
+            <form method="post" action="/products/{{ p.id }}/units/{{ u.id }}/edit" style="padding: 10px;">
+              <div class="grid md:grid-cols-4 gap-3">
+                <div><label class="label">관리코드</label><input name="asset_code" class="input" value="{{ u.asset_code }}" required></div>
+                <div><label class="label">시리얼</label><input name="serial_number" class="input" value="{{ u.serial_number }}"></div>
+                <div><label class="label">위치</label><input name="location" class="input" value="{{ u.location }}"></div>
+                <div><label class="label">담당자</label><input name="manager" class="input" value="{{ u.manager }}"></div>
+                <div>
+                  <label class="label">상태</label>
+                  <select name="status" class="input">
+                    {% for st in ['보유중','대여중','수리중','폐기'] %}
+                    <option value="{{ st }}" {% if u.status == st %}selected{% endif %}>{{ st }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div><label class="label">구입일</label><input name="purchase_date" type="date" class="input" value="{{ u.purchase_date or '' }}"></div>
+                <div><label class="label">구입가</label><input name="purchase_price" type="text" class="input num money-input" value="{{ u.purchase_price }}"></div>
+                <div><label class="label">최근 점검일</label><input name="last_check_date" type="date" class="input" value="{{ u.last_check_date or '' }}"></div>
+                <div class="md:col-span-4"><label class="label">메모</label><input name="memo" class="input" value="{{ u.memo }}"></div>
+              </div>
+              <div class="flex gap-2 justify-end mt-2">
+                <button type="button" onclick="toggleEdit({{ u.id }})" class="btn-secondary" style="font-size:13px;">취소</button>
+                <button class="btn-primary" style="font-size:13px;">저장</button>
+              </div>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-center py-8 text-sm" style="color: var(--ink-4);">
+    아직 등록된 개체가 없습니다. 위 [+ 개체 추가] 버튼을 클릭하세요.
+  </div>
+  {% endif %}
+</div>
+
+<!-- 수리/점검 이력 -->
+{% if maint_logs %}
+<div class="card mb-5">
+  <h2 class="text-lg font-bold mb-3">🔧 수리/점검 이력 (최근 10건)</h2>
+  <div class="overflow-x-auto">
+    <table class="dt">
+      <thead>
+        <tr>
+          <th>일자</th>
+          <th>개체</th>
+          <th>유형</th>
+          <th>내용</th>
+          <th class="text-right mobile-hide">비용</th>
+          <th class="mobile-hide">업체</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in maint_logs %}
+        <tr>
+          <td class="text-xs">{{ m.log_date }}</td>
+          <td class="text-xs font-bold" style="color: var(--gold-2);">{{ m.asset_code }}</td>
+          <td><span class="badge badge-gray text-xs">{{ m.log_type }}</span></td>
+          <td class="text-xs">{{ m.description }}</td>
+          <td class="text-right num text-xs mobile-hide">{{ m.cost|money if m.cost else '-' }}</td>
+          <td class="text-xs mobile-hide" style="color: var(--ink-4);">{{ m.vendor or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+<script>
+function toggleEdit(uid) {
+  const row = document.getElementById('edit-' + uid);
+  row.style.display = (row.style.display === 'none') ? 'table-row' : 'none';
+}
+
+// ===== 일괄 수정 UI =====
+function toggleAllUnits(master) {
+  document.querySelectorAll('.unit-check').forEach(c => c.checked = master.checked);
+  updateBulkCount();
+}
+function updateBulkCount() {
+  const n = document.querySelectorAll('.unit-check:checked').length;
+  const sc = document.getElementById('selected-count');
+  const bc = document.getElementById('bulk-count');
+  const bar = document.getElementById('bulk-bar');
+  if (sc) sc.textContent = n;
+  if (bc) bc.textContent = n;
+  if (bar) bar.style.display = n > 0 ? '' : 'none';
+}
+function clearSelection() {
+  document.querySelectorAll('.unit-check').forEach(c => c.checked = false);
+  const master = document.getElementById('check-all');
+  if (master) master.checked = false;
+  updateBulkCount();
+}
+
+const NUMBER_FIELDS = new Set(['purchase_price', 'rental_price_daily']);
+const DATE_FIELDS   = new Set(['purchase_date', 'last_check_date']);
+
+function updateBulkValueUI() {
+  const field = document.getElementById('bulk-field').value;
+  const wrap = document.getElementById('bulk-value-wrap');
+  const statusSel = document.getElementById('bulk-value-status');
+  const textIn    = document.getElementById('bulk-value-text');
+  const numIn     = document.getElementById('bulk-value-number');
+  const dateIn    = document.getElementById('bulk-value-date');
+  [statusSel, textIn, numIn, dateIn].forEach(el => el.style.display = 'none');
+  if (!field) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  if (field === 'status') {
+    statusSel.style.display = '';
+  } else if (NUMBER_FIELDS.has(field)) {
+    numIn.style.display = '';
+    numIn.placeholder = field === 'purchase_price' ? '구입금액 (원)' : '렌탈 단가 (원)';
+    numIn.value = '';
+  } else if (DATE_FIELDS.has(field)) {
+    dateIn.style.display = '';
+    dateIn.value = '';
+  } else {
+    textIn.style.display = '';
+    textIn.placeholder = ({
+      location: '예: 창고 A-3', department: '예: 운영팀',
+      manager: '담당자 이름', purchase_vendor: '구입처 상호', memo: '메모',
+    })[field] || '새 값 입력';
+    textIn.value = '';
+  }
+}
+function submitBulk() {
+  const ids = Array.from(document.querySelectorAll('.unit-check:checked')).map(c => c.value);
+  if (ids.length === 0) { alert('선택된 개체가 없습니다.'); return; }
+  const field = document.getElementById('bulk-field').value;
+  if (!field) { alert('변경할 항목을 선택하세요.'); return; }
+  let value;
+  if (field === 'status') {
+    value = document.getElementById('bulk-value-status').value;
+  } else if (NUMBER_FIELDS.has(field)) {
+    value = document.getElementById('bulk-value-number').value.replace(/[^\d]/g, '');
+  } else if (DATE_FIELDS.has(field)) {
+    value = document.getElementById('bulk-value-date').value;
+    if (!value) { alert('날짜를 선택하세요.'); return; }
+  } else {
+    value = document.getElementById('bulk-value-text').value;
+  }
+  const label = document.querySelector('#bulk-field option:checked').text;
+  const shown = NUMBER_FIELDS.has(field)
+    ? Number(value || 0).toLocaleString('ko-KR') + '원'
+    : (value || '(빈 값)');
+  if (!confirm(`선택한 ${ids.length}개 개체의 [${label}]를 "${shown}"로 변경하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
+  document.getElementById('bulk-ids').value = ids.join(',');
+  document.getElementById('bulk-field-hidden').value = field;
+  document.getElementById('bulk-value-hidden').value = value;
+  document.getElementById('bulk-form').submit();
+}
+</script>
+
+{% endblock %}

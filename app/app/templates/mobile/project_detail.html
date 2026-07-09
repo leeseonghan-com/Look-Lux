@@ -1,0 +1,130 @@
+{% extends "mobile/base.html" %}
+{% set active_tab = 'projects' %}
+{% set back_url = '/m/projects' %}
+{% block page_title %}{{ p.name }}{% endblock %}
+
+{% block content %}
+
+<div class="m-card">
+  <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
+    <div style="flex: 1;">
+      <div style="font-size: 20px; font-weight: 800; line-height: 1.2; letter-spacing: -0.02em;">{{ p.name }}</div>
+      <div style="font-size: 13px; color: #71717A; margin-top: 4px;">
+        {{ p.event_date or '날짜 미정' }} · {{ p.code }}
+      </div>
+    </div>
+    {% if p.status == '진행중' %}<span class="badge badge-blue">진행중</span>
+    {% elif p.status == '완료' %}<span class="badge badge-green">완료</span>
+    {% elif p.status == '취소' %}<span class="badge badge-red">취소</span>{% endif %}
+  </div>
+  {% if p.categories %}
+  <div style="margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap;">
+    {% set cat_colors = {'음향':'#2563EB', '조명':'#D97706', '영상':'#7C3AED', '납품':'#059669', '무대':'#BE185D', '특수효과':'#DC2626'} %}
+    {% set cat_icons = {'음향':'🎵', '조명':'💡', '영상':'🎬', '납품':'📦', '무대':'🎭', '특수효과':'✨'} %}
+    {% for c in p.categories.split(',') if c.strip() %}
+    {% set c_clean = c.strip() %}
+    <span style="display:inline-flex; align-items:center; gap:4px; padding:5px 12px; border-radius:99px; background:{{ cat_colors.get(c_clean, '#71717A') }}; color:white; font-size:12px; font-weight:700;">
+      {{ cat_icons.get(c_clean, '📌') }} {{ c_clean }}
+    </span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+    <a href="/m/project/{{ p.id }}/edit"
+       style="background: #F3F4F6; color: #18181B; padding: 12px; border-radius: 10px; text-align: center; font-weight: 700; text-decoration: none; font-size: 14px;">
+      ✏️ 수정
+    </a>
+    <a href="/m/expense/new"
+       style="background: #DBEAFE; color: #1E40AF; padding: 12px; border-radius: 10px; text-align: center; font-weight: 700; text-decoration: none; font-size: 14px;">
+      ₩ 비용 등록
+    </a>
+  </div>
+  <form method="post" action="/m/project/{{ p.id }}/delete" style="margin-top: 8px;"
+        onsubmit="return confirm('프로젝트 [{{ p.name }}]을(를) 삭제하시겠습니까?\n\n관련 비용·근태 기록도 함께 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.');">
+    <button style="width:100%; background:#FEE2E2; color:#991B1B; padding:10px; border:none; border-radius:10px; font-weight:700; font-size:13px;">
+      🗑 프로젝트 삭제
+    </button>
+  </form>
+</div>
+
+{% if request.state.can_view_amounts %}
+<div class="m-card" style="padding: 14px;">
+  <div class="m-card-title">
+    💰 매출 분해 {% if p.vat_mode in ('cash', 'exempt') %}<span style="margin-left: 4px; padding: 1px 5px; background: #FEF3C7; color: #92400E; font-size: 9px; border-radius: 3px; font-weight: 700;">💵 현금</span>{% else %}(부가세 10%){% endif %}
+  </div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px;">
+    <div>
+      <div style="font-size: 11px; color: #71717A; font-weight: 600;">공급가액</div>
+      <div style="font-size: 17px; font-weight: 800; margin-top: 2px;">{{ '{:,}'.format(p.supply_amount or p.revenue or 0) }}<span style="font-size: 11px; color: #A1A1AA; font-weight: 500;"> 원</span></div>
+    </div>
+    <div>
+      <div style="font-size: 11px; color: #71717A; font-weight: 600;">부가세 {% if p.vat_mode in ('cash', 'exempt') %}<span style="color: #92400E;">(없음)</span>{% endif %}</div>
+      <div style="font-size: 17px; font-weight: 800; margin-top: 2px; color: {% if p.vat_mode in ('cash', 'exempt') %}#9CA3AF{% else %}#C9A961{% endif %};">{{ '{:,}'.format(p.vat_amount or 0) }}<span style="font-size: 11px; color: #A1A1AA; font-weight: 500;"> 원</span></div>
+    </div>
+  </div>
+  <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #E4E4E7; display: flex; justify-content: space-between; align-items: baseline;">
+    <span style="font-size: 12px; color: #71717A;">{% if p.vat_mode in ('cash', 'exempt') %}총 매출 (현금){% else %}총 매출 (VAT 포함){% endif %}</span>
+    <span style="font-size: 20px; font-weight: 800; color: #0A0E1A;">{{ '{:,}'.format(p.revenue or 0) }}<span style="font-size: 11px; color: #A1A1AA; font-weight: 500;"> 원</span></span>
+  </div>
+</div>
+{% endif %}
+
+{% if request.state.can_view_amounts %}
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="label">총 비용</div>
+    <div class="value">{{ '{:,}'.format(total_expense + total_wage) }}</div>
+    <div class="sub">원 ({{ expenses|length }}건 + 인건비)</div>
+  </div>
+  <div class="kpi">
+    <div class="label">순이익 (공급가-비용)</div>
+    {% set net = (p.supply_amount or p.revenue or 0) - total_expense - total_wage %}
+    <div class="value" style="color: {% if net >= 0 %}#047857{% else %}#DC2626{% endif %};">{{ '{:,}'.format(net) }}</div>
+    <div class="sub">원</div>
+  </div>
+</div>
+{% endif %}
+
+{% if p.payment_method or p.tax_invoice_date or p.actual_payment_date %}
+<div class="m-card">
+  <div class="m-card-title">💳 결제 정보</div>
+  <div style="display: grid; grid-template-columns: 100px 1fr; gap: 6px 12px; font-size: 14px;">
+    {% if p.payment_method %}<div style="color: #71717A;">결제수단</div><div>{{ p.payment_method }}</div>{% endif %}
+    {% if p.tax_invoice_date %}<div style="color: #71717A;">세금계산서</div><div>{{ p.tax_invoice_date }}</div>{% endif %}
+    {% if p.actual_payment_date %}<div style="color: #71717A;">실제 입금일</div><div style="color: #047857; font-weight: 700;">{{ p.actual_payment_date }} ✓</div>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if p.special_notes %}
+<div class="m-card" style="background: #FEF3C7; border: 1px solid #FDE68A;">
+  <div class="m-card-title" style="color: #92400E;">📝 특이사항</div>
+  <div style="font-size: 14px; line-height: 1.5; white-space: pre-wrap; color: #78350F;">{{ p.special_notes }}</div>
+</div>
+{% endif %}
+
+{% if expenses %}
+<div class="m-card" style="padding: 0;">
+  <div style="padding: 14px 16px 8px;"><div class="m-card-title" style="margin: 0;">비용 내역 ({{ expenses|length }}건) — 행 탭 → 수정/삭제</div></div>
+  {% for e in expenses %}
+  <a href="/m/expense/{{ e.id }}/edit" class="list-item" style="text-decoration:none; color:inherit;">
+    <div class="list-item-inner">
+      <div class="list-item-title">{{ e.category }}</div>
+      <div class="list-item-sub">{{ e.description or '—' }} · {{ e.expense_date }}</div>
+    </div>
+    {% if request.state.can_view_amounts %}
+    <div style="font-weight: 800; font-size: 15px;">{{ '{:,}'.format(e.amount) }}</div>
+    {% else %}
+    <div style="color:#94A3B8;">—</div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div style="margin-top: 14px;">
+  <a href="/m/expense/new" class="btn btn-primary">+ 비용 추가</a>
+</div>
+
+{% endblock %}

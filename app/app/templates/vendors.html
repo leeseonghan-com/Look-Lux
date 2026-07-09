@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+  <h1 class="text-2xl font-bold text-slate-800">🏢 거래처 관리</h1>
+  <a href="/projects/by-vendor" class="btn-secondary">📊 거래처별 매출 집계</a>
+</div>
+
+<div class="card mb-3" style="padding: 12px 16px;">
+  <form method="get" style="display:flex; gap:8px; align-items:end;">
+    <div style="flex:1;">
+      <label class="label">🔍 거래처 검색 (이름·담당자·연락처·이메일·사업자번호·주소)</label>
+      <input name="q" class="input" value="{{ search_q or '' }}" placeholder="예: ABC상사, 010-1234" autocomplete="off">
+    </div>
+    <button class="btn-primary" type="submit">검색</button>
+    {% if search_q %}<a href="/vendors" class="btn-secondary">초기화</a>{% endif %}
+  </form>
+  {% if search_q %}
+  <div class="text-xs mt-2" style="color:#6B7280;">🔍 "<b>{{ search_q }}</b>" 검색 결과 — {{ vendors|length }}건</div>
+  {% endif %}
+</div>
+
+<div class="card mb-4">
+  <h2 class="font-bold text-slate-700 mb-3">+ 거래처 추가</h2>
+  <form method="post" action="/vendors/new" class="grid md:grid-cols-3 gap-3">
+    <input name="name" class="input" placeholder="거래처명 *" required>
+    <input name="contact_person" class="input" placeholder="담당자">
+    <input name="phone" class="input" placeholder="연락처">
+    <input name="email" class="input" placeholder="이메일">
+    <input name="biz_number" class="input" placeholder="사업자번호">
+    <select name="vendor_type" class="input">
+      <option value="consumer">소비자</option>
+      <option value="dealer">대리점</option>
+    </select>
+    <input name="address" class="input md:col-span-2" placeholder="주소">
+    <button class="btn-primary">추가</button>
+  </form>
+</div>
+
+<div class="card overflow-x-auto">
+  <table class="dt">
+    <thead><tr><th>거래처명</th><th>담당자</th><th>연락처</th><th>유형</th><th>사업자번호</th><th class="text-center">수정/삭제</th></tr></thead>
+    <tbody>
+      {% for v in vendors %}
+      <tr>
+        <td class="font-semibold">{{ v.name }}</td>
+        <td class="text-xs">{{ v.contact_person }}</td>
+        <td class="text-xs">{{ v.phone }}</td>
+        <td><span class="badge {% if v.vendor_type == 'dealer' %}badge-blue{% else %}badge-gray{% endif %}">{{ '대리점' if v.vendor_type == 'dealer' else '소비자' }}</span></td>
+        <td class="text-xs">{{ v.biz_number }}</td>
+        <td class="text-center whitespace-nowrap">
+          <a href="/projects/by-vendor/{{ v.id }}" class="text-xs mr-2" style="color: var(--link);">📋 프로젝트</a>
+          <a href="/vendors/{{ v.id }}/edit" class="text-slate-600 text-xs hover:text-slate-900 mr-2">수정</a>
+          <form method="post" action="/vendors/{{ v.id }}/delete" class="inline" onsubmit="return confirm('삭제하시겠습니까?')">
+            <button class="text-red-500 text-xs">삭제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

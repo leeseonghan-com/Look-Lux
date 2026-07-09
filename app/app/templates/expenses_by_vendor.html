@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}거래처별 비용 집계{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/expenses" class="text-sm" style="color: var(--ink-4);">← 비용처리 목록</a>
+  <div class="flex items-start justify-between mt-2 flex-wrap gap-3">
+    <div>
+      <h1 class="page-title">📊 거래처별 비용 지출 집계</h1>
+      <p class="page-sub">어느 거래처에 얼마를 썼는지 한눈에 정리됩니다. 행을 클릭하면 상세 내역을 볼 수 있습니다.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 전체 합계 KPI -->
+<div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+  <div class="kpi-card">
+    <div class="label">집계 대상 거래처</div>
+    <div class="value value-sm num">{{ rows|length }}<span class="unit">곳</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">전체 비용 건수</div>
+    <div class="value value-sm num">{{ total_count }}<span class="unit">건</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">총 지출액</div>
+    <div class="value value-sm num">{% if request.state.can_view_amounts %}{{ total_all|money }}{% else %}—{% endif %}<span class="unit">원</span></div>
+  </div>
+</div>
+
+<div class="card overflow-x-auto">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th>거래처</th>
+        <th class="text-right">건수</th>
+        <th class="mobile-hide">최근 거래일</th>
+        <th class="mobile-hide">주요 항목</th>
+        <th class="text-center mobile-hide">증빙</th>
+        <th class="text-right">총 지출액</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      {% set is_clickable = r.vendor_id %}
+      <tr {% if is_clickable %}class="cursor-pointer" onclick="location.href='/expenses/by-vendor/{{ r.vendor_id }}'"{% endif %}>
+        <td>
+          <div class="font-bold" style="color: var(--ink);">
+            {% if r.vendor_id %}🏢{% elif r.vendor_id == -1 %}❓{% else %}✏️{% endif %}
+            {{ r.vendor_name }}
+          </div>
+          {% if not r.vendor_id and r.vendor_id != -1 %}
+          <div class="text-xs" style="color: var(--ink-4);">직접 입력 — 거래처 등록 안 됨</div>
+          {% endif %}
+        </td>
+        <td class="text-right num font-bold">{{ r.count }}<span class="unit">건</span></td>
+        <td class="mobile-hide text-xs whitespace-nowrap">{{ r.latest_date or '-' }}</td>
+        <td class="mobile-hide text-xs">
+          {% for cat, amt in r.by_category.items() %}
+          <span style="display: inline-block; padding: 1px 6px; background: #F4F4F5; color: #18181B; font-size: 10px; border-radius: 3px; font-weight: 700; margin-right: 2px;" title="{{ amt|money }}원">{{ cat }}</span>
+          {% endfor %}
+        </td>
+        <td class="text-center mobile-hide text-xs">
+          {% if r.no_evidence_count > 0 %}
+          <span style="color:#92400E; font-weight:700;">⚠ {{ r.no_evidence_count }}건 증빙없음</span>
+          <div style="color: var(--ink-5);">증빙 {{ r.has_evidence_count }}건</div>
+          {% else %}
+          <span class="badge badge-green">전체 {{ r.has_evidence_count }}건</span>
+          {% endif %}
+        </td>
+        <td class="text-right num font-bold" style="color: var(--ink);">
+          {% if request.state.can_view_amounts %}{{ r.total_amount|money }}{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
+        </td>
+        <td class="text-xs" style="color: var(--link);">
+          {% if is_clickable %}상세 →{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not rows %}
+      <tr><td colspan="7" class="text-center py-8 text-slate-400">아직 비용 등록이 없습니다.</td></tr>
+      {% endif %}
+    </tbody>
+    {% if rows %}
+    <tfoot>
+      <tr style="border-top: 2px solid var(--ink); background: var(--surface-2);">
+        <th>합계</th>
+        <th class="text-right num">{{ total_count }}</th>
+        <th class="mobile-hide"></th>
+        <th class="mobile-hide"></th>
+        <th class="mobile-hide"></th>
+        <th class="text-right num">{% if request.state.can_view_amounts %}{{ total_all|money }}{% else %}—{% endif %}</th>
+        <th></th>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</div>
+
+<div class="text-xs mt-3" style="color:var(--ink-4);">
+  💡 거래처를 등록해두고 비용 등록 시 선택하면 더 정확하게 집계됩니다. <a href="/vendors" style="color:var(--link);">거래처 관리 →</a>
+</div>
+
+{% endblock %}
