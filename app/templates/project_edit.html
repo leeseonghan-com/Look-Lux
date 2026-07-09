@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}프로젝트 수정{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/projects/{{ p.id }}" class="text-sm" style="color: var(--ink-4);">← 프로젝트 상세</a>
+  <h1 class="page-title mt-2">프로젝트 수정 <span style="color: var(--ink-4); font-size: 16px;">{{ p.code }}</span></h1>
+</div>
+
+<form method="post" action="/projects/{{ p.id }}/edit" class="space-y-5 max-w-3xl">
+
+  <!-- 기본 정보 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4" style="color: var(--ink);">📋 기본 정보</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div><label class="label">프로젝트 코드 *</label><input name="code" class="input" value="{{ p.code }}" required></div>
+      <div><label class="label">행사일</label><input name="event_date" type="date" class="input" value="{{ p.event_date or '' }}"></div>
+      <div class="md:col-span-2"><label class="label">프로젝트명 *</label><input name="name" class="input" value="{{ p.name }}" required></div>
+      <div>
+        <label class="label">거래처 <span style="color: var(--ink-4); font-size: 11px; font-weight: 500;">(이름·사업자번호로 검색)</span></label>
+        {% set selected_vendor = vendors|selectattr('id', 'equalto', p.vendor_id)|first if p.vendor_id else None %}
+        <div data-vendor-search data-name="vendor_id"
+             data-initial-id="{{ p.vendor_id or '' }}"
+             data-initial-name="{{ selected_vendor.name if selected_vendor else '' }}"></div>
+      </div>
+      <div><label class="label">장소</label><input name="location" class="input" value="{{ p.location }}"></div>
+      <div>
+        <label class="label">진행 상태</label>
+        <select name="status" class="input">
+          {% for s_v in ['준비중','진행중','완료','취소'] %}
+          <option value="{{ s_v }}" {% if s_v == p.status %}selected{% endif %}>{{ s_v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- 프로젝트 카테고리 (중복 선택 가능) -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-2" style="color: var(--ink);">🎯 프로젝트 항목 (중복 선택 가능)</h2>
+    <p class="text-xs mb-3" style="color: var(--ink-4);">이 프로젝트에서 진행한 항목을 모두 선택하세요.</p>
+    <div class="grid grid-cols-3 md:grid-cols-6 gap-2">
+      {% for cat in category_options %}
+      <label class="cursor-pointer">
+        <input type="checkbox" class="cat-cb sr-only peer" value="{{ cat }}" {% if cat in p.categories %}checked{% endif %} onchange="updateCategoriesCsv()">
+        <div class="cat-opt">
+          <div style="font-size: 22px; line-height: 1;">{{ category_icons.get(cat, '📌') }}</div>
+          <div class="text-sm font-bold mt-1">{{ cat }}</div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+    <input type="hidden" name="categories_csv" id="categories-csv" value="{{ p.categories|join(',') }}">
+  </div>
+  <script>
+  function updateCategoriesCsv() {
+    const vals = Array.from(document.querySelectorAll('.cat-cb:checked')).map(c => c.value);
+    document.getElementById('categories-csv').value = vals.join(',');
+  }
+  document.addEventListener('DOMContentLoaded', updateCategoriesCsv);
+  </script>
+
+  <!-- 매출액 + 부가세 카드 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4" style="color: var(--ink);">💰 매출액 (부가세 10%)</h2>
+
+    <div class="mb-4">
+      <label class="label">금액 입력 방식</label>
+      <div class="grid grid-cols-3 gap-2 max-w-2xl">
+        <label class="cursor-pointer">
+          <input type="radio" name="vat_mode" value="supply" class="sr-only peer" {% if (p.vat_mode or 'supply') == 'supply' %}checked{% endif %}>
+          <div class="vat-opt">
+            <div class="font-bold">공급가액 입력</div>
+            <div class="text-xs mt-1" style="color: var(--ink-4);">부가세 별도 (+10%)</div>
+          </div>
+        </label>
+        <label class="cursor-pointer">
+          <input type="radio" name="vat_mode" value="total" class="sr-only peer" {% if p.vat_mode == 'total' %}checked{% endif %}>
+          <div class="vat-opt">
+            <div class="font-bold">총액 입력</div>
+            <div class="text-xs mt-1" style="color: var(--ink-4);">VAT 포함 (자동 분리)</div>
+          </div>
+        </label>
+        <label class="cursor-pointer">
+          <input type="radio" name="vat_mode" value="cash" class="sr-only peer" {% if p.vat_mode == 'cash' or p.vat_mode == 'exempt' %}checked{% endif %}>
+          <div class="vat-opt vat-opt-cash">
+            <div class="font-bold">💵 현금거래</div>
+            <div class="text-xs mt-1" style="color: var(--ink-4);">무증빙 (세금계산서 X)</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div>
+      <label class="label" id="amount-label">{% if p.vat_mode in ('cash', 'exempt') %}거래 금액 (원, 현금){% elif p.vat_mode == 'total' %}총액 (원, VAT 포함){% else %}공급가액 (원, VAT 별도){% endif %}</label>
+      <input name="amount_input" id="amount-input" type="text" class="input num money-input" value="{% if p.vat_mode in ('total', 'cash', 'exempt') %}{{ p.revenue }}{% else %}{{ p.supply_amount or p.revenue }}{% endif %}" inputmode="numeric">
+    </div>
+
+    <div class="mt-4 p-4" style="background: var(--surface-2); border-radius: 8px;">
+      <div class="grid grid-cols-3 gap-3 text-center">
+        <div>
+          <div class="text-xs font-semibold" style="color: var(--ink-4);">공급가액</div>
+          <div class="font-bold mt-1 num" id="calc-supply" style="font-size: 18px;">0</div>
+        </div>
+        <div>
+          <div class="text-xs font-semibold" style="color: var(--ink-4);" id="calc-vat-label">부가세 (10%)</div>
+          <div class="font-bold mt-1 num" id="calc-vat" style="font-size: 18px; color: #C9A961;">0</div>
+        </div>
+        <div>
+          <div class="text-xs font-semibold" style="color: var(--ink-4);">합계</div>
+          <div class="font-bold mt-1 num" id="calc-total" style="font-size: 18px; color: var(--ink);">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 현금거래(무증빙) 안내 -->
+    <div id="cash-info" style="{% if p.vat_mode not in ('cash', 'exempt') %}display: none;{% endif %} margin-top: 12px; padding: 12px; background: #FFF7E0; border: 1.5px solid #FCD34D; border-radius: 8px;">
+      <div style="font-size: 13px; font-weight: 700; color: #92400E; margin-bottom: 4px;">💵 현금거래 (무증빙)</div>
+      <div style="font-size: 11px; color: #78350F; line-height: 1.5;">
+        세금계산서·현금영수증 발행 없는 현금 거래. <strong>세무 신고 시 누락되지 않도록 메모를 남기세요.</strong> 부가세는 부과하지 않습니다.
+      </div>
+    </div>
+  </div>
+
+  <!-- 결제 정보 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-1" style="color: var(--ink);">💳 결제 정보</h2>
+    <p class="text-xs mb-4" style="color: var(--ink-4);">계산서 발행일·결제 완료일·결제 수단을 정확히 기록하면 정산이 자동 추적됩니다.</p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div>
+        <label class="label">📄 세금계산서 발행일</label>
+        <input name="invoice_date" type="date" class="input" value="{{ p.invoice_date or '' }}">
+      </div>
+      <div>
+        <label class="label">📅 정산 예정일</label>
+        <input name="settle_due_date" type="date" class="input" value="{{ p.settle_due_date or '' }}">
+      </div>
+      <div>
+        <label class="label">✓ 실제 입금일 (결제 완료일)</label>
+        <input name="paid_date" type="date" class="input" value="{{ p.paid_date or '' }}">
+        <p class="text-xs mt-1" style="color: var(--ink-4);">입력하면 자동으로 "입금완료" 상태가 됩니다.</p>
+      </div>
+    </div>
+
+    <div class="mt-5">
+      <label class="label">결제 수단</label>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {% for v, label, ico in [('','미정','—'), ('현금','현금','💵'), ('카드','카드','💳'), ('계좌이체','계좌이체','🏦')] %}
+        <label class="cursor-pointer">
+          <input type="radio" name="payment_method" value="{{ v }}" class="sr-only peer" {% if (p.payment_method or '') == v %}checked{% endif %}>
+          <div class="pay-opt"><span class="text-lg mr-1">{{ ico }}</span>{{ label }}</div>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="mt-5">
+      <label class="label">결제 메모 (선택)</label>
+      <input name="payment_memo" class="input" value="{{ p.payment_memo }}" placeholder="예: 신한카드 5/15 일시불 / 계좌번호 1234-... / 분할 결제 50%">
+    </div>
+
+    <div class="mt-5">
+      <label class="label">정산 상태</label>
+      <select name="settlement_status" class="input max-w-xs">
+        <option value="미수금" {% if p.settlement_status == '미수금' %}selected{% endif %}>미수금</option>
+        <option value="입금완료" {% if p.settlement_status == '입금완료' %}selected{% endif %}>입금완료</option>
+      </select>
+      <p class="text-xs mt-1" style="color: var(--ink-4);">실제 입금일을 입력하면 자동으로 "입금완료"가 됩니다.</p>
+    </div>
+
+    <!-- 현금매출 (증빙없음) -->
+    <div class="mt-5 p-3" style="background: #FFF7E0; border: 1.5px solid #FCD34D; border-radius: 8px;">
+      <label class="flex items-start gap-2 cursor-pointer">
+        <input type="checkbox" name="cash_no_invoice" value="yes" {% if p.cash_no_invoice %}checked{% endif %} class="mt-1" onchange="document.getElementById('cash-note').style.display = this.checked ? '' : 'none';">
+        <div class="flex-1">
+          <div class="font-bold text-sm" style="color: #92400E;">⚠ 증빙 없는 현금 매출 (세금계산서·현금영수증 없음)</div>
+          <div class="text-xs mt-1" style="color: #78350F;">
+            세금계산서 발행 없이 현금으로 받은 매출입니다.
+            <strong>세무 신고 시 누락하지 않도록 별도 메모를 남기세요.</strong>
+          </div>
+        </div>
+      </label>
+      <div id="cash-note" style="{% if not p.cash_no_invoice %}display: none;{% endif %} margin-top: 10px;">
+        <label class="label" style="color: #78350F;">📝 세무 신고용 메모</label>
+        <textarea name="tax_excluded_note" class="input" rows="2"
+          placeholder="예: 거래처 요청으로 현금 거래 / 영업외 단순 수입 / 신고 시 매출 누락 주의">{{ p.tax_excluded_note or '' }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 특이사항 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4" style="color: var(--ink);">📝 특이사항</h2>
+    <div>
+      <label class="label">프로젝트별 특이사항 / 주의사항</label>
+      <textarea name="special_notes" rows="5" class="input" placeholder="이 프로젝트만의 특이사항·주의점·체크리스트를 자유롭게 정리하세요.">{{ p.special_notes }}</textarea>
+    </div>
+    <div class="mt-4">
+      <label class="label">일반 메모</label>
+      <textarea name="memo" rows="2" class="input">{{ p.memo }}</textarea>
+    </div>
+  </div>
+
+  <div class="flex gap-3 max-w-md ml-auto">
+    <button class="btn-primary flex-1">저장</button>
+    <a href="/projects/{{ p.id }}" class="btn-secondary">취소</a>
+  </div>
+</form>
+
+{# 삭제 폼은 수정 폼 밖에 별도로 — HTML 표준상 form 중첩 불가 #}
+<div class="flex justify-end max-w-md ml-auto mt-4">
+  <form method="post" action="/projects/{{ p.id }}/delete"
+        onsubmit="return confirm('프로젝트 [{{ p.name }}]을(를) 정말 삭제하시겠습니까?\n\n• 관련 비용·알바 근태 기록도 함께 삭제됩니다.\n• 견적서·정직원 출퇴근 기록은 보존되며 연결만 해제됩니다.\n\n이 작업은 되돌릴 수 없습니다.');">
+    <button type="submit" class="btn-secondary" style="background:#FEE2E2; border-color:#FCA5A5; color:#991B1B;">🗑 프로젝트 삭제</button>
+  </form>
+</div>
+
+<style>
+  .pay-opt { padding: 10px; border: 1.5px solid var(--line); border-radius: 8px; text-align: center; font-size: 13px; background: white; transition: all 0.15s; }
+  input[type=radio]:checked + .pay-opt { border-color: var(--ink); background: var(--ink); color: white; font-weight: 600; }
+  .vat-opt { padding: 14px; border: 1.5px solid var(--line); border-radius: 8px; background: white; transition: all 0.15s; }
+  input[type=radio]:checked + .vat-opt { border-color: var(--ink); background: var(--ink); color: white; }
+  input[type=radio]:checked + .vat-opt .text-xs { color: rgba(255,255,255,0.7) !important; }
+  input[type=radio][value="cash"]:checked + .vat-opt {
+    border-color: #B45309; background: #B45309; color: white;
+  }
+  .cat-opt {
+    padding: 12px 8px; border: 1.5px solid var(--line); border-radius: 8px;
+    text-align: center; background: white; transition: all 0.15s;
+  }
+  input[type=checkbox]:checked + .cat-opt {
+    border-color: #0A0E1A; background: #0A0E1A; color: white;
+    box-shadow: 0 4px 10px rgba(10,14,26,0.2);
+  }
+</style>
+
+<script>
+function calcVAT() {
+  const input = document.getElementById('amount-input');
+  const mode = document.querySelector('input[name="vat_mode"]:checked').value;
+  const label = document.getElementById('amount-label');
+  const vatLabel = document.getElementById('calc-vat-label');
+  const cashInfo = document.getElementById('cash-info');
+  const vatBox = document.getElementById('calc-vat');
+  const raw = (input.value || '0').toString().replace(/[^0-9]/g, '');
+  const amount = parseInt(raw) || 0;
+  let supply, vat, total;
+  if (mode === 'cash' || mode === 'exempt') {
+    supply = amount; vat = 0; total = amount;
+    label.textContent = '거래 금액 (원, 현금)';
+    if (vatLabel) vatLabel.textContent = '부가세 (없음)';
+    if (vatBox) vatBox.style.color = '#9CA3AF';
+    if (cashInfo) cashInfo.style.display = '';
+  } else if (mode === 'total') {
+    supply = Math.round(amount / 1.1);
+    vat = amount - supply;
+    total = amount;
+    label.textContent = '총액 (원, VAT 포함)';
+    if (vatLabel) vatLabel.textContent = '부가세 (10%)';
+    if (vatBox) vatBox.style.color = '#C9A961';
+    if (cashInfo) cashInfo.style.display = 'none';
+  } else {
+    supply = amount;
+    vat = Math.round(amount * 0.1);
+    total = supply + vat;
+    label.textContent = '공급가액 (원, VAT 별도)';
+    if (vatLabel) vatLabel.textContent = '부가세 (10%)';
+    if (vatBox) vatBox.style.color = '#C9A961';
+    if (cashInfo) cashInfo.style.display = 'none';
+  }
+  document.getElementById('calc-supply').textContent = supply.toLocaleString();
+  document.getElementById('calc-vat').textContent = vat.toLocaleString();
+  document.getElementById('calc-total').textContent = total.toLocaleString();
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('amount-input');
+  if (input) {
+    input.addEventListener('input', calcVAT);
+    document.querySelectorAll('input[name="vat_mode"]').forEach(r => r.addEventListener('change', calcVAT));
+    calcVAT();
+  }
+});
+</script>
+
+{% endblock %}

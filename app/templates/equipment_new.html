@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}장비 등록{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/equipment" class="text-sm" style="color: var(--ink-4);">← 보유 장비</a>
+  <h1 class="page-title mt-2">새 장비 종류 등록</h1>
+  <p class="page-sub">장비 "종류"와 함께 첫 번째 개체(재고) 정보를 동시에 입력할 수 있습니다.</p>
+</div>
+
+<form method="post" action="/equipment/new" class="space-y-5 max-w-3xl">
+
+  <!-- ───── 장비 기본 정보 ───── -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4">📦 장비 기본 정보</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="md:col-span-2">
+        <label class="label">장비명 *</label>
+        <input name="name" class="input" required placeholder="예: LED 무빙라이트 230W">
+      </div>
+      <div>
+        <label class="label">제조사</label>
+        <input name="manufacturer" class="input" placeholder="예: Clay Paky">
+      </div>
+      <div>
+        <label class="label">모델명</label>
+        <input name="model" class="input" placeholder="예: Sharpy 230">
+      </div>
+      <div>
+        <label class="label">카테고리</label>
+        <select name="category" class="input">
+          {% for c in ['조명', '음향', '영상', '구조물', '전원', '특수효과', '기타'] %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label">규격/사양</label>
+        <input name="spec" class="input" placeholder="Beam/Spot/Wash">
+      </div>
+      <div>
+        <label class="label">단위</label>
+        <input name="unit" class="input" value="EA" placeholder="EA / SET / 장">
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">메모</label>
+        <textarea name="memo" rows="2" class="input"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───── 단가표 자동 연동 ───── -->
+  <div class="card" style="background: #F0F9FF; border: 1px solid #BFDBFE;">
+    <div class="flex items-center gap-2 mb-2">
+      <h2 class="text-lg font-bold" style="color: #1D4ED8;">🔗 단가표 자동 연동</h2>
+      <span style="background: #DBEAFE; color: #1E40AF; font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 700;">자동</span>
+    </div>
+    <p class="text-xs mb-4" style="color: #1E40AF;">
+      여기서 입력한 가격이 단가표에 자동으로 등록됩니다.
+    </p>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div>
+        <label class="label" style="color: #1E40AF;">📦 납품 단가</label>
+        <input name="consumer_price" type="text" class="input num money-input" value="0" placeholder="0">
+      </div>
+      <div>
+        <label class="label" style="color: #9A3412;">🎬 렌탈 1일 단가</label>
+        <input name="rental_daily" type="text" class="input num money-input" value="0" placeholder="0">
+      </div>
+      <div>
+        <label class="label" style="color: #9A3412;">🎬 렌탈 보증금</label>
+        <input name="rental_deposit" type="text" class="input num money-input" value="0" placeholder="0">
+      </div>
+    </div>
+  </div>
+
+  <!-- ───── 첫 개체(재고) 정보 — 선택 입력 ───── -->
+  <div class="card" style="background: #FFFBEB; border: 1px solid #FDE68A;" id="init-unit-card">
+    <div class="flex items-start justify-between mb-3 flex-wrap gap-2">
+      <div>
+        <h2 class="text-lg font-bold" style="color: #92400E;">🧰 첫 개체(재고) 함께 등록</h2>
+        <p class="text-xs mt-1" style="color: #78350F;">
+          체크 시 장비 종류와 동시에 첫 번째 개체(시리얼·구입일·가격 등)도 등록됩니다.<br>
+          여러 대를 보유 중이면 등록 후 상세 화면에서 추가 개체를 더 추가하세요.
+        </p>
+      </div>
+      <label class="flex items-center gap-2 cursor-pointer" style="font-size: 14px; font-weight: 700; color: #92400E;">
+        <input type="checkbox" name="create_unit" value="yes" id="create-unit-toggle" checked
+               onchange="toggleUnitForm(this)" style="width:18px; height:18px;">
+        첫 개체 등록
+      </label>
+    </div>
+
+    <div id="init-unit-fields" class="grid md:grid-cols-3 gap-3">
+      <div>
+        <label class="label" style="color: #78350F;">관리코드</label>
+        <input name="unit_asset_code" class="input" placeholder="자동 생성 (비워두면 SC-2026-0001 형식)">
+      </div>
+      <div>
+        <label class="label" style="color: #78350F;">시리얼 번호</label>
+        <input name="unit_serial_number" class="input" placeholder="개체 고유 S/N">
+      </div>
+      <div>
+        <label class="label" style="color: #78350F;">관리 부서</label>
+        <input name="unit_department" class="input" placeholder="예: 운영팀">
+      </div>
+      <div>
+        <label class="label" style="color: #78350F;">담당자</label>
+        <input name="unit_manager" class="input" placeholder="이름">
+      </div>
+      <div>
+        <label class="label" style="color: #78350F;">보관 위치</label>
+        <input name="unit_location" class="input" placeholder="예: 창고 A-3">
+      </div>
+      <div>
+        <label class="label" style="color: #78350F;">상태</label>
+        <select name="unit_status" class="input">
+          <option value="보유중">✓ 보유중</option>
+          <option value="대여중">대여중</option>
+          <option value="수리중">수리중</option>
+          <option value="폐기">폐기</option>
+        </select>
+      </div>
+      <div>
+        <label class="label" style="color: #78350F;">구입처</label>
+        <input name="unit_purchase_vendor" class="input" placeholder="예: ABC상사">
+      </div>
+      <div>
+        <label class="label" style="color: #78350F;">구입일</label>
+        <input name="unit_purchase_date" type="date" class="input">
+      </div>
+      <div>
+        <label class="label" style="color: #78350F;">구입금액</label>
+        <input name="unit_purchase_price" type="text" class="input num money-input" value="0" placeholder="0">
+      </div>
+      <div class="md:col-span-3">
+        <label class="label" style="color: #78350F;">개체 메모</label>
+        <input name="unit_memo" class="input" placeholder="특이사항">
+      </div>
+    </div>
+  </div>
+
+  <div class="flex gap-3 pt-2">
+    <a href="/equipment" class="btn-secondary">취소</a>
+    <button class="btn-primary flex-1">저장 + 단가표 자동 등록</button>
+  </div>
+</form>
+
+<script>
+function toggleUnitForm(cb) {
+  const fields = document.getElementById('init-unit-fields');
+  if (cb.checked) {
+    fields.style.opacity = '1';
+    fields.style.pointerEvents = 'auto';
+  } else {
+    fields.style.opacity = '0.4';
+    fields.style.pointerEvents = 'none';
+  }
+}
+</script>
+
+{% endblock %}

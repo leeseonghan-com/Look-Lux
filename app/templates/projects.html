@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}프로젝트{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+  <h1 class="text-2xl font-bold text-slate-800">📋 프로젝트</h1>
+  <div class="flex gap-2 flex-wrap">
+    <form method="post" action="/projects/auto-sync" style="display:inline;"
+          onsubmit="return confirm('행사일을 기준으로 모든 프로젝트의 진행/정산 상태를 자동 갱신합니다.\n\n• 행사일 이전 → 진행중\n• 행사일 이후 → 완료 + 미수금(입금된 건은 유지)\n\n계속하시겠습니까?');">
+      <button type="submit" class="btn-secondary" title="행사일 기준으로 진행/정산 상태를 일괄 갱신">🔄 자동 상태 갱신</button>
+    </form>
+    <a href="/projects/by-vendor" class="btn-secondary">🏢 거래처별 집계</a>
+    <a href="/projects/new" class="btn-primary">+ 새 프로젝트</a>
+  </div>
+</div>
+
+{% if request.query_params.get('bulk_updated') %}
+<div class="card mb-3" style="background: #ECFDF5; border-color: #A7F3D0; padding: 12px 16px;">
+  <div class="text-sm font-semibold" style="color: #047857;">✓ {{ request.query_params.get('bulk_updated') }}개 프로젝트가 일괄 수정되었습니다.</div>
+</div>
+{% endif %}
+
+{% if request.query_params.get('deleted') == '1' %}
+<div class="card mb-3" style="background: #FEE2E2; border-color: #FCA5A5; padding: 12px 16px;">
+  <div class="text-sm font-semibold" style="color: #991B1B;">🗑 프로젝트가 삭제되었습니다. (관련 비용·알바 근태도 함께 삭제, 견적서·정직원 출퇴근은 보존됨)</div>
+</div>
+{% elif request.query_params.get('deleted') == 'notfound' %}
+<div class="card mb-3" style="background: #FFFBEB; border-color: #FDE68A; padding: 12px 16px;">
+  <div class="text-sm font-semibold" style="color: #92400E;">⚠ 삭제하려는 프로젝트를 찾을 수 없습니다.</div>
+</div>
+{% endif %}
+
+{% if request.query_params.get('auto_synced') is not none %}
+<div class="card mb-3" style="background: #EFF6FF; border-color: #BFDBFE; padding: 12px 16px;">
+  <div class="text-sm font-semibold" style="color: #1D4ED8;">🔄 자동 상태 갱신 완료 — {{ request.query_params.get('auto_synced') }}개 프로젝트가 업데이트되었습니다.</div>
+</div>
+{% endif %}
+
+{# 자동 변경 대기 안내 (DB에는 미반영, 화면에만 표시) #}
+{% set auto_pending = rows | selectattr('is_auto_changed') | list | length %}
+{% if auto_pending > 0 %}
+<div class="card mb-3" style="background: #FFFBEB; border-color: #FDE68A; padding: 10px 16px;">
+  <div class="text-xs" style="color: #92400E;">⚡ 행사일 기준으로 자동 전환된 항목 <b>{{ auto_pending }}건</b> — 표시는 이미 반영되어 있고, 상단의 <b>“🔄 자동 상태 갱신”</b> 버튼으로 DB에 일괄 저장할 수 있습니다.</div>
+</div>
+{% endif %}
+
+<!-- 검색 + 정렬 박스 -->
+<div class="card mb-3" style="padding: 12px 16px;">
+  <form method="get" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+    {% if selected_cats %}<input type="hidden" name="cats" value="{{ selected_cats|join(',') }}">{% endif %}
+    <div style="flex:1; min-width:200px;">
+      <label class="label">🔍 프로젝트 검색 (이름·코드·거래처·장소·메모)</label>
+      <input name="q" class="input" value="{{ search_q or '' }}" placeholder="예: 신년행사, P-2026, ABC상사" autocomplete="off">
+    </div>
+    <div style="min-width:160px;">
+      <label class="label">📊 정렬</label>
+      <select name="sort" class="input" onchange="this.form.submit()">
+        <option value="created_desc" {% if request.query_params.get('sort','created_desc') == 'created_desc' %}selected{% endif %}>최신 등록순</option>
+        <option value="event_desc" {% if request.query_params.get('sort') == 'event_desc' %}selected{% endif %}>행사일 최신순</option>
+        <option value="event_asc" {% if request.query_params.get('sort') == 'event_asc' %}selected{% endif %}>행사일 오래된순</option>
+        <option value="code_desc" {% if request.query_params.get('sort') == 'code_desc' %}selected{% endif %}>코드 내림차순</option>
+        <option value="code_asc" {% if request.query_params.get('sort') == 'code_asc' %}selected{% endif %}>코드 오름차순</option>
+        <option value="name_asc" {% if request.query_params.get('sort') == 'name_asc' %}selected{% endif %}>이름 가나다순</option>
+      </select>
+    </div>
+    <div style="min-width:150px;">
+      <label class="label">📅 월 (행사일)</label>
+      <input type="month" name="month" class="input" value="{{ request.query_params.get('month','') }}" onchange="this.form.submit()">
+    </div>
+    <button class="btn-primary" type="submit">적용</button>
+    {% if search_q or request.query_params.get('sort') or request.query_params.get('month') or request.query_params.get('year') %}
+    <a href="/projects{% if selected_cats %}?cats={{ selected_cats|join(',') }}{% endif %}" class="btn-secondary">초기화</a>
+    {% endif %}
+  </form>
+  {% set active_filters = [] %}
+  {% if search_q %}{% set _ = active_filters.append('검색: "' ~ search_q ~ '"') %}{% endif %}
+  {% if request.query_params.get('month') %}{% set _ = active_filters.append('월: ' ~ request.query_params.get('month')) %}{% endif %}
+  {% if request.query_params.get('sort') and request.query_params.get('sort') != 'created_desc' %}{% set _ = active_filters.append('정렬: ' ~ request.query_params.get('sort')) %}{% endif %}
+  {% if active_filters %}
+  <div class="text-xs mt-2" style="color: var(--ink-4);">🔍 {{ active_filters|join(' · ') }} — {{ filtered_count }}건</div>
+  {% endif %}
+</div>
+
+<!-- 카테고리 필터 바 -->
+<div class="card mb-4" style="padding: 14px 16px;">
+  <div class="text-xs font-bold mb-2" style="color: var(--ink-4); letter-spacing: 0.04em; text-transform: uppercase;">🎯 항목별 필터 (중복 선택)</div>
+  <div class="flex flex-wrap gap-2">
+    <a href="/projects" class="cat-chip {% if not selected_cats %}active{% endif %}">
+      <span>전체</span>
+      <span class="cat-chip-count">{{ total_count }}</span>
+    </a>
+    {% for cat in category_options %}
+    {% set is_active = cat in selected_cats %}
+    {% set new_cats = selected_cats|reject('equalto', cat)|list if is_active else (selected_cats + [cat]) %}
+    <a href="/projects?cats={{ new_cats|join(',') }}" class="cat-chip {% if is_active %}active{% endif %}">
+      <span>{{ category_icons.get(cat, '📌') }} {{ cat }}</span>
+      <span class="cat-chip-count">{{ cat_counts.get(cat, 0) }}</span>
+    </a>
+    {% endfor %}
+    {% if cat_counts.get('미분류', 0) > 0 %}
+    <span class="cat-chip" style="opacity: 0.6;">
+      <span>📭 미분류</span>
+      <span class="cat-chip-count">{{ cat_counts.미분류 }}</span>
+    </span>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 필터 결과 집계 -->
+{% if selected_cats and request.state.can_view_amounts %}
+<div class="card mb-4" style="background: linear-gradient(135deg, #0A0E1A 0%, #1E293B 100%); color: white; padding: 18px 22px;">
+  <div class="flex items-center justify-between flex-wrap gap-4">
+    <div>
+      <div style="font-size: 12px; color: rgba(255,255,255,0.6); margin-bottom: 4px;">선택한 항목 결과</div>
+      <div style="font-size: 14px; font-weight: 700;">
+        {% for c in selected_cats %}<span style="background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 4px; margin-right: 4px;">{{ category_icons.get(c, '📌') }} {{ c }}</span>{% endfor %}
+      </div>
+    </div>
+    <div class="flex gap-6 items-center flex-wrap">
+      <div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.5);">건수</div>
+        <div style="font-size: 22px; font-weight: 800; line-height: 1;">{{ filtered_count }}<span style="font-size: 12px; opacity: 0.5;">건</span></div>
+      </div>
+      <div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.5);">공급가 합계</div>
+        <div style="font-size: 22px; font-weight: 800; line-height: 1;">{{ filtered_supply|money }}<span style="font-size: 12px; opacity: 0.5;">원</span></div>
+      </div>
+      <div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.5);">총매출(VAT포함)</div>
+        <div style="font-size: 22px; font-weight: 800; line-height: 1; color: #C9A961;">{{ filtered_revenue|money }}<span style="font-size: 12px; opacity: 0.5;">원</span></div>
+      </div>
+      <div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.5);">순이익</div>
+        <div style="font-size: 22px; font-weight: 800; line-height: 1; color: {% if filtered_profit >= 0 %}#34D399{% else %}#F87171{% endif %};">{{ filtered_profit|money }}<span style="font-size: 12px; opacity: 0.5;">원</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 일괄 작업 바 -->
+<div id="bulk-bar" style="display:none; padding: 12px 16px; margin-bottom: 12px; background: #0A0E1A; color: white; border-radius: 10px;">
+  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+    <span style="font-size: 13px; font-weight: 700;">📝 <span id="bulk-count">0</span>개 선택됨</span>
+    <span style="opacity: 0.5;">|</span>
+    <span style="font-size: 12px; opacity: 0.8;">선택한 프로젝트를:</span>
+    <select id="bulk-unified" style="padding: 7px 12px; border-radius: 6px; border: none; background: white; color: #18181B; font-size: 13px; font-weight: 600;">
+      <option value="">— 상태 변경 —</option>
+      <option value="입금완료">✓ 입금완료로 변경</option>
+      <option value="미수금">⚠ 미수금으로 되돌리기</option>
+      <option value="진행중">🔵 진행중으로 변경</option>
+      <option value="준비중">⚪ 준비중으로 변경</option>
+      <option value="취소">✕ 취소로 변경</option>
+    </select>
+    <button type="button" onclick="submitBulk()"
+            style="background: #C9A961; color: #0A0E1A; padding: 8px 18px; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;">✓ 일괄 적용</button>
+    <button type="button" onclick="clearSelection()"
+            style="background: transparent; color: white; padding: 8px 14px; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 13px; cursor: pointer;">선택 해제</button>
+  </div>
+</div>
+
+<div class="card overflow-x-auto">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th style="width: 36px;"><input type="checkbox" id="check-all" onchange="toggleAll(this)"></th>
+        <th>코드</th><th>프로젝트명</th><th class="mobile-hide">항목</th>
+        <th class="mobile-hide">거래처</th>
+        <th class="mobile-hide">행사일</th><th class="text-right">매출</th>
+        <th class="text-right mobile-hide">비용</th><th class="text-right">순이익</th>
+        <th>상태</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td onclick="event.stopPropagation();"><input type="checkbox" class="prj-check" value="{{ r.id }}" onchange="updateCount()"></td>
+        <td class="text-xs cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{{ r.code }}</td>
+        <td class="font-semibold cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">
+          {{ r.name }}
+          {% if r.vat_mode in ('cash', 'exempt') or r.cash_no_invoice %}
+          <span title="현금거래 (무증빙)" style="display: inline-block; margin-left: 4px; padding: 1px 5px; background: #FEF3C7; color: #92400E; font-size: 9px; border-radius: 3px; font-weight: 700; vertical-align: 1px;">💵 현금거래</span>
+          {% endif %}
+        </td>
+        <td class="mobile-hide text-xs cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">
+          {% for c in r.categories %}
+          <span style="display: inline-block; padding: 1px 6px; background: #F4F4F5; color: #18181B; font-size: 10px; border-radius: 3px; font-weight: 700; margin-right: 2px;">{{ category_icons.get(c, '') }} {{ c }}</span>
+          {% endfor %}
+        </td>
+        <td class="mobile-hide text-xs cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{{ r.vendor_name }}</td>
+        <td class="mobile-hide text-xs cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{{ r.event_date or '-' }}</td>
+        <td class="text-right num cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{% if request.state.can_view_amounts %}{{ r.revenue|money }}{% else %}<span style="color: var(--ink-5);">—</span>{% endif %}</td>
+        <td class="text-right mobile-hide num text-red-600 cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{% if request.state.can_view_amounts %}{{ (r.expense + r.wage)|money }}{% else %}<span style="color: var(--ink-5);">—</span>{% endif %}</td>
+        <td class="text-right num font-bold cursor-pointer {% if r.profit >= 0 %}text-emerald-600{% else %}text-red-600{% endif %}" onclick="location.href='/projects/{{ r.id }}'">{% if request.state.can_view_amounts %}{{ r.profit|money }}{% else %}<span style="color: var(--ink-5);">—</span>{% endif %}</td>
+        <td class="cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">
+          <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:{{ r.unified.bg }}; color:{{ r.unified.color }}; font-size:11px; font-weight:700; white-space:nowrap;">{{ r.unified.label }}</span>
+          {% if r.is_auto_changed %}<span title="행사일 기준 자동 전환 (DB 미저장)" style="display:inline-block; margin-left:3px; font-size:10px;">✨</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not rows %}
+      <tr><td colspan="10" class="text-center py-8 text-slate-400">
+        {% if selected_cats %}선택한 항목에 해당하는 프로젝트가 없습니다.{% else %}아직 프로젝트가 없습니다.{% endif %}
+      </td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 일괄 수정 폼 (숨김) -->
+<form id="bulk-form" method="post" action="/projects/bulk-update" style="display: none;">
+  <input type="hidden" name="project_ids" id="bulk-ids">
+  <input type="hidden" name="field" id="bulk-field-hidden">
+  <input type="hidden" name="value" id="bulk-value-hidden">
+</form>
+
+<script>
+function toggleAll(master) {
+  document.querySelectorAll('.prj-check').forEach(c => c.checked = master.checked);
+  updateCount();
+}
+function updateCount() {
+  const n = document.querySelectorAll('.prj-check:checked').length;
+  document.getElementById('bulk-count').textContent = n;
+  document.getElementById('bulk-bar').style.display = n > 0 ? '' : 'none';
+}
+function clearSelection() {
+  document.querySelectorAll('.prj-check').forEach(c => c.checked = false);
+  document.getElementById('check-all').checked = false;
+  updateCount();
+}
+function submitBulk() {
+  const ids = Array.from(document.querySelectorAll('.prj-check:checked')).map(c => c.value);
+  if (ids.length === 0) { alert('선택된 프로젝트가 없습니다.'); return; }
+  const value = document.getElementById('bulk-unified').value;
+  if (!value) { alert('변경할 상태를 선택하세요.'); return; }
+  // 통합 상태 → 백엔드 필드 매핑
+  // 입금완료/미수금 → settlement_status 변경 (자동으로 status=완료 처리)
+  // 진행중/준비중/취소 → status 변경
+  let field, sendValue;
+  if (value === '입금완료' || value === '미수금') {
+    field = 'settlement_status';
+    sendValue = value;
+  } else {
+    field = 'status';
+    sendValue = value;
+  }
+  if (!confirm(`선택한 ${ids.length}개 프로젝트의 상태를 "${value}"(으)로 변경하시겠습니까?`)) return;
+  document.getElementById('bulk-ids').value = ids.join(',');
+  document.getElementById('bulk-field-hidden').value = field;
+  document.getElementById('bulk-value-hidden').value = sendValue;
+  document.getElementById('bulk-form').submit();
+}
+</script>
+
+<style>
+  .cat-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 12px; border: 1.5px solid var(--line); border-radius: 999px;
+    font-size: 13px; font-weight: 600;
+    background: white; color: var(--ink-2);
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .cat-chip:hover { background: var(--surface-2); }
+  .cat-chip.active {
+    background: #0A0E1A; color: white; border-color: #0A0E1A;
+  }
+  .cat-chip-count {
+    background: rgba(0,0,0,0.08);
+    padding: 1px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+  }
+  .cat-chip.active .cat-chip-count {
+    background: rgba(255,255,255,0.2);
+  }
+</style>
+
+{% endblock %}

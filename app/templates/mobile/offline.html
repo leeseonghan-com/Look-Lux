@@ -1,0 +1,14 @@
+{% extends "mobile/base.html" %}
+{% block page_title %}오프라인{% endblock %}
+{% block tabbar %}{% endblock %}
+
+{% block content %}
+<div style="text-align: center; padding: 80px 24px;">
+  <div style="font-size: 64px; margin-bottom: 16px;">📡</div>
+  <div style="font-size: 18px; font-weight: 800; margin-bottom: 8px;">인터넷 연결이 없습니다</div>
+  <div style="font-size: 14px; color: #71717A; line-height: 1.6; margin-bottom: 24px;">
+    네트워크에 다시 연결되면<br>자동으로 정상 작동합니다
+  </div>
+  <button onclick="location.reload()" class="btn btn-primary">🔄 다시 시도</button>
+</div>
+{% endblock %}

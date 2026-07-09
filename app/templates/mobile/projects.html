@@ -1,0 +1,43 @@
+{% extends "mobile/base.html" %}
+{% set active_tab = 'projects' %}
+{% set back_url = '/m/' %}
+{% block page_title %}프로젝트{% endblock %}
+{% block header_right %}<a href="/m/project/new" style="background:#0A0E1A; color:white; padding:6px 12px; border-radius:8px; font-size:13px; font-weight:700; text-decoration:none;">+ 등록</a>{% endblock %}
+
+{% block content %}
+
+{% if request.query_params.get('deleted') == '1' %}
+<div class="m-card" style="background: #FEE2E2; border-left: 4px solid #DC2626; padding: 12px 14px; margin-bottom: 12px;">
+  <div style="font-size: 13px; font-weight: 700; color: #991B1B;">🗑 프로젝트가 삭제되었습니다.</div>
+  <div style="font-size: 11px; color: #7F1D1D; margin-top: 2px;">관련 비용·알바 근태도 함께 삭제되었습니다.</div>
+</div>
+{% endif %}
+
+{% if projects %}
+<div class="m-card" style="padding: 0;">
+  {% for p in projects %}
+  <a href="/m/project/{{ p.id }}" class="list-item">
+    <div class="list-item-inner">
+      <div class="list-item-title">{{ p.name }}</div>
+      <div class="list-item-sub">
+        {{ p.event_date or '날짜 미정' }} · {{ p.code }}
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: end; gap: 4px;">
+      {% if p.status == '진행중' %}<span class="badge badge-blue">진행중</span>
+      {% elif p.status == '완료' %}<span class="badge badge-green">완료</span>
+      {% elif p.status == '취소' %}<span class="badge badge-red">취소</span>
+      {% else %}<span class="badge badge-gray">{{ p.status }}</span>{% endif %}
+      <span style="color: #A1A1AA; font-size: 18px; line-height: 1;">›</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div style="text-align: center; padding: 60px 20px; color: #71717A;">
+  <div style="font-size: 48px; margin-bottom: 12px;">📋</div>
+  <div style="font-size: 15px; font-weight: 600;">등록된 프로젝트가 없습니다</div>
+</div>
+{% endif %}
+
+{% endblock %}

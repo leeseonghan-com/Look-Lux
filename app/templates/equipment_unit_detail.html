@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}{{ u.asset_code }}{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/equipment/{{ eq.id }}" class="text-sm" style="color: var(--ink-4);">← {{ eq.name }}</a>
+  <div class="flex items-start justify-between mt-2 flex-wrap gap-3">
+    <div>
+      <h1 class="page-title">{{ u.asset_code }}</h1>
+      <p class="page-sub">{{ eq.name }} · {{ eq.manufacturer }} {{ eq.model }}</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="/equipment/labels?ids={{ u.id }}" class="btn-secondary" target="_blank">🏷️ QR 라벨</a>
+      <span class="badge badge-dot {% if u.status == '보유중' %}badge-green{% elif u.status == '대여중' %}badge-orange{% elif u.status == '수리중' %}badge-red{% else %}badge-gray{% endif %} text-sm py-2 px-3">{{ u.status }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- 기본 정보 (편집 가능) -->
+<form method="post" action="/equipment/unit/{{ u.id }}/edit" class="card mb-5">
+  <h2 class="text-base font-bold mb-4" style="color: var(--ink);">📋 기본 정보</h2>
+  <div class="grid md:grid-cols-3 gap-4">
+    <div>
+      <label class="label">관리코드 *</label>
+      <input name="asset_code" class="input font-bold" value="{{ u.asset_code }}" required>
+    </div>
+    <div>
+      <label class="label">시리얼 번호</label>
+      <input name="serial_number" class="input" value="{{ u.serial_number }}">
+    </div>
+    <div>
+      <label class="label">현재 상태</label>
+      <select name="status" class="input">
+        {% for s in ['보유중', '대여중', '수리중', '폐기'] %}
+        <option value="{{ s }}" {% if u.status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="label">구입처</label>
+      <input name="purchase_vendor" class="input" value="{{ u.purchase_vendor }}">
+    </div>
+    <div>
+      <label class="label">구입일자</label>
+      <input name="purchase_date" type="date" class="input" value="{{ u.purchase_date or '' }}">
+    </div>
+    <div>
+      <label class="label">구입금액</label>
+      <input name="purchase_price" type="text" class="input num money-input" value="{{ u.purchase_price }}">
+    </div>
+    <div>
+      <label class="label">1일 렌탈가</label>
+      <input name="rental_price_daily" type="text" class="input num money-input" value="{{ u.rental_price_daily }}">
+    </div>
+    <div>
+      <label class="label">보관 위치</label>
+      <input name="location" class="input" value="{{ u.location }}" placeholder="창고 A-3">
+    </div>
+    <div>
+      <label class="label">관리 부서</label>
+      <input name="department" class="input" value="{{ u.department }}" placeholder="예: 운영팀">
+    </div>
+    <div>
+      <label class="label">담당자</label>
+      <input name="manager" class="input" value="{{ u.manager }}" placeholder="이름">
+    </div>
+    <div>
+      <label class="label">최근 점검일</label>
+      <input name="last_check_date" type="date" class="input" value="{{ u.last_check_date or '' }}">
+    </div>
+    <div class="md:col-span-3">
+      <label class="label">메모</label>
+      <textarea name="memo" rows="2" class="input">{{ u.memo }}</textarea>
+    </div>
+  </div>
+  <div class="flex gap-2 mt-4">
+    <button class="btn-primary">💾 저장</button>
+    <form method="post" action="/equipment/unit/{{ u.id }}/delete" class="inline" onsubmit="return confirm('이 개체와 모든 이력을 영구 삭제합니다. 진행하시겠습니까?')">
+      <button type="submit" class="btn-danger">개체 삭제</button>
+    </form>
+  </div>
+</form>
+
+<!-- 유지보수 + 대여 -->
+<div class="grid md:grid-cols-2 gap-5">
+
+  <!-- 유지보수 이력 -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-bold" style="color: var(--ink);">🔧 유지보수 이력</h2>
+      <span class="text-xs" style="color: var(--ink-4);">총 수리비 <span class="font-bold num" style="color: var(--ink);">{{ total_maintenance_cost|money }}원</span></span>
+    </div>
+
+    <!-- 추가 폼 -->
+    <details class="mb-4">
+      <summary class="cursor-pointer text-sm font-semibold" style="color: var(--link);">+ 이력 추가</summary>
+      <form method="post" action="/equipment/unit/{{ u.id }}/maintenance/new" class="mt-3 space-y-2 p-3 rounded-lg" style="background: var(--surface-2);">
+        <div class="grid grid-cols-2 gap-2">
+          <input type="date" name="log_date" class="input text-sm" required value="{{ today or '' }}">
+          <select name="log_type" class="input text-sm">
+            {% for t in ['점검', '고장', 'AS', '수리', '청소', '펌웨어', '기타'] %}
+            <option value="{{ t }}">{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <input name="title" class="input text-sm" placeholder="제목 (예: 램프 교체)" required>
+        <textarea name="description" rows="2" class="input text-sm" placeholder="상세 내용"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <input name="vendor" class="input text-sm" placeholder="AS 업체">
+          <input name="cost" type="text" class="input text-sm num money-input" placeholder="수리비" value="0">
+        </div>
+        <select name="status_after" class="input text-sm">
+          <option value="">처리 후 상태 (선택 — 미선택 시 유지)</option>
+          {% for s in ['보유중', '수리중', '폐기'] %}
+          <option value="{{ s }}">{{ s }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn-primary w-full text-sm py-2">기록 추가</button>
+      </form>
+    </details>
+
+    <div class="space-y-2 max-h-96 overflow-y-auto">
+      {% for m in maintenance %}
+      <div class="p-3 rounded-lg border" style="border-color: var(--line-2);">
+        <div class="flex items-start justify-between">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="badge badge-{% if m.type == '고장' or m.type == 'AS' or m.type == '수리' %}red{% else %}blue{% endif %} text-[10px]">{{ m.type }}</span>
+              <span class="text-xs" style="color: var(--ink-4);">{{ m.date }}</span>
+              {% if m.cost %}
+              <span class="text-xs font-bold" style="color: var(--negative);">{{ m.cost|money }}원</span>
+              {% endif %}
+            </div>
+            <div class="font-semibold text-sm">{{ m.title }}</div>
+            {% if m.description %}
+            <div class="text-xs whitespace-pre-line mt-1" style="color: var(--ink-3);">{{ m.description }}</div>
+            {% endif %}
+            {% if m.vendor %}
+            <div class="text-xs mt-1" style="color: var(--ink-4);">업체: {{ m.vendor }}</div>
+            {% endif %}
+          </div>
+          <form method="post" action="/equipment/maintenance/{{ m.id }}/delete" onsubmit="return confirm('삭제?')">
+            <button class="text-red-500 text-xs">✕</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+      {% if not maintenance %}
+      <div class="text-center py-6 text-sm" style="color: var(--ink-4);">유지보수 기록 없음</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 대여 이력 -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-bold" style="color: var(--ink);">📦 대여 이력</h2>
+    </div>
+
+    <details class="mb-4">
+      <summary class="cursor-pointer text-sm font-semibold" style="color: var(--link);">+ 반출 등록</summary>
+      <form method="post" action="/equipment/unit/{{ u.id }}/rental/new" class="mt-3 space-y-2 p-3 rounded-lg" style="background: var(--surface-2);">
+        <select name="project_id" class="input text-sm">
+          <option value="">프로젝트 (선택)</option>
+          {% for p in projects %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <div class="text-xs mb-1" style="color: var(--ink-4);">반출일 *</div>
+            <input type="date" name="out_date" class="input text-sm" required>
+          </div>
+          <div>
+            <div class="text-xs mb-1" style="color: var(--ink-4);">반입일 (선택)</div>
+            <input type="date" name="in_date" class="input text-sm">
+          </div>
+        </div>
+        <input name="destination" class="input text-sm" placeholder="대여 장소 (예: OO홀)">
+        <textarea name="note" rows="2" class="input text-sm" placeholder="메모"></textarea>
+        <button class="btn-primary w-full text-sm py-2">반출 등록</button>
+      </form>
+    </details>
+
+    <div class="space-y-2 max-h-96 overflow-y-auto">
+      {% for r in rentals %}
+      <div class="p-3 rounded-lg border" style="border-color: var(--line-2);">
+        <div class="flex items-start justify-between">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-1">
+              {% if r.in_date %}
+              <span class="badge badge-green text-[10px]">반입 완료</span>
+              {% else %}
+              <span class="badge badge-orange text-[10px]">대여 중</span>
+              {% endif %}
+              <span class="text-xs" style="color: var(--ink-4);">
+                {{ r.out_date }} → {{ r.in_date or '진행중' }}
+              </span>
+            </div>
+            <div class="font-semibold text-sm">
+              {% if r.project_name %}[{{ r.project_name }}] {% endif %}{{ r.destination or '장소 미기재' }}
+            </div>
+            {% if r.note %}
+            <div class="text-xs mt-1" style="color: var(--ink-3);">{{ r.note }}</div>
+            {% endif %}
+          </div>
+          <div class="flex flex-col gap-1">
+            {% if not r.in_date %}
+            <form method="post" action="/equipment/rental/{{ r.id }}/return">
+              <button class="text-xs px-2 py-1 rounded font-semibold" style="background: var(--positive); color: white;">반입 처리</button>
+            </form>
+            {% endif %}
+            <form method="post" action="/equipment/rental/{{ r.id }}/delete" onsubmit="return confirm('삭제?')">
+              <button class="text-red-500 text-xs">✕</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      {% if not rentals %}
+      <div class="text-center py-6 text-sm" style="color: var(--ink-4);">대여 기록 없음</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

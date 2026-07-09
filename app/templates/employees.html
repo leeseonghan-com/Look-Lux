@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}직원 관리{% endblock %}
+{% block content %}
+
+<div class="mb-5 flex items-center justify-between flex-wrap gap-3">
+  <div>
+    <h1 class="page-title">👥 직원 관리</h1>
+    <p class="page-sub">직원 계정을 추가하고 사용 가능한 기능을 설정합니다.</p>
+  </div>
+  <a href="/employees/new" class="btn-primary">+ 직원 추가</a>
+</div>
+
+{% if request.query_params.get('created') %}
+<div class="card mb-3" style="background: #ECFDF5; border-color: #A7F3D0; padding: 10px 16px;">
+  <div class="text-sm font-bold" style="color: #047857;">✓ 직원이 추가되었습니다.</div>
+</div>
+{% elif request.query_params.get('updated') %}
+<div class="card mb-3" style="background: #ECFDF5; border-color: #A7F3D0; padding: 10px 16px;">
+  <div class="text-sm font-bold" style="color: #047857;">✓ 정보가 저장되었습니다.</div>
+</div>
+{% elif request.query_params.get('deleted') %}
+<div class="card mb-3" style="background: #FEE2E2; border-color: #FCA5A5; padding: 10px 16px;">
+  <div class="text-sm font-bold" style="color: #991B1B;">✓ 직원이 비활성화되었습니다.</div>
+</div>
+{% endif %}
+
+<div class="card overflow-x-auto" style="padding: 0;">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th>아이디</th>
+        <th>이름</th>
+        <th>구분</th>
+        <th>역할</th>
+        <th class="mobile-hide">전화번호</th>
+        <th>활성 권한</th>
+        <th class="text-center">관리</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="font-bold text-xs" style="color: var(--gold-2);">{{ r.username }}</td>
+        <td class="font-semibold">
+          {{ r.name }}
+          {% if r.is_self %}<span style="display:inline-block; margin-left:4px; padding:1px 6px; background:#DBEAFE; color:#1E40AF; font-size:10px; border-radius:3px; font-weight:700;">본인</span>{% endif %}
+        </td>
+        <td>
+          {% set type_colors = {'관리자':'#7C3AED', '정직원':'#059669', '알바생':'#F59E0B'} %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:{{ type_colors.get(r.employee_type, '#94A3B8') }}22; color:{{ type_colors.get(r.employee_type, '#94A3B8') }}; font-size:11px; font-weight:700;">{{ r.employee_type }}</span>
+        </td>
+        <td>
+          {% if r.role == 'admin' %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#FEE2E2; color:#991B1B; font-size:11px; font-weight:700;">🛡 관리자</span>
+          {% else %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#F3F4F6; color:#6B7280; font-size:11px; font-weight:700;">👤 직원</span>
+          {% endif %}
+        </td>
+        <td class="mobile-hide text-xs" style="color: var(--ink-4);">{{ r.phone or '-' }}</td>
+        <td class="text-xs">
+          {% if r.role == 'admin' %}
+          <span style="color: #DC2626; font-weight: 700;">모든 권한</span>
+          {% else %}
+          <span style="color: var(--ink-4);">{{ r.perm_count }} / {{ r.perm_total }}</span>
+          {% endif %}
+        </td>
+        <td class="text-center whitespace-nowrap">
+          <a href="/employees/{{ r.id }}/edit" class="text-xs font-semibold hover:underline" style="color: var(--gold-2);">수정</a>
+          {% if not r.is_self %}
+          <span style="color: var(--line); margin: 0 4px;">·</span>
+          <form method="post" action="/employees/{{ r.id }}/delete" style="display:inline;"
+                onsubmit="return confirm('직원 [{{ r.name }}] 계정을 비활성화하시겠습니까?');">
+            <button type="submit" style="background: none; border: none; color: #DC2626; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;">삭제</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not rows %}
+      <tr><td colspan="7" class="text-center py-8" style="color: var(--ink-4);">등록된 직원이 없습니다.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card mt-4" style="background: #FFFBEB; border-color: #FDE68A; padding: 14px 18px;">
+  <div class="text-sm font-bold mb-2" style="color: #92400E;">💡 권한 시스템 안내</div>
+  <ul class="text-xs space-y-1" style="color: #92400E; line-height: 1.7;">
+    <li>· <b>관리자</b>는 모든 기능 사용 + 모든 금액 표시 + 직원 계정 관리 가능</li>
+    <li>· <b>직원</b>은 관리자가 활성화한 메뉴만 접근 가능</li>
+    <li>· "금액 조회 권한"을 끄면 매출/이익/단가/일당이 숨김 처리됨 (등록은 가능)</li>
+    <li>· 직원 비밀번호는 수정 화면에서 변경 가능</li>
+  </ul>
+</div>
+
+{% endblock %}

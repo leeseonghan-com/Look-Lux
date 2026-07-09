@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}새 품목{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <a href="/items" class="text-sm" style="color: var(--text-mid);">← 단가표</a>
+  <h1 class="page-title mt-2">+ 새 품목 추가</h1>
+  <p class="page-sub">납품가 / 렌탈가를 함께 입력할 수 있습니다. 사용하지 않는 가격은 0으로 두면 됩니다.</p>
+</div>
+
+<form method="post" action="/items/new" class="space-y-5 max-w-3xl">
+
+  <!-- 안내 -->
+  <div class="card" style="background: linear-gradient(135deg, #0A0E1A 0%, #1E293B 100%); color: white; padding: 16px 20px; border: none;">
+    <div class="text-sm font-bold mb-2">💎 한 품목에 두 가격을 모두 입력</div>
+    <div class="text-xs" style="opacity: 0.85; line-height: 1.7;">
+      <div>· 납품 단가만 입력 → <span style="background:#DBEAFE; color:#1E40AF; padding:1px 6px; border-radius:3px;">📦 납품</span></div>
+      <div>· 렌탈 단가만 입력 → <span style="background:#FED7AA; color:#9A3412; padding:1px 6px; border-radius:3px;">🎬 렌탈</span></div>
+      <div>· 둘 다 입력 → <span style="background:#FEF3C7; color:#92400E; padding:1px 6px; border-radius:3px;">💎 겸용</span> (견적서 종류에 맞게 자동 적용)</div>
+    </div>
+  </div>
+
+  <!-- 기본 정보 -->
+  <div class="card">
+    <h2 class="font-serif text-lg font-bold mb-4" style="color: var(--navy);">📝 기본 정보</h2>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div>
+        <label class="label">품목 코드</label>
+        <input name="code" class="input" value="{{ suggested_code }}" placeholder="자동 생성됨">
+        <p class="text-xs mt-1" style="color: var(--text-mid);">비워두면 자동 생성</p>
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">품목명 *</label>
+        <input name="name" class="input" required placeholder="예: LED 무빙라이트 230W">
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">규격 / 사양</label>
+        <input name="spec" class="input" placeholder="예: Beam/Spot/Wash">
+      </div>
+      <div>
+        <label class="label">단위</label>
+        <input name="unit" class="input" value="EA" placeholder="EA / SET / 장 / m">
+      </div>
+    </div>
+  </div>
+
+  <!-- 납품 단가 -->
+  <div class="card" style="border-left: 4px solid #2563EB;">
+    <h2 class="font-serif text-lg font-bold mb-2" style="color: #1E40AF;">📦 납품(판매) 단가</h2>
+    <p class="text-xs mb-4" style="color: var(--text-mid);">※ 견적서에는 <strong>납품 단가</strong>가 자동 적용됩니다. 수입가·대리점가는 외부 노출되지 않습니다.</p>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div>
+        <label class="label">수입단가</label>
+        <input name="import_price" type="text" class="input num money-input" value="0" placeholder="0">
+      </div>
+      <div>
+        <label class="label">대리점가</label>
+        <input name="dealer_price" type="text" class="input num money-input" value="0" placeholder="0">
+      </div>
+      <div>
+        <label class="label">납품 단가 <span style="color: #2563EB; font-weight: 700;">(견적용)</span></label>
+        <input name="consumer_price" type="text" class="input num money-input" value="0" placeholder="0">
+      </div>
+    </div>
+  </div>
+
+  <!-- 렌탈 단가 -->
+  <div class="card" style="border-left: 4px solid #C2410C;">
+    <h2 class="font-serif text-lg font-bold mb-2" style="color: #9A3412;">🎬 렌탈(대여) 단가</h2>
+    <p class="text-xs mb-4" style="color: var(--text-mid);">※ 1일 단가 × 렌탈 일수로 견적서가 자동 계산됩니다.</p>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="label">1일 단가 <span style="color: #C2410C; font-weight: 700;">(견적용)</span></label>
+        <input name="rental_daily" type="text" class="input num money-input" value="0" placeholder="0">
+      </div>
+      <div>
+        <label class="label">보증금</label>
+        <input name="rental_deposit" type="text" class="input num money-input" value="0" placeholder="0">
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <label class="label">메모</label>
+    <input name="memo" class="input" placeholder="비고 / 특이사항">
+  </div>
+
+  <div class="flex gap-3 max-w-md ml-auto">
+    <a href="/items" class="btn-secondary">취소</a>
+    <button class="btn-gold flex-1">💾 저장</button>
+  </div>
+</form>
+
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "mobile/base.html" %}
+{% set active_tab = 'equipment' %}
+{% set back_url = '/m/equipment' %}
+{% block page_title %}{{ unit.asset_code }}{% endblock %}
+
+{% block content %}
+
+<div class="m-card">
+  <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
+    <div style="flex: 1; min-width: 0;">
+      <div style="font-size: 12px; color: #71717A; font-weight: 600; margin-bottom: 4px;">{{ eq.manufacturer or '' }}</div>
+      <div style="font-size: 22px; font-weight: 800; line-height: 1.2; letter-spacing: -0.02em;">{{ eq.name }}</div>
+      <div style="font-size: 14px; color: #52525B; margin-top: 4px;">{{ eq.model or '' }}</div>
+    </div>
+    <div>
+      {% if unit.status == '보유중' %}<span class="badge badge-green">✓ 보유중</span>
+      {% elif unit.status == '대여중' %}<span class="badge badge-blue">📤 대여중</span>
+      {% elif unit.status == '수리중' %}<span class="badge badge-yellow">🔧 수리중</span>
+      {% else %}<span class="badge badge-gray">{{ unit.status }}</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-title">기본 정보</div>
+  <div style="display: grid; grid-template-columns: 100px 1fr; gap: 6px 12px; font-size: 14px;">
+    <div style="color: #71717A;">관리코드</div><div style="font-weight: 700; color: #C9A961;">{{ unit.asset_code }}</div>
+    <div style="color: #71717A;">시리얼</div><div>{{ unit.serial_number or '—' }}</div>
+    <div style="color: #71717A;">관리부서</div><div>{{ unit.department or '—' }}</div>
+    <div style="color: #71717A;">담당자</div><div>{{ unit.manager or '—' }}</div>
+    <div style="color: #71717A;">보관위치</div><div>{{ unit.location or '—' }}</div>
+    <div style="color: #71717A;">구입처</div><div>{{ unit.purchase_vendor or '—' }}</div>
+    <div style="color: #71717A;">구입일</div><div>{{ unit.purchase_date or '—' }}</div>
+    {% if request.state.can_view_amounts %}
+    <div style="color: #71717A;">구입금액</div><div>{{ '{:,}'.format(unit.purchase_price) }}원</div>
+    {% if unit.rental_price_daily %}
+    <div style="color: #71717A;">1일 렌탈가</div><div>{{ '{:,}'.format(unit.rental_price_daily) }}원</div>
+    {% endif %}
+    {% endif %}
+    {% if unit.last_check_date %}
+    <div style="color: #71717A;">최근 점검</div><div>{{ unit.last_check_date }}</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-title">📝 점검/수리 이력 추가</div>
+  <form method="post" action="/m/equipment/{{ unit.id }}/maintenance">
+    <div class="field">
+      <label>유형</label>
+      <select name="action_type" required>
+        <option value="점검">🔍 점검</option>
+        <option value="고장">⚠️ 고장 발견</option>
+        <option value="수리">🔧 수리</option>
+        <option value="AS">📞 AS 의뢰</option>
+        <option value="청소">🧹 청소</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>내용</label>
+      <textarea name="note" rows="2" placeholder="작업 내용을 입력하세요"></textarea>
+    </div>
+    <div class="field">
+      <label>비용 (선택)</label>
+      <input type="number" name="cost" value="0" min="0" inputmode="numeric">
+    </div>
+    <button type="submit" class="btn btn-primary">기록 추가</button>
+  </form>
+</div>
+
+{% if maint %}
+<div class="m-card" style="padding: 0;">
+  <div style="padding: 14px 16px 8px;"><div class="m-card-title" style="margin: 0;">최근 이력 ({{ maint|length }}건)</div></div>
+  {% for m in maint %}
+  <div class="list-item">
+    <div class="list-item-inner">
+      <div class="list-item-title">{{ m.log_type }} · {{ m.log_date }}</div>
+      <div class="list-item-sub">{{ m.description or m.title or '—' }}{% if m.cost and request.state.can_view_amounts %} · {{ '{:,}'.format(m.cost) }}원{% endif %}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if unit.memo %}
+<div class="m-card">
+  <div class="m-card-title">메모</div>
+  <div style="font-size: 14px; line-height: 1.5; white-space: pre-wrap;">{{ unit.memo }}</div>
+</div>
+{% endif %}
+
+{% endblock %}

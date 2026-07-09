@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}프로젝트로 등록 — {{ q.quote_number }}{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <a href="/quotes/{{ q.id }}" class="text-sm" style="color: var(--ink-4);">← 견적서로 돌아가기</a>
+  <h1 class="page-title mt-2">📋 견적서를 프로젝트로 등록</h1>
+  <p class="page-sub">{{ q.quote_number }} · {{ q.vendor_name }} · {{ q.total|money }}원 (VAT 포함)</p>
+</div>
+
+<!-- 안내 배너 -->
+<div class="card mb-4" style="background: linear-gradient(135deg, #0A0E1A 0%, #1E293B 100%); color: white; padding: 18px 22px;">
+  <div class="text-sm" style="opacity: 0.85;">✨ <b>수주가 확정되었습니다.</b> 견적서의 정보가 아래에 자동 반영되었습니다.</div>
+  <div class="text-xs mt-2" style="opacity: 0.75; line-height: 1.6;">
+    <b style="color: #FCD34D;">자동 반영된 항목:</b>
+    프로젝트명 · {% if default_event_date %}🗓️ 행사일({{ default_event_date }}) · {% endif %}💰 매출({{ default_amount_input|money }}원) ·
+    부가세 모드({% if default_vat_mode == 'cash' %}현금{% elif default_vat_mode == 'total' %}총액{% else %}공급가{% endif %})
+    {% if default_payment_method %} · 결제 방법({{ default_payment_method }}){% endif %}
+    {% if auto_categories %} · 카테고리({{ auto_categories|join(', ') }}){% endif %}
+    <br>필요하면 수정 후 [프로젝트 등록]을 눌러주세요.
+  </div>
+</div>
+
+<form method="post" action="/quotes/{{ q.id }}/to-project" id="prj-form">
+
+<div class="grid md:grid-cols-2 gap-4">
+
+  <!-- 좌: 프로젝트 정보 입력 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4">📌 프로젝트 정보</h2>
+
+    <div class="mb-3">
+      <label class="label">프로젝트 코드</label>
+      <input type="text" name="code" value="{{ default_code }}" class="input" required>
+    </div>
+
+    <div class="mb-3">
+      <label class="label">프로젝트명</label>
+      <input type="text" name="name" value="{{ default_name }}" class="input" required>
+    </div>
+
+    <div class="mb-3">
+      <label class="label">🗓️ 행사일
+        {% if default_event_date %}
+        <span style="font-size: 11px; color: #059669; font-weight: 600;">✨ 견적서에서 자동 입력됨</span>
+        {% else %}
+        <span style="color:#DC2626;">*권장</span>
+        {% endif %}
+      </label>
+      <input type="date" name="event_date" value="{{ default_event_date }}" class="input"
+             placeholder="YYYY-MM-DD" style="font-family: inherit;">
+      <div class="text-xs mt-1" style="color: var(--ink-4);">
+        💡 행사일을 입력하면 진행 상태가 자동 관리됩니다 (당일/이후 → 완료 + 미수금).
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="label">행사 장소</label>
+      <input type="text" name="location" value="" class="input" placeholder="예: 서울 코엑스 그랜드볼룸">
+    </div>
+
+    <div class="mb-3">
+      <label class="label">진행 상태</label>
+      <select name="status" class="input">
+        <option value="진행중" selected>진행중</option>
+        <option value="준비중">준비중</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- 우: 매출액 / 카테고리 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4">💰 매출 정보</h2>
+
+    <div class="mb-3">
+      <label class="label">
+        매출 입력 방식
+        <span style="font-size: 11px; color: #059669; font-weight: 600;">✨ 견적서에서 자동 선택됨</span>
+      </label>
+      <div class="flex gap-2 flex-wrap">
+        <label class="flex items-center gap-1 text-sm">
+          <input type="radio" name="vat_mode" value="supply"
+                 {% if default_vat_mode == 'supply' %}checked{% endif %} onchange="recalcVat()"> 공급가 입력 (VAT 10% 추가)
+        </label>
+        <label class="flex items-center gap-1 text-sm">
+          <input type="radio" name="vat_mode" value="total"
+                 {% if default_vat_mode == 'total' %}checked{% endif %} onchange="recalcVat()"> 총액 입력 (VAT 자동분리)
+        </label>
+        <label class="flex items-center gap-1 text-sm">
+          <input type="radio" name="vat_mode" value="cash"
+                 {% if default_vat_mode == 'cash' %}checked{% endif %} onchange="recalcVat()"> 💵 현금거래(무증빙)
+        </label>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="label" id="amount-label">
+        {% if default_vat_mode == 'total' %}총액 (VAT 포함){% elif default_vat_mode == 'cash' %}거래 금액 (현금){% else %}공급가액 (VAT 별도){% endif %}
+        — 콤마 입력 가능
+      </label>
+      <input type="text" name="amount_input" id="amount_input"
+             value="{{ '{:,}'.format(default_amount_input) }}" class="input num"
+             oninput="recalcVat()" required>
+    </div>
+
+    <!-- VAT 분해 표시 -->
+    <div class="card" style="background: #FFFBEB; border-color: #FDE68A; padding: 12px 14px; margin-top: 8px;">
+      <div class="flex justify-between text-sm mb-1">
+        <span>공급가</span>
+        <span class="num font-bold" id="disp-supply">{{ default_supply|money }}원</span>
+      </div>
+      <div class="flex justify-between text-sm mb-1">
+        <span>부가세 (10%)</span>
+        <span class="num font-bold" id="disp-vat">{{ default_vat|money }}원</span>
+      </div>
+      <div class="flex justify-between text-sm pt-1" style="border-top: 1px solid #FDE68A;">
+        <span class="font-bold">총 매출</span>
+        <span class="num font-bold" style="color: #C2410C;" id="disp-total">{{ default_total|money }}원</span>
+      </div>
+    </div>
+
+    <div class="mb-3 mt-4">
+      <label class="label">결제 방법
+        {% if default_payment_method %}
+        <span style="font-size: 11px; color: #059669; font-weight: 600;">✨ 견적서 결제조건에서 추정됨</span>
+        {% endif %}
+      </label>
+      <input type="text" name="payment_method" value="{{ default_payment_method }}" class="input" placeholder="예: 계좌이체 / 카드">
+    </div>
+
+    <!-- 카테고리 -->
+    <div class="mb-2">
+      <label class="label">
+        🏷️ 카테고리
+        {% if auto_categories %}
+        <span style="font-size: 11px; color: #059669; font-weight: 600;">✨ 자동 분류됨 (수정 가능)</span>
+        {% endif %}
+      </label>
+      <div class="flex flex-wrap gap-2 mt-1">
+        {% for cat in category_options %}
+        <label class="cat-checkbox" data-cat="{{ cat }}">
+          <input type="checkbox" name="cat_check" value="{{ cat }}"
+                 {% if cat in auto_categories %}checked{% endif %}
+                 onchange="updateCatsCSV()">
+          <span>{{ category_icons.get(cat, '📌') }} {{ cat }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <input type="hidden" name="categories_csv" id="categories_csv" value="{{ auto_categories|join(',') }}">
+    </div>
+  </div>
+</div>
+
+<!-- 특이사항 (품목표 자동 채움) -->
+<div class="card mt-4">
+  <h2 class="text-lg font-bold mb-3">📝 특이사항 / 메모</h2>
+  <div class="mb-3">
+    <label class="label">
+      특이사항 (견적서 품목표가 자동 입력되었습니다 — 수정 가능)
+    </label>
+    <textarea name="special_notes" class="input" rows="14" style="font-family: 'D2Coding', 'Consolas', monospace; font-size: 12px; line-height: 1.5; white-space: pre;">{{ items_text }}
+
+[견적서 정보]
+견적번호: {{ q.quote_number }}
+견적일: {{ q.quote_date }}
+{% if q.notes %}견적 비고: {{ q.notes }}{% endif %}</textarea>
+  </div>
+
+  <div>
+    <label class="label">내부 메모</label>
+    <textarea name="memo" class="input" rows="3" placeholder="내부 관리용 메모 (선택)"></textarea>
+  </div>
+</div>
+
+<!-- 견적서 품목 요약 (참고용) -->
+<div class="card mt-4">
+  <h2 class="text-lg font-bold mb-3">📦 견적서 품목 ({{ items|length }}건)</h2>
+  <div class="overflow-x-auto">
+    <table class="dt text-xs">
+      <thead>
+        <tr>
+          <th style="width:40px;">#</th>
+          <th>품목명</th>
+          <th>규격</th>
+          <th class="text-right" style="width:60px;">수량</th>
+          <th style="width:50px;">단위</th>
+          <th class="text-right" style="width:100px;">단가</th>
+          <th class="text-right" style="width:110px;">금액</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it.seq }}</td>
+          <td class="font-semibold">{{ it.name }}</td>
+          <td>{{ it.spec or '-' }}</td>
+          <td class="text-right num">{{ '{:g}'.format(it.quantity) }}</td>
+          <td>{{ it.unit }}</td>
+          <td class="text-right num">{{ it.unit_price|money }}</td>
+          <td class="text-right num font-bold">{{ it.amount|money }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 최종 버튼 -->
+<div class="flex justify-end gap-3 mt-5 mb-8">
+  <a href="/quotes/{{ q.id }}" class="btn-secondary">취소</a>
+  <button type="submit" class="btn-primary" style="background: #059669; border-color: #059669; padding: 12px 28px; font-size: 15px;">
+    ✓ 프로젝트로 등록
+  </button>
+</div>
+
+</form>
+
+<style>
+.cat-checkbox {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 999px;
+  border: 1.5px solid #E5E7EB; background: white;
+  cursor: pointer; font-size: 13px; font-weight: 600;
+  transition: all 0.15s; user-select: none;
+}
+.cat-checkbox:has(input:checked) {
+  background: #0A0E1A; color: white; border-color: #0A0E1A;
+}
+.cat-checkbox input { display: none; }
+</style>
+
+<script>
+function updateCatsCSV() {
+  const checked = Array.from(document.querySelectorAll('input[name="cat_check"]:checked'))
+    .map(c => c.value);
+  document.getElementById('categories_csv').value = checked.join(',');
+}
+
+function recalcVat() {
+  const raw = document.getElementById('amount_input').value.replace(/[^\d]/g, '');
+  const amount = parseInt(raw || '0', 10);
+  const mode = document.querySelector('input[name="vat_mode"]:checked').value;
+  let supply, vat, total;
+  if (mode === 'total') {
+    total = amount;
+    supply = Math.round(total / 1.1);
+    vat = total - supply;
+  } else if (mode === 'cash') {
+    supply = amount; vat = 0; total = amount;
+  } else {
+    supply = amount;
+    vat = Math.round(supply * 0.1);
+    total = supply + vat;
+  }
+  const fmt = n => n.toLocaleString('ko-KR') + '원';
+  document.getElementById('disp-supply').textContent = fmt(supply);
+  document.getElementById('disp-vat').textContent = mode === 'cash' ? '— (무증빙)' : fmt(vat);
+  document.getElementById('disp-total').textContent = fmt(total);
+
+  // 입력 라벨도 모드에 맞춰 변경
+  const lbl = document.getElementById('amount-label');
+  if (lbl) {
+    if (mode === 'total')      lbl.firstChild.textContent = '총액 (VAT 포함) ';
+    else if (mode === 'cash')  lbl.firstChild.textContent = '거래 금액 (현금) ';
+    else                       lbl.firstChild.textContent = '공급가액 (VAT 별도) ';
+  }
+}
+
+// 금액 입력 시 자동 콤마
+document.getElementById('amount_input').addEventListener('blur', function(e) {
+  const raw = e.target.value.replace(/[^\d]/g, '');
+  if (raw) e.target.value = parseInt(raw, 10).toLocaleString('ko-KR');
+});
+
+// 페이지 로드 시 견적서 값 기반 미리보기 즉시 갱신
+recalcVat();
+</script>
+
+{% endblock %}

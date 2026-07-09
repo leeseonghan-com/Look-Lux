@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}완전 복원 완료{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <h1 class="page-title">🛡️ 완전 복원 완료</h1>
+  <p class="text-sm mt-1" style="color: var(--ink-4);">ZIP 백업으로부터 데이터베이스 · 이미지 파일이 복원되었습니다.</p>
+</div>
+
+<div class="card max-w-3xl" style="border-left: 4px solid #059669;">
+  <div class="text-lg font-bold mb-3" style="color: #059669;">{{ message }}</div>
+  <div class="text-sm" style="color: var(--ink-3); line-height: 1.7;">{{ detail|safe }}</div>
+
+  <div class="mt-5 p-4 rounded" style="background: #FEF3C7; border: 1px solid #FCD34D; color: #78350F;">
+    <div class="font-bold mb-2">📌 복원 직후 권장 절차</div>
+    <ol class="text-sm" style="padding-left: 18px; line-height: 1.7;">
+      <li>아래 <b>로그아웃</b> 버튼을 눌러 세션을 초기화</li>
+      <li>다시 로그인하여 데이터가 정상 표시되는지 확인</li>
+      <li>프로젝트 · 견적서 · 영수증 이미지 등이 잘 보이면 완료</li>
+      <li>혹시 문제가 있다면 <code>data/_pre_restore_backup/</code>에 자동 저장된 이전 데이터로 되돌릴 수 있습니다</li>
+    </ol>
+  </div>
+
+  <div class="flex gap-3 mt-5">
+    <a href="/login?logout=1" class="btn-primary flex-1 text-center" style="background:#0A0E1A;">🔐 로그아웃 후 재로그인</a>
+    <a href="/" class="btn-secondary">홈으로</a>
+    <a href="/backup" class="btn-secondary">데이터 관리</a>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-4">
+  <a href="/workers" class="text-sm text-slate-500">← 근무자 목록</a>
+  <h1 class="text-2xl font-bold text-slate-800 mt-2">✏️ 근무자 수정: {{ w.name }}</h1>
+</div>
+
+<form method="post" action="/workers/{{ w.id }}/edit" enctype="multipart/form-data" class="card space-y-4 max-w-3xl">
+
+  <!-- 사진 영역 -->
+  <div class="flex items-start gap-4 pb-4" style="border-bottom: 1px solid var(--line);">
+    <div>
+      {% if w.photo_filename %}
+      <img id="current-photo" src="/worker-photo/{{ w.photo_filename }}"
+           style="width:110px; height:110px; border-radius:8px; object-fit:cover; border:1px solid #E5E7EB;">
+      {% else %}
+      <div id="current-photo-placeholder" style="width:110px; height:110px; border-radius:8px; background:#F3F4F6; display:flex; align-items:center; justify-content:center; color:#9CA3AF; font-size:32px; font-weight:700;">{{ w.name[:1] }}</div>
+      {% endif %}
+      <img id="photo-preview" style="display:none; margin-top:6px; width:110px; height:110px; border-radius:8px; object-fit:cover; border:2px solid #2563EB;">
+    </div>
+    <div style="flex: 1;">
+      <label class="label">📷 사진 변경</label>
+      <input name="photo" type="file" accept="image/*" capture="user" class="input"
+             onchange="previewPhoto(this, 'photo-preview')">
+      <p class="text-xs text-slate-500 mt-1">JPG, PNG, WEBP — 자동으로 800px로 리사이즈됩니다.</p>
+      {% if w.photo_filename %}
+      <label class="flex items-center gap-2 mt-2 text-sm cursor-pointer">
+        <input type="checkbox" name="delete_photo" value="yes">
+        <span style="color: #DC2626;">현재 사진 삭제</span>
+      </label>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 기본 정보 -->
+  <div class="grid md:grid-cols-2 gap-4">
+    <div><label class="label">이름 *</label><input name="name" class="input" value="{{ w.name }}" required></div>
+    <div><label class="label">연락처</label><input name="phone" class="input" value="{{ w.phone }}" placeholder="010-0000-0000"></div>
+  </div>
+
+  <div>
+    <label class="label">주민등록번호 <span class="text-xs" style="color:#6B7280;">(선택)</span></label>
+    <input name="resident_no" class="input" value="{{ w.resident_no }}" placeholder="000000-0000000"
+           maxlength="14" pattern="[0-9-]*" inputmode="numeric" oninput="formatResident(this)">
+  </div>
+
+  <div>
+    <label class="label">구분</label>
+    <select name="employee_type" class="input" onchange="toggleWageType(this.value)">
+      <option value="알바" {% if (w.employee_type or '알바') == '알바' %}selected{% endif %}>🧢 알바 (일당)</option>
+      <option value="정직원" {% if w.employee_type == '정직원' %}selected{% endif %}>💼 정직원 (월급)</option>
+    </select>
+  </div>
+
+  <div id="wage-alba" {% if w.employee_type == '정직원' %}style="display:none;"{% endif %}>
+    <label class="label">기본 일당 (원)</label>
+    <input name="default_daily_wage" type="text" class="input num money-input" value="{{ w.default_daily_wage or 150000 }}">
+  </div>
+
+  <div id="wage-fulltime" {% if (w.employee_type or '알바') != '정직원' %}style="display:none;"{% endif %}>
+    <label class="label">월급 (원)</label>
+    <input name="monthly_salary" type="text" class="input num money-input" value="{{ w.monthly_salary or 0 }}">
+  </div>
+
+  <!-- 정직원 인사 정보 -->
+  <div id="hr-block" {% if (w.employee_type or '알바') != '정직원' %}style="display:none;"{% endif %}
+       style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 14px;">
+    <div class="text-sm font-bold mb-3" style="color: #1E40AF;">👔 인사 정보 (정직원)</div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="label" style="color: #1E3A8A;">입사일 *</label>
+        <input name="hire_date" type="date" class="input"
+               value="{{ w.hire_date.isoformat() if w.hire_date else '' }}">
+      </div>
+      <div>
+        <label class="label" style="color: #1E3A8A;">직책/직급</label>
+        <input name="position" class="input" value="{{ w.position }}" placeholder="예: 매니저, 팀장">
+      </div>
+      <div>
+        <label class="label" style="color: #1E3A8A;">재직 상태 *</label>
+        <select name="employment_status" class="input" id="emp-status-sel" onchange="toggleResignDate(this.value)">
+          {% for s in ['재직', '휴직', '퇴사'] %}
+          <option value="{{ s }}" {% if w.employment_status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div id="resign-date-block" {% if w.employment_status != '퇴사' %}style="display:none;"{% endif %}>
+        <label class="label" style="color: #B45309;">퇴사일</label>
+        <input name="resign_date" type="date" class="input"
+               value="{{ w.resign_date.isoformat() if w.resign_date else '' }}">
+        <div class="text-xs mt-1" style="color: #92400E;">⚠ 퇴사일은 퇴사 상태일 때만 저장됩니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div><label class="label">은행</label><input name="bank" class="input" value="{{ w.bank }}"></div>
+    <div><label class="label">계좌번호</label><input name="account" class="input" value="{{ w.account }}"></div>
+  </div>
+
+  <div><label class="label">메모</label><input name="memo" class="input" value="{{ w.memo }}"></div>
+
+  <div class="flex gap-2 pt-2">
+    <button class="btn-primary flex-1">저장</button>
+    <a href="/workers" class="btn-secondary">취소</a>
+  </div>
+</form>
+
+<script>
+function formatResident(input) {
+  const digits = input.value.replace(/\D/g, '').slice(0, 13);
+  if (digits.length > 6) {
+    input.value = digits.slice(0, 6) + '-' + digits.slice(6);
+  } else {
+    input.value = digits;
+  }
+}
+
+function previewPhoto(fileInput, previewId) {
+  const preview = document.getElementById(previewId);
+  if (!preview) return;
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) { preview.style.display = 'none'; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function toggleWageType(type) {
+  document.getElementById('wage-alba').style.display = (type === '알바') ? '' : 'none';
+  document.getElementById('wage-fulltime').style.display = (type === '정직원') ? '' : 'none';
+  const hr = document.getElementById('hr-block');
+  if (hr) hr.style.display = (type === '정직원') ? '' : 'none';
+}
+
+function toggleResignDate(status) {
+  const block = document.getElementById('resign-date-block');
+  if (block) block.style.display = (status === '퇴사') ? '' : 'none';
+}
+</script>
+
+{% endblock %}

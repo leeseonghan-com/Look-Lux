@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block content %}
+
+{# 신규 등록 시 사용할 타입 — URL ?type= 으로 전달, 없으면 알바 기본 #}
+{% set new_type = request.query_params.get('type') or '알바' %}
+{% set is_fulltime = (new_type == '정직원') %}
+
+<div class="mb-5 flex items-center justify-between flex-wrap gap-3">
+  <div>
+    <h1 class="page-title">👤 근무자 관리</h1>
+    <p class="page-sub">{% if is_fulltime %}정직원(출퇴근 버튼 사용){% else %}알바(일당 기록){% endif %}을 등록합니다. 상단 탭에서 전환할 수 있습니다.</p>
+  </div>
+</div>
+
+<!-- 정직원/알바 전환 탭 -->
+<div class="flex gap-2 mb-5 border-b" style="border-color: var(--line);">
+  <a href="/workers?type=알바" class="px-5 py-3 text-sm font-bold transition border-b-2"
+     style="border-color: {% if not is_fulltime %}#0A0E1A{% else %}transparent{% endif %}; color: {% if not is_fulltime %}#0A0E1A{% else %}var(--ink-4){% endif %};">
+    🧢 알바 등록
+  </a>
+  <a href="/workers?type=정직원" class="px-5 py-3 text-sm font-bold transition border-b-2"
+     style="border-color: {% if is_fulltime %}#0A0E1A{% else %}transparent{% endif %}; color: {% if is_fulltime %}#0A0E1A{% else %}var(--ink-4){% endif %};">
+    💼 정직원 등록
+  </a>
+</div>
+
+{% if request.query_params.get('created') %}
+<div class="card mb-3" style="background: #ECFDF5; border-color: #A7F3D0; padding: 10px 16px;">
+  <div class="text-sm font-bold" style="color: #047857;">✓ {{ request.query_params.get('created') }} 등록 완료</div>
+</div>
+{% endif %}
+
+{% if is_fulltime %}
+{# ============================================================ #}
+{# 정직원 등록 폼 — 월급 입력, 출퇴근 버튼 사용                  #}
+{# ============================================================ #}
+<div class="card mb-4" style="background: #EFF6FF; border-color: #BFDBFE;">
+  <h2 class="font-bold mb-3" style="color: #1E40AF;">💼 정직원 등록</h2>
+  <p class="text-xs mb-3" style="color: #1E3A8A;">정직원은 근태 관리 → "💼 정직원 출퇴근" 탭에서 출/퇴근 버튼으로 시간을 기록합니다.</p>
+  <form method="post" action="/workers/new" enctype="multipart/form-data" class="space-y-3">
+    <input type="hidden" name="employee_type" value="정직원">
+    <input type="hidden" name="default_daily_wage" value="0">
+
+    <div class="grid md:grid-cols-3 gap-3">
+      <div>
+        <label class="label">이름 *</label>
+        <input name="name" class="input" required>
+      </div>
+      <div>
+        <label class="label">연락처</label>
+        <input name="phone" class="input" placeholder="010-0000-0000">
+      </div>
+      <div>
+        <label class="label">주민등록번호 <span class="text-xs" style="color:#6B7280;">(선택, 숫자만)</span></label>
+        <input name="resident_no" class="input" placeholder="000000-0000000" maxlength="14"
+               pattern="[0-9-]*" inputmode="numeric"
+               oninput="formatResident(this)">
+      </div>
+      <div>
+        <label class="label">월급</label>
+        <input name="monthly_salary" type="text" class="input num money-input" value="3000000">
+      </div>
+      <div>
+        <label class="label">입사일 *</label>
+        <input name="hire_date" type="date" class="input" required>
+      </div>
+      <div>
+        <label class="label">직책/직급</label>
+        <input name="position" class="input" placeholder="예: 매니저, 팀장">
+      </div>
+      <div>
+        <label class="label">재직 상태</label>
+        <select name="employment_status" class="input">
+          <option value="재직" selected>재직중</option>
+          <option value="휴직">휴직</option>
+          <option value="퇴사">퇴사</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">은행</label>
+        <input name="bank" class="input">
+      </div>
+      <div>
+        <label class="label">계좌번호</label>
+        <input name="account" class="input">
+      </div>
+      <div class="md:col-span-3">
+        <label class="label">📷 사진 (선택)</label>
+        <input name="photo" type="file" accept="image/*" capture="user" class="input"
+               onchange="previewPhoto(this, 'photo-preview-ft')">
+        <img id="photo-preview-ft" style="display:none; margin-top:8px; max-width:120px; max-height:120px; border-radius:8px; border:1px solid #E5E7EB;">
+      </div>
+      <div class="md:col-span-3">
+        <label class="label">비고</label>
+        <input name="memo" class="input">
+      </div>
+    </div>
+    <button class="btn-primary w-full" style="background: #2563EB; border-color: #2563EB;">+ 정직원 추가</button>
+  </form>
+</div>
+{% else %}
+{# ============================================================ #}
+{# 알바 등록 폼 — 일당 입력                                     #}
+{# ============================================================ #}
+<div class="card mb-4">
+  <h2 class="font-bold text-slate-700 mb-3">🧢 알바 등록</h2>
+  <form method="post" action="/workers/new" enctype="multipart/form-data" class="space-y-3">
+    <input type="hidden" name="employee_type" value="알바">
+    <input type="hidden" name="monthly_salary" value="0">
+
+    <div class="grid md:grid-cols-3 gap-3">
+      <div>
+        <label class="label">이름 *</label>
+        <input name="name" class="input" required>
+      </div>
+      <div>
+        <label class="label">연락처</label>
+        <input name="phone" class="input" placeholder="010-0000-0000">
+      </div>
+      <div>
+        <label class="label">주민등록번호 <span class="text-xs" style="color:#6B7280;">(선택, 숫자만)</span></label>
+        <input name="resident_no" class="input" placeholder="000000-0000000" maxlength="14"
+               pattern="[0-9-]*" inputmode="numeric"
+               oninput="formatResident(this)">
+      </div>
+      <div>
+        <label class="label">기본 일당</label>
+        <input name="default_daily_wage" type="text" class="input num money-input" value="150000">
+      </div>
+      <div>
+        <label class="label">은행</label>
+        <input name="bank" class="input">
+      </div>
+      <div>
+        <label class="label">계좌번호</label>
+        <input name="account" class="input">
+      </div>
+      <div class="md:col-span-3">
+        <label class="label">📷 사진 (선택)</label>
+        <input name="photo" type="file" accept="image/*" capture="user" class="input"
+               onchange="previewPhoto(this, 'photo-preview-alba')">
+        <img id="photo-preview-alba" style="display:none; margin-top:8px; max-width:120px; max-height:120px; border-radius:8px; border:1px solid #E5E7EB;">
+      </div>
+      <div class="md:col-span-3">
+        <label class="label">비고</label>
+        <input name="memo" class="input">
+      </div>
+    </div>
+    <button class="btn-primary w-full">+ 알바 추가</button>
+  </form>
+</div>
+{% endif %}
+
+{# ============================================================ #}
+{# 검색 + 필터                                                    #}
+{# ============================================================ #}
+<div class="card mb-3" style="padding: 12px 16px;">
+  <form method="get" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+    <input type="hidden" name="type" value="{{ new_type }}">
+    <div style="flex:1; min-width:200px;">
+      <label class="label">🔍 근무자 검색 (이름·연락처·은행·메모)</label>
+      <input name="q" class="input" value="{{ search_q or '' }}" placeholder="예: 홍길동, 010-1234" autocomplete="off">
+    </div>
+    {% if is_fulltime %}
+    <div style="min-width:140px;">
+      <label class="label">재직 상태</label>
+      <select name="status" class="input" onchange="this.form.submit()">
+        <option value="" {% if not status_filter %}selected{% endif %}>전체</option>
+        <option value="재직" {% if status_filter == '재직' %}selected{% endif %}>재직중</option>
+        <option value="휴직" {% if status_filter == '휴직' %}selected{% endif %}>휴직</option>
+        <option value="퇴사" {% if status_filter == '퇴사' %}selected{% endif %}>퇴사</option>
+      </select>
+    </div>
+    {% endif %}
+    <button class="btn-primary" type="submit">검색</button>
+    {% if search_q or status_filter %}<a href="/workers?type={{ new_type }}" class="btn-secondary">초기화</a>{% endif %}
+  </form>
+</div>
+
+{# ============================================================ #}
+{# 근무자 목록 — 정직원/알바 둘 다 표시, 구분 컬럼 추가          #}
+{# ============================================================ #}
+<div class="card overflow-x-auto">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th style="width:60px;">사진</th>
+        <th>이름</th>
+        <th>구분</th>
+        <th>연락처</th>
+        <th>입사/퇴사</th>
+        <th>재직상태</th>
+        {% if request.state.can_view_amounts %}
+        <th class="text-right">기본 일당 / 월급</th>
+        {% endif %}
+        <th>계좌</th>
+        <th class="text-center">관리</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in workers %}
+      <tr>
+        <td>
+          {% if w.photo_filename %}
+          <img src="/worker-photo/{{ w.photo_filename }}" alt="{{ w.name }}"
+               style="width:42px; height:42px; border-radius:50%; object-fit:cover; border:1px solid #E5E7EB;">
+          {% else %}
+          <div style="width:42px; height:42px; border-radius:50%; background:#F3F4F6; display:flex; align-items:center; justify-content:center; color:#9CA3AF; font-size:11px; font-weight:700;">{{ w.name[:1] }}</div>
+          {% endif %}
+        </td>
+        <td class="font-semibold">{{ w.name }}</td>
+        <td>
+          {% if (w.employee_type or '알바') == '정직원' %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#DBEAFE; color:#1E40AF; font-size:11px; font-weight:700;">💼 정직원</span>
+          {% else %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#FEF3C7; color:#92400E; font-size:11px; font-weight:700;">🧢 알바</span>
+          {% endif %}
+        </td>
+        <td class="text-xs">{{ w.phone }}</td>
+        <td class="text-xs">
+          {% if w.hire_date %}<span style="color:#1E40AF;">입 {{ w.hire_date }}</span>{% else %}-{% endif %}
+          {% if w.resign_date %}<br><span style="color:#B45309;">퇴 {{ w.resign_date }}</span>{% endif %}
+        </td>
+        <td>
+          {% set st = w.employment_status or '재직' %}
+          {% if st == '재직' %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#D1FAE5; color:#047857; font-size:11px; font-weight:700;">✓ 재직중</span>
+          {% elif st == '휴직' %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#FEF3C7; color:#92400E; font-size:11px; font-weight:700;">⏸ 휴직</span>
+          {% elif st == '퇴사' %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#FEE2E2; color:#991B1B; font-size:11px; font-weight:700;">⊗ 퇴사</span>
+          {% endif %}
+        </td>
+        {% if request.state.can_view_amounts %}
+        <td class="num text-right text-xs">
+          {% if (w.employee_type or '알바') == '정직원' %}
+          월 {{ (w.monthly_salary or 0)|money }}원
+          {% else %}
+          일 {{ w.default_daily_wage|money }}원
+          {% endif %}
+        </td>
+        {% endif %}
+        <td class="text-xs">{{ w.bank }} {{ w.account }}</td>
+        <td class="text-center whitespace-nowrap">
+          <a href="/workers/{{ w.id }}/edit" class="text-slate-600 text-xs hover:text-slate-900 mr-2">수정</a>
+          <form method="post" action="/workers/{{ w.id }}/delete" class="inline" onsubmit="return confirm('정말 삭제하시겠습니까? (근무 기록은 유지됩니다)')">
+            <button class="text-red-500 text-xs">삭제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not workers %}
+      <tr><td colspan="{% if request.state.can_view_amounts %}9{% else %}8{% endif %}" class="text-center py-8" style="color: var(--ink-4);">등록된 근무자가 없습니다.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+// 주민등록번호 자동 하이픈 (6자리 입력 후 자동으로 - 삽입)
+function formatResident(input) {
+  const digits = input.value.replace(/\D/g, '').slice(0, 13);
+  if (digits.length > 6) {
+    input.value = digits.slice(0, 6) + '-' + digits.slice(6);
+  } else {
+    input.value = digits;
+  }
+}
+
+// 사진 미리보기
+function previewPhoto(fileInput, previewId) {
+  const preview = document.getElementById(previewId);
+  if (!preview) return;
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) { preview.style.display = 'none'; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+</script>
+
+{% endblock %}

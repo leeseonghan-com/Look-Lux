@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0A0E1A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="정산관리">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<title>{% block title %}정산관리{% endblock %}</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: 'Pretendard', -apple-system, system-ui, sans-serif; background: #F4F4F5; color: #18181B; -webkit-font-smoothing: antialiased; }
+  body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+
+  /* ===== 상단 헤더 ===== */
+  .m-header {
+    background: #0A0E1A; color: white;
+    padding: calc(12px + env(safe-area-inset-top)) 16px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .m-header h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .m-header .back { color: white; text-decoration: none; font-size: 22px; font-weight: 400; padding: 4px 8px; margin: -4px -8px -4px -8px; }
+  .m-header .right { font-size: 14px; color: #A1A1AA; }
+
+  /* ===== 컨텐츠 영역 ===== */
+  .m-content { padding: 16px; }
+
+  /* ===== 카드 ===== */
+  .m-card {
+    background: white; border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .m-card-title { font-size: 13px; font-weight: 700; color: #71717A; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+
+  /* ===== KPI 그리드 ===== */
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .kpi {
+    background: white; padding: 14px; border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .kpi .label { font-size: 12px; color: #71717A; font-weight: 600; }
+  .kpi .value { font-size: 26px; font-weight: 800; color: #0A0E1A; margin-top: 2px; line-height: 1.1; letter-spacing: -0.02em; }
+  .kpi .sub { font-size: 11px; color: #A1A1AA; margin-top: 2px; }
+  .kpi.accent { background: #0A0E1A; color: white; }
+  .kpi.accent .label { color: #A1A1AA; }
+  .kpi.accent .value { color: white; }
+
+  /* ===== 버튼 ===== */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 14px 18px; border-radius: 10px; border: none;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    text-decoration: none;
+    font-family: inherit;
+  }
+  .btn-primary { background: #0A0E1A; color: white; width: 100%; }
+  .btn-primary:active { background: #27272A; }
+  .btn-secondary { background: white; border: 1.5px solid #E4E4E7; color: #18181B; }
+  .btn-block { display: flex; width: 100%; }
+
+  /* ===== 입력폼 (구버전 + 신버전 통합) ===== */
+  .field, .m-field { margin-bottom: 14px; }
+  .field label, .m-label { display: block; font-size: 13px; font-weight: 600; color: #52525B; margin-bottom: 6px; }
+  .field input, .field select, .field textarea,
+  .m-input, .m-form input, .m-form select, .m-form textarea {
+    width: 100%; padding: 14px;
+    border: 1.5px solid #E4E4E7; border-radius: 10px;
+    font-size: 16px; font-family: inherit;
+    background: white;
+    -webkit-appearance: none;
+    box-sizing: border-box;
+    color: #18181B;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus,
+  .m-input:focus {
+    outline: none; border-color: #0A0E1A;
+  }
+  .m-form { display: flex; flex-direction: column; gap: 0; }
+
+  /* ===== 신규 모바일 버튼 (m-btn) ===== */
+  .m-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 14px 18px; border-radius: 10px; border: none;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    text-decoration: none; font-family: inherit;
+    background: #F4F4F5; color: #18181B;
+    width: 100%; box-sizing: border-box;
+  }
+  .m-btn-primary { background: #0A0E1A; color: white; }
+  .m-btn-primary:active { background: #27272A; }
+  .m-btn:active { opacity: 0.7; }
+
+  /* ===== 리스트 (장비/프로젝트 등) ===== */
+  .list-item {
+    background: white; padding: 14px 16px;
+    border-bottom: 1px solid #F4F4F5;
+    display: flex; align-items: center; justify-content: space-between;
+    text-decoration: none; color: #18181B;
+  }
+  .list-item:active { background: #F4F4F5; }
+  .list-item:first-child { border-radius: 12px 12px 0 0; }
+  .list-item:last-child { border-radius: 0 0 12px 12px; border-bottom: none; }
+  .list-item-inner { flex: 1; min-width: 0; }
+  .list-item-title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .list-item-sub { font-size: 12px; color: #71717A; }
+  .list-item .chev { color: #A1A1AA; font-size: 18px; }
+
+  /* ===== 배지 ===== */
+  .badge {
+    display: inline-block; padding: 3px 8px;
+    border-radius: 4px; font-size: 11px; font-weight: 700;
+  }
+  .badge-blue { background: #DBEAFE; color: #1E40AF; }
+  .badge-green { background: #D1FAE5; color: #047857; }
+  .badge-yellow { background: #FEF3C7; color: #92400E; }
+  .badge-red { background: #FEE2E2; color: #991B1B; }
+  .badge-gray { background: #F4F4F5; color: #52525B; }
+
+  /* ===== 하단 탭바 ===== */
+  .m-tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: white;
+    border-top: 1px solid #E4E4E7;
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    padding-bottom: env(safe-area-inset-bottom);
+    z-index: 100;
+  }
+  .tab {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 10px 4px; text-decoration: none; color: #71717A;
+    font-size: 10px; font-weight: 600;
+    gap: 3px;
+  }
+  .tab .ico { font-size: 22px; line-height: 1; }
+  .tab.active { color: #0A0E1A; }
+  .tab.scan-tab { background: #0A0E1A; color: white; margin: -8px 8px 0; border-radius: 100%; aspect-ratio: 1; align-self: center; max-width: 60px; max-height: 60px; }
+  .tab.scan-tab .ico { font-size: 26px; }
+  .tab.scan-tab.active { background: #C9A961; }
+
+  /* ===== 알림 ===== */
+  .alert {
+    background: #ECFDF5; border: 1px solid #A7F3D0; color: #047857;
+    padding: 12px 14px; border-radius: 10px; margin-bottom: 12px;
+    font-size: 13px; font-weight: 600;
+  }
+
+  /* 데스크톱에서도 보일 수 있게 */
+  @media (min-width: 768px) {
+    body { max-width: 480px; margin: 0 auto; background: white; box-shadow: 0 0 40px rgba(0,0,0,0.08); min-height: 100vh; }
+    .m-tabbar { max-width: 480px; left: 50%; transform: translateX(-50%); }
+  }
+</style>
+{% block head_extra %}{% endblock %}
+</head>
+<body>
+
+{% block header %}
+<div class="m-header">
+  <div style="display: flex; align-items: center; gap: 8px;">
+    {% if back_url %}<a href="{{ back_url }}" class="back">‹</a>{% endif %}
+    <h1>{% block page_title %}정산관리{% endblock %}</h1>
+  </div>
+  <div class="right">{% block header_right %}{% endblock %}</div>
+</div>
+{% endblock %}
+
+<div class="m-content">
+  {% block content %}{% endblock %}
+</div>
+
+{% block tabbar %}
+{% set perms = request.state.perms or {} %}
+{% set is_admin = request.state.is_admin %}
+<nav class="m-tabbar">
+  <a href="/m/" class="tab {% if active_tab == 'home' %}active{% endif %}">
+    <span class="ico">🏠</span><span>홈</span>
+  </a>
+  {% if is_admin or perms.get('projects') %}
+  <a href="/m/projects" class="tab {% if active_tab == 'projects' %}active{% endif %}">
+    <span class="ico">📋</span><span>프로젝트</span>
+  </a>
+  {% endif %}
+  {% if is_admin or perms.get('attendance') %}
+  <a href="/m/attendance" class="tab {% if active_tab == 'attendance' %}active{% endif %}">
+    <span class="ico">⏱</span><span>근태</span>
+  </a>
+  {% endif %}
+  {% if is_admin or perms.get('quotes') %}
+  <a href="/m/quotes" class="tab {% if active_tab == 'quotes' %}active{% endif %}">
+    <span class="ico">📄</span><span>견적</span>
+  </a>
+  {% endif %}
+  {% if is_admin or perms.get('equipment') or perms.get('products') %}
+  <a href="/m/equipment" class="tab {% if active_tab == 'equipment' %}active{% endif %}">
+    <span class="ico">📦</span><span>장비</span>
+  </a>
+  {% endif %}
+</nav>
+{% endblock %}
+
+<script>
+// Service Worker 등록
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+  });
+}
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

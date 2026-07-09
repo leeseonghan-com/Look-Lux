@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+{% block title %}견적 단가표{% endblock %}
+{% block content %}
+
+<div class="mb-5 flex items-center justify-between flex-wrap gap-3">
+  <div>
+    <h1 class="page-title">💰 견적 단가표</h1>
+    <p class="page-sub">견적서 작성 시 자동완성으로 불러올 <b>가격 정보 전용</b>. Q-001 코드로 관리됩니다.</p>
+  </div>
+  <div class="flex gap-2 flex-wrap">
+    <a href="/products/new" class="btn-primary" style="background:#1E40AF; border-color:#1E40AF;">+ 견적 품목 추가</a>
+  </div>
+</div>
+
+<div class="card mb-3" style="padding: 12px 16px;">
+  <form method="get" style="display:flex; gap:8px; align-items:end;">
+    <div style="flex:1;">
+      <label class="label">🔍 견적 품목 검색 (코드·이름·규격·카테고리·메모)</label>
+      <input name="q" class="input" value="{{ request.query_params.get('q', '') }}" placeholder="예: LED, 무빙라이트, I-001" autocomplete="off">
+    </div>
+    <button class="btn-primary" type="submit">검색</button>
+    {% if request.query_params.get('q') %}<a href="/products" class="btn-secondary">초기화</a>{% endif %}
+  </form>
+</div>
+
+{% if request.query_params.get('created') %}
+<div class="card mb-4" style="background: #ECFDF5; border-color: #A7F3D0; padding: 10px 16px;">
+  <div class="text-sm font-semibold" style="color: #047857;">✅ 새 견적 품목이 등록되었습니다.</div>
+</div>
+{% endif %}
+
+{% if request.query_params.get('deleted') %}
+<div class="card mb-4" style="background: #FEE2E2; border-color: #FCA5A5; padding: 10px 16px;">
+  <div class="text-sm font-semibold" style="color: #991B1B;">✓ {{ request.query_params.get('deleted') }}건이 삭제되었습니다.</div>
+</div>
+{% endif %}
+
+{% if request.query_params.get('bulk_updated') %}
+<div class="card mb-4" style="background: #ECFDF5; border-color: #A7F3D0; padding: 10px 16px;">
+  <div class="text-sm font-semibold" style="color: #047857;">
+    ✓ {{ request.query_params.get('bulk_updated') }}건 견적 품목의
+    [{{ {'consumer_price':'납품 단가','rental_daily':'렌탈/일','rental_deposit':'보증금','category':'분류','unit':'단위','memo':'메모'}.get(request.query_params.get('bulk_field'), '항목') }}]가 일괄 변경되었습니다.
+  </div>
+</div>
+{% endif %}
+
+<!-- 일괄 작업 바 (체크박스 선택 시 표시) -->
+<div id="bulk-bar" style="display:none; padding: 12px 16px; margin-bottom: 12px; background: #0A0E1A; color: white; border-radius: 10px;">
+  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+    <span style="font-size: 13px; font-weight: 700;">📝 <span id="bulk-count">0</span>개 선택됨</span>
+    <span style="opacity: 0.5;">|</span>
+    <select id="bulk-field" onchange="updateBulkValueUI()"
+            style="padding: 7px 12px; border-radius: 6px; border: none; background: white; color: #18181B; font-size: 13px; font-weight: 600;">
+      <option value="">— 변경 항목 —</option>
+      <optgroup label="💰 가격">
+        <option value="consumer_price">📦 납품 단가</option>
+        <option value="rental_daily">🎬 렌탈 1일 단가</option>
+        <option value="rental_deposit">🎬 렌탈 보증금</option>
+      </optgroup>
+      <optgroup label="기본 정보">
+        <option value="category">분류</option>
+        <option value="unit">단위</option>
+      </optgroup>
+      <option value="memo">메모</option>
+    </select>
+    <div id="bulk-value-wrap" style="display: none; flex: 1; min-width: 150px;">
+      <select id="bulk-value-category" class="bulk-value-input" style="display:none; padding: 7px 10px; border-radius: 6px; border: none; font-size: 13px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+        {% for cat in category_options %}
+        <option value="{{ cat }}">{{ category_icons.get(cat, '📦') }} {{ cat }}</option>
+        {% endfor %}
+      </select>
+      <input id="bulk-value-number" type="text" inputmode="numeric" class="bulk-value-input money-input" placeholder="금액 (원)"
+             style="display:none; padding: 7px 10px; border-radius: 6px; border: none; font-size: 13px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+      <input id="bulk-value-text" type="text" class="bulk-value-input" placeholder="새 값"
+             style="padding: 7px 10px; border-radius: 6px; border: none; font-size: 13px; width: 100%; background: white; color: #18181B; font-weight: 600;">
+    </div>
+    <!-- 재고 전파 토글은 견적 화면에서는 제거 (재고와 완전 분리) -->
+    <label id="propagate-toggle" style="display:none;"><input type="checkbox" id="bulk-propagate"></label>
+    <button type="button" onclick="submitBulkUpdate()"
+            style="background: #C9A961; color: #0A0E1A; padding: 8px 18px; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;">✓ 일괄 적용</button>
+    <button type="button" onclick="clearSelection()"
+            style="background: transparent; color: white; padding: 8px 14px; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 13px; cursor: pointer;">선택 해제</button>
+  </div>
+</div>
+<form id="bulk-update-form" method="post" action="/products/bulk-update" style="display: none;">
+  <input type="hidden" name="ids" id="bulk-ids">
+  <input type="hidden" name="field" id="bulk-field-hidden">
+  <input type="hidden" name="value" id="bulk-value-hidden">
+  <input type="hidden" name="propagate_to_units" id="bulk-propagate-hidden" value="">
+</form>
+
+{# ── 견적 관점 통계 (평균가·최고가·최저가) ── #}
+{% set consumer_prices = rows | selectattr('consumer_price', 'gt', 0) | map(attribute='consumer_price') | list %}
+{% set rental_prices = rows | selectattr('rental_daily', 'gt', 0) | map(attribute='rental_daily') | list %}
+
+<!-- 통계 카드 (견적 단가표 관점) -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+  <div class="kpi-card">
+    <div class="label">📋 전체 견적 품목</div>
+    <div class="value value-sm num">{{ cat_counts.all }}<span class="unit">건</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">📦 납품가 등록</div>
+    <div class="value value-sm num" style="color: #1E40AF;">{{ consumer_prices|length }}<span class="unit">건</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">🎬 렌탈가 등록</div>
+    <div class="value value-sm num" style="color: #9A3412;">{{ rental_prices|length }}<span class="unit">건</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">⚪ 가격 미설정</div>
+    <div class="value value-sm num" style="color: #DC2626;">{{ usage_counts.unset }}<span class="unit">건</span></div>
+  </div>
+</div>
+
+<!-- 카테고리 필터 (견적 화면은 용도 필터 제거 — 견적 품목은 모두 단가표) -->
+<div class="flex gap-2 mb-4 flex-wrap">
+  <a href="/products" class="cat-chip {% if category == 'all' %}active{% endif %}">
+    <span>전체</span>
+    <span class="cat-chip-count">{{ cat_counts.all }}</span>
+  </a>
+  {% for cat in category_options %}
+  <a href="/products?category={{ cat }}" class="cat-chip {% if category == cat %}active{% endif %}">
+    <span>{{ category_icons.get(cat, '📦') }} {{ cat }}</span>
+    <span class="cat-chip-count">{{ cat_counts.get(cat, 0) }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<!-- 일괄 작업 바 -->
+<div id="bulk-bar" style="display:none; padding: 12px 16px; margin-bottom: 12px; background: #0A0E1A; color: white; border-radius: 10px;">
+  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+    <span style="font-size: 13px; font-weight: 700;">📝 <span id="bulk-count">0</span>개 선택됨</span>
+    <span style="opacity: 0.5;">|</span>
+    <button type="button" onclick="bulkDelete()"
+            style="background: #DC2626; color: white; padding: 8px 18px; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;">🗑 선택 삭제</button>
+    <button type="button" onclick="clearSelection()"
+            style="background: transparent; color: white; padding: 8px 14px; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 13px; cursor: pointer;">선택 해제</button>
+  </div>
+</div>
+
+{% if rows %}
+<div class="card overflow-x-auto" style="padding: 0;">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th style="width: 36px;"><input type="checkbox" id="check-all" onchange="toggleAll(this)"></th>
+        <th>코드</th>
+        <th>품목명</th>
+        <th class="mobile-hide">분류</th>
+        <th class="mobile-hide">규격</th>
+        <th>단위</th>
+        <th class="text-right">📦 납품 단가</th>
+        <th class="text-right">🎬 렌탈/일</th>
+        <th class="text-right mobile-hide">🎬 보증금</th>
+        <th class="text-center">관리</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr style="cursor: pointer;" onclick="if(!event.target.closest('a,button,form,input')) location.href='/products/{{ r.id }}'">
+        <td onclick="event.stopPropagation();">
+          {% if r.id %}
+          <input type="checkbox" class="row-check" value="{{ r.id }}" onchange="updateCount()">
+          {% endif %}
+        </td>
+        <td class="text-xs font-bold" style="color: var(--gold-2);">{{ r.code }}</td>
+        <td class="font-semibold">{{ r.name }}</td>
+        <td class="mobile-hide">
+          {% set cat_colors = {'조명':'#FCD34D', '음향':'#60A5FA', '영상':'#A78BFA', '구조물':'#FB923C', '전원':'#FCA5A5', '특수효과':'#F472B6', '기타':'#94A3B8'} %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:{{ cat_colors.get(r.category, '#94A3B8') }}33; color:#1F2937; font-size:11px; font-weight:700;">
+            {{ category_icons.get(r.category, '📦') }} {{ r.category }}
+          </span>
+        </td>
+        <td class="mobile-hide text-xs" style="color: var(--ink-4);">{{ r.spec }}</td>
+        <td class="text-xs text-center" style="color: var(--ink-3);">{{ r.unit }}</td>
+        <td class="text-right num {% if r.consumer_price > 0 %}font-bold{% else %}text-slate-300{% endif %}">
+          {% if request.state.can_view_amounts %}{{ r.consumer_price|money if r.consumer_price > 0 else '-' }}{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
+        </td>
+        <td class="text-right num {% if r.rental_daily > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if r.rental_daily > 0 %}#9A3412{% else %}inherit{% endif %};">
+          {% if request.state.can_view_amounts %}{{ r.rental_daily|money if r.rental_daily > 0 else '-' }}{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
+        </td>
+        <td class="text-right num mobile-hide {% if r.rental_deposit > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if r.rental_deposit > 0 %}#9A3412{% else %}inherit{% endif %};">
+          {% if request.state.can_view_amounts %}{{ r.rental_deposit|money if r.rental_deposit > 0 else '-' }}{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
+        </td>
+        <td class="text-center whitespace-nowrap" onclick="event.stopPropagation();">
+          {% if r.id %}
+          <a href="/products/{{ r.id }}" class="text-xs font-semibold hover:underline" style="color: var(--gold-2);">상세</a>
+          <span style="color: var(--line); margin: 0 4px;">·</span>
+          <form method="post" action="/products/{{ r.id }}/delete" style="display:inline;"
+                onsubmit="return confirm('견적 품목 [{{ r.name }}]을(를) 삭제하시겠습니까?');">
+            <button type="submit" style="background: none; border: none; color: #DC2626; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;">삭제</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card text-center py-16" style="color: var(--ink-4);">
+  <div class="text-5xl mb-3">📦</div>
+  <div class="text-lg font-bold mb-2" style="color: var(--ink);">
+    {% if category != 'all' or usage != 'all' %}
+    해당 조건의 물품이 없습니다
+    {% else %}
+    등록된 물품이 없습니다
+    {% endif %}
+  </div>
+  <div class="text-sm mb-5">견적서에서 자동완성으로 불러올 <b>가격 정보(납품가·렌탈가·보증금)</b>를 등록하세요.</div>
+  <a href="/products/new" class="btn-primary inline-flex">+ 첫 물품 등록</a>
+</div>
+{% endif %}
+
+<!-- 일괄 삭제 폼 -->
+<form id="bulk-delete-form" method="post" action="/products/bulk-delete" style="display:none;">
+  <input type="hidden" name="ids" id="bulk-delete-ids">
+</form>
+
+<script>
+function toggleAll(master) {
+  document.querySelectorAll('.row-check').forEach(c => c.checked = master.checked);
+  updateCount();
+}
+function updateCount() {
+  const n = document.querySelectorAll('.row-check:checked').length;
+  document.getElementById('bulk-count').textContent = n;
+  document.getElementById('bulk-bar').style.display = n > 0 ? '' : 'none';
+}
+function clearSelection() {
+  document.querySelectorAll('.row-check').forEach(c => c.checked = false);
+  const ca = document.getElementById('check-all');
+  if (ca) ca.checked = false;
+  updateCount();
+}
+function bulkDelete() {
+  const ids = Array.from(document.querySelectorAll('.row-check:checked')).map(c => c.value);
+  if (ids.length === 0) { alert('선택된 물품이 없습니다.'); return; }
+  if (!confirm(`선택한 ${ids.length}개 물품을 삭제하시겠습니까?\n\n※ 삭제 후 복구할 수 없습니다.`)) return;
+  document.getElementById('bulk-delete-ids').value = ids.join(',');
+  document.getElementById('bulk-delete-form').submit();
+}
+
+// ===== 일괄 수정 UI =====
+// 견적 단가표는 가격 필드만 다룸 — 재고 전파 로직 없음
+const PRICE_FIELDS = new Set(['consumer_price', 'rental_daily', 'rental_deposit']);
+
+function updateBulkValueUI() {
+  const field = document.getElementById('bulk-field').value;
+  const wrap = document.getElementById('bulk-value-wrap');
+  const catSel = document.getElementById('bulk-value-category');
+  const numIn  = document.getElementById('bulk-value-number');
+  const textIn = document.getElementById('bulk-value-text');
+
+  [catSel, numIn, textIn].forEach(el => el.style.display = 'none');
+
+  if (!field) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+
+  if (field === 'category') {
+    catSel.style.display = '';
+  } else if (PRICE_FIELDS.has(field)) {
+    numIn.style.display = '';
+    numIn.placeholder = ({
+      consumer_price: '납품 단가 (원)',
+      rental_daily: '렌탈 1일 단가 (원)',
+      rental_deposit: '렌탈 보증금 (원)',
+    })[field] || '금액';
+    numIn.value = '';
+  } else {
+    textIn.style.display = '';
+    textIn.placeholder = ({
+      unit: 'EA / SET / 장', memo: '메모',
+    })[field] || '새 값';
+    textIn.value = '';
+  }
+}
+
+function submitBulkUpdate() {
+  const ids = Array.from(document.querySelectorAll('.row-check:checked')).map(c => c.value);
+  if (ids.length === 0) { alert('선택된 견적 품목이 없습니다.'); return; }
+  const field = document.getElementById('bulk-field').value;
+  if (!field) { alert('변경할 항목을 선택하세요.'); return; }
+
+  let value;
+  if (field === 'category') {
+    value = document.getElementById('bulk-value-category').value;
+  } else if (PRICE_FIELDS.has(field)) {
+    value = document.getElementById('bulk-value-number').value.replace(/[^\d]/g, '');
+  } else {
+    value = document.getElementById('bulk-value-text').value;
+  }
+
+  const label = document.querySelector('#bulk-field option:checked').text;
+  const shown = PRICE_FIELDS.has(field)
+    ? Number(value || 0).toLocaleString('ko-KR') + '원'
+    : (value || '(빈 값)');
+
+  if (!confirm(`선택한 ${ids.length}개 견적 품목의 [${label}]를 "${shown}"로 변경하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+  document.getElementById('bulk-ids').value = ids.join(',');
+  document.getElementById('bulk-field-hidden').value = field;
+  document.getElementById('bulk-value-hidden').value = value;
+  document.getElementById('bulk-propagate-hidden').value = '';
+  document.getElementById('bulk-update-form').submit();
+}
+</script>
+
+<style>
+.cat-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: white;
+  font-size: 13px; font-weight: 600; color: var(--ink-2);
+  text-decoration: none; transition: all 0.15s;
+}
+.cat-chip.cat-chip-sm { padding: 4px 10px; font-size: 12px; }
+.cat-chip:hover { background: #F8FAFC; }
+.cat-chip.active { background: #0A0E1A; color: white; border-color: #0A0E1A; }
+.cat-chip-count {
+  display: inline-block; min-width: 22px; padding: 1px 7px;
+  background: rgba(0,0,0,0.08); border-radius: 999px;
+  font-size: 11px; font-weight: 700; text-align: center;
+}
+.cat-chip.active .cat-chip-count { background: rgba(255,255,255,0.2); }
+tbody tr:hover { background: #F8FAFC; }
+</style>
+
+{% endblock %}

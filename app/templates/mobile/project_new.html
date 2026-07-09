@@ -1,0 +1,217 @@
+{% extends "mobile/base.html" %}
+{% set active_tab = 'projects' %}
+{% set back_url = '/m/projects' %}
+{% block page_title %}{% if is_edit %}프로젝트 수정{% else %}새 프로젝트{% endif %}{% endblock %}
+
+{% block content %}
+
+<form method="post" action="{% if is_edit %}/m/project/{{ p.id }}/edit{% else %}/m/project/new{% endif %}" class="m-form">
+
+  <div class="m-card">
+    <div class="m-field">
+      <label class="m-label">프로젝트 코드 *</label>
+      <input name="code" class="m-input" required value="{{ p.code if p else suggested_code }}">
+    </div>
+
+    <div class="m-field">
+      <label class="m-label">프로젝트명 *</label>
+      <input name="name" class="m-input" required value="{{ p.name if p else '' }}" placeholder="예: ABC 회사 신년회">
+    </div>
+
+    <div class="m-field">
+      <label class="m-label">거래처</label>
+      <div style="display: flex; gap: 6px;">
+        <select name="vendor_id" id="vendor-select" class="m-input" style="flex: 1;">
+          <option value="">선택 안함</option>
+          {% for v in vendors %}
+          <option value="{{ v.id }}" {% if p and p.vendor_id == v.id %}selected{% endif %}>{{ v.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" onclick="openVendorAdd()"
+                style="padding: 0 14px; background: #DBEAFE; color: #1E40AF; border: none; border-radius: 10px; font-weight: 700; font-size: 14px; white-space: nowrap;">+ 신규</button>
+      </div>
+    </div>
+
+    <!-- 거래처 인라인 신규 등록 모달 -->
+    <div id="vendor-add-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; padding:20px; box-sizing:border-box; overflow-y:auto;">
+      <div style="background:white; max-width:500px; margin:40px auto; border-radius:14px; padding:20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <h3 style="margin:0; font-size:17px; font-weight:800;">+ 새 거래처</h3>
+          <button type="button" onclick="closeVendorAdd()" style="background:none; border:none; font-size:24px; color:#71717A; cursor:pointer; padding:0; line-height:1;">×</button>
+        </div>
+        <div class="m-field">
+          <label class="m-label">거래처명 *</label>
+          <input id="new-vendor-name" class="m-input" placeholder="예: (주)ABC컴퍼니">
+        </div>
+        <div class="m-field">
+          <label class="m-label">담당자</label>
+          <input id="new-vendor-contact" class="m-input">
+        </div>
+        <div class="m-field">
+          <label class="m-label">전화</label>
+          <input id="new-vendor-phone" class="m-input" type="tel" inputmode="tel">
+        </div>
+        <div class="m-field">
+          <label class="m-label">사업자번호</label>
+          <input id="new-vendor-biz" class="m-input" placeholder="000-00-00000">
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 14px;">
+          <button type="button" onclick="closeVendorAdd()" class="m-btn" style="flex:1; background:#F3F4F6; color:#18181B; padding:12px; border:none; border-radius:10px; font-weight:700;">취소</button>
+          <button type="button" onclick="saveNewVendor()" class="m-btn" style="flex:1; background:#2563EB; color:white; padding:12px; border:none; border-radius:10px; font-weight:700;">등록 + 선택</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="m-field">
+      <label class="m-label">행사일</label>
+      <input name="event_date" type="date" class="m-input" value="{{ p.event_date if p else '' }}">
+    </div>
+
+    <div class="m-field">
+      <label class="m-label">장소</label>
+      <input name="location" class="m-input" value="{{ p.location if p else '' }}" placeholder="예: 코엑스 그랜드볼룸">
+    </div>
+  </div>
+
+  <!-- 카테고리 다중 선택 (대비 컬러) -->
+  <div class="m-card">
+    <div class="m-field">
+      <label class="m-label">🏷️ 프로젝트 항목 (복수 선택)</label>
+      <div class="m-cat-grid">
+        {% set selected_cats = p.categories if p and p.categories else [] %}
+        {% for cat in category_options %}
+        <label class="m-cat-chip">
+          <input type="checkbox" name="categories" value="{{ cat }}"
+                 {% if cat in selected_cats %}checked{% endif %}
+                 style="display:none;">
+          <span class="m-cat-chip-inner" data-cat="{{ cat }}">
+            <span style="font-size:18px; line-height:1;">{{ category_icons.get(cat, '📌') }}</span>
+            <span>{{ cat }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      <div style="font-size: 11px; color: #71717A; margin-top: 6px;">
+        💡 탭하면 활성화/해제됩니다
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .m-cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .m-cat-chip { cursor: pointer; user-select: none; }
+    .m-cat-chip-inner {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      padding: 14px 6px; border-radius: 12px;
+      background: white; border: 2px solid #E4E4E7;
+      font-size: 13px; font-weight: 700; color: #71717A;
+      transition: all 0.15s; min-height: 70px;
+    }
+    /* 카테고리별 대비 컬러 - 선택 시 진한 배경 */
+    .m-cat-chip input:checked + .m-cat-chip-inner[data-cat="음향"]     { background: #2563EB; border-color: #2563EB; color: white; box-shadow: 0 4px 12px rgba(37,99,235,0.35); }
+    .m-cat-chip input:checked + .m-cat-chip-inner[data-cat="조명"]     { background: #D97706; border-color: #D97706; color: white; box-shadow: 0 4px 12px rgba(217,119,6,0.35); }
+    .m-cat-chip input:checked + .m-cat-chip-inner[data-cat="영상"]     { background: #7C3AED; border-color: #7C3AED; color: white; box-shadow: 0 4px 12px rgba(124,58,237,0.35); }
+    .m-cat-chip input:checked + .m-cat-chip-inner[data-cat="납품"]     { background: #059669; border-color: #059669; color: white; box-shadow: 0 4px 12px rgba(5,150,105,0.35); }
+    .m-cat-chip input:checked + .m-cat-chip-inner[data-cat="무대"]     { background: #BE185D; border-color: #BE185D; color: white; box-shadow: 0 4px 12px rgba(190,24,93,0.35); }
+    .m-cat-chip input:checked + .m-cat-chip-inner[data-cat="특수효과"] { background: #DC2626; border-color: #DC2626; color: white; box-shadow: 0 4px 12px rgba(220,38,38,0.35); }
+    .m-cat-chip:active .m-cat-chip-inner { transform: scale(0.95); }
+  </style>
+
+  {% if request.state.can_view_amounts %}
+  <div class="m-card">
+    <div class="m-field">
+      <label class="m-label">매출 입력 방식</label>
+      <select name="vat_mode" class="m-input">
+        <option value="supply" {% if not p or p.vat_mode == 'supply' %}selected{% endif %}>공급가 입력 (VAT 10% 추가)</option>
+        <option value="total" {% if p and p.vat_mode == 'total' %}selected{% endif %}>총액 입력 (VAT 자동분리)</option>
+        <option value="cash" {% if p and p.vat_mode == 'cash' %}selected{% endif %}>현금거래 (VAT 없음)</option>
+      </select>
+    </div>
+
+    <div class="m-field">
+      <label class="m-label">금액</label>
+      <input name="amount_input" type="text" inputmode="numeric" class="m-input money-input"
+             value="{% if p %}{{ p.supply_amount }}{% else %}0{% endif %}" placeholder="0">
+    </div>
+  </div>
+  {% else %}
+  <input type="hidden" name="vat_mode" value="supply">
+  <input type="hidden" name="amount_input" value="0">
+  {% endif %}
+
+  {% if is_edit %}
+  <div class="m-card">
+    <div class="m-field">
+      <label class="m-label">진행 상태</label>
+      <select name="status" class="m-input">
+        {% for st in ['준비중', '진행중', '완료', '취소'] %}
+        <option value="{{ st }}" {% if p.status == st %}selected{% endif %}>{{ st }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="m-card">
+    <div class="m-field">
+      <label class="m-label">메모</label>
+      <textarea name="memo" class="m-input" rows="3" placeholder="특이사항 / 메모">{{ p.memo if p else '' }}</textarea>
+    </div>
+  </div>
+
+  <button type="submit" class="m-btn m-btn-primary" style="margin-top: 16px; padding: 16px; font-size: 17px;">
+    {% if is_edit %}💾 저장{% else %}+ 등록{% endif %}
+  </button>
+</form>
+
+<script>
+// 콤마 자동 입력
+document.querySelectorAll('.money-input').forEach(input => {
+  input.addEventListener('blur', e => {
+    const raw = e.target.value.replace(/[^\d]/g, '');
+    if (raw) e.target.value = parseInt(raw, 10).toLocaleString('ko-KR');
+  });
+});
+
+// 거래처 인라인 등록
+function openVendorAdd() {
+  document.getElementById('vendor-add-modal').style.display = 'block';
+  setTimeout(() => document.getElementById('new-vendor-name').focus(), 100);
+}
+function closeVendorAdd() {
+  document.getElementById('vendor-add-modal').style.display = 'none';
+  ['name','contact','phone','biz'].forEach(k => {
+    document.getElementById('new-vendor-' + k).value = '';
+  });
+}
+async function saveNewVendor() {
+  const name = document.getElementById('new-vendor-name').value.trim();
+  if (!name) { alert('거래처명을 입력해주세요.'); return; }
+
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('contact_person', document.getElementById('new-vendor-contact').value);
+  fd.append('phone', document.getElementById('new-vendor-phone').value);
+  fd.append('biz_number', document.getElementById('new-vendor-biz').value);
+
+  try {
+    const res = await fetch('/api/vendors/quick-create', {method: 'POST', body: fd});
+    const data = await res.json();
+    if (data.ok && data.id) {
+      // 옵션 추가 + 선택
+      const sel = document.getElementById('vendor-select');
+      const opt = new Option(data.name, data.id);
+      opt.selected = true;
+      sel.add(opt);
+      sel.value = data.id;
+      closeVendorAdd();
+    } else {
+      alert('등록 실패: ' + (data.error || '알 수 없는 오류'));
+    }
+  } catch (e) {
+    alert('네트워크 오류: ' + e.message);
+  }
+}
+</script>
+
+{% endblock %}

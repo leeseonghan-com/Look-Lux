@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>장비 QR 라벨 인쇄</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<!-- QR 라이브러리 — 여러 CDN을 폴백으로 -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Pretendard', -apple-system, system-ui, sans-serif;
+    margin: 0; padding: 24px;
+    background: #E8E5DD;
+    color: #1A2540;
+  }
+  .container { max-width: 880px; margin: 0 auto; }
+
+  /* ===== 컨트롤 패널 ===== */
+  .toolbar {
+    background: white; padding: 18px 22px;
+    border-radius: 10px; margin-bottom: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .toolbar-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .toolbar h1 { margin: 0; font-size: 18px; font-weight: 700; }
+  .toolbar .meta { font-size: 12px; color: #71717A; margin-top: 4px; }
+
+  .btn {
+    padding: 9px 18px; border-radius: 6px; border: none;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .btn-primary { background: #0A0E1A; color: white; }
+  .btn-primary:hover { background: #27272A; }
+  .btn-secondary { background: white; border: 1px solid #D4D4D8; color: #18181B; }
+  .btn-secondary:hover { background: #F4F4F5; }
+
+  /* 옵션 패널 */
+  .options-panel {
+    margin-top: 16px; padding-top: 16px;
+    border-top: 1px solid #E4E4E7;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .opt-group { font-size: 12px; }
+  .opt-group .lbl { font-weight: 700; color: #18181B; margin-bottom: 6px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .size-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+  .size-presets button {
+    padding: 6px 10px; font-size: 11px; border-radius: 5px;
+    background: white; border: 1px solid #D4D4D8; cursor: pointer;
+    font-weight: 600;
+  }
+  .size-presets button.active { background: #0A0E1A; color: white; border-color: #0A0E1A; }
+  .size-input-row { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  .size-input-row input {
+    width: 56px; padding: 5px 7px;
+    border: 1px solid #D4D4D8; border-radius: 4px;
+    font-size: 12px; font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  .size-input-row span { font-size: 11px; color: #71717A; }
+  .field-list { display: flex; flex-direction: column; gap: 4px; }
+  .field-list label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; cursor: pointer;
+    padding: 3px 6px; border-radius: 4px;
+  }
+  .field-list label:hover { background: #F4F4F5; }
+  .field-list input { margin: 0; }
+
+  /* ===== A4 페이지 ===== */
+  .page {
+    background: white;
+    width: 794px;
+    min-height: 1123px;
+    padding: 30px 22px;
+    margin: 0 auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  }
+  .label-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cols), var(--label-w));
+    gap: 12px 14px;
+    justify-content: center;
+  }
+  .label {
+    width: var(--label-w);
+    height: var(--label-h);
+    border: 1.5px solid #18181B;
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    gap: 10px;
+    box-sizing: border-box;
+    page-break-inside: avoid;
+    background: white;
+    overflow: hidden;
+  }
+  .label-left {
+    flex-shrink: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding-right: 8px;
+    border-right: 1px dashed #D4D4D8;
+    width: var(--qr-size-plus);
+    overflow: visible;
+  }
+  .label-left .logo-area {
+    height: var(--logo-h-actual, 60px);
+    width: var(--logo-w-actual, 100%);
+    max-width: 200%;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 4px;
+    overflow: visible;
+    transition: height 0.15s, width 0.15s;
+    position: relative;
+    z-index: 2;
+  }
+  .label-left .logo-area img {
+    max-height: 100%;
+    max-width: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+  }
+  .label-left .qr {
+    width: var(--qr-size);
+    height: var(--qr-size);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .label-left .qr canvas, .label-left .qr img, .label-left .qr svg {
+    width: 100% !important; height: 100% !important;
+  }
+  .label-left .qr-fallback {
+    font-size: 9px; color: #9CA3AF; text-align: center;
+    font-family: monospace; word-break: break-all;
+  }
+  .label-left .asset-code {
+    font-size: var(--asset-fs);
+    font-weight: 700;
+    margin-top: 4px;
+    color: #0A0E1A;
+    letter-spacing: 0.3px;
+    text-align: center;
+    line-height: 1.1;
+  }
+  .label-right {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* 상단: 회사 + 장비명 + 모델 */
+  .label-head {
+    padding-bottom: 4px;
+  }
+  /* 업체명: 크게·진하게 (메인) */
+  .label-head .company {
+    font-size: var(--name-fs);
+    color: #0A0E1A;
+    font-weight: 900;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  /* 장비명: 작게·보조 */
+  .label-head .name {
+    font-size: var(--company-fs);
+    color: #52525B;
+    font-weight: 600;
+    line-height: 1.2;
+    margin-top: 2px;
+    letter-spacing: 0.2px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .label-head .model {
+    font-size: var(--small-fs);
+    color: #52525B;
+    margin-top: 1px;
+    line-height: 1.2;
+  }
+
+  /* 가운데 구분선 */
+  .label-divider {
+    height: 0;
+    border-top: 1px dashed #B8B5A8;
+    margin: 4px 0;
+  }
+
+  /* 하단: 상세 항목 그리드 (라벨: 값) */
+  .label-info {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1px 8px;
+    font-size: var(--small-fs);
+    color: #18181B;
+    line-height: 1.35;
+    align-content: start;
+    overflow: hidden;
+  }
+  .label-info.cols-2 { grid-template-columns: auto 1fr; }
+  .label-info .row {
+    display: contents;
+  }
+  .label-info .k {
+    color: #71717A;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .label-info .v {
+    color: #18181B;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media print {
+    body { padding: 0; background: white; }
+    .toolbar { display: none !important; }
+    .page { box-shadow: none; padding: 0; margin: 0; width: 100%; min-height: auto; }
+    @page { margin: 8mm; }
+  }
+
+  /* ===== 사이즈 프리셋 변수 ===== */
+  /* 기본: 중형 70x40 */
+  :root {
+    --label-w: 265px;
+    --label-h: 151px;
+    --qr-size: 70px;
+    --qr-size-plus: 105px;
+    --logo-h: 60px;
+    --logo-scale: 1;
+    --asset-fs: 8px;
+    --company-fs: 8px;
+    --name-fs: 11px;
+    --small-fs: 8px;
+    --cols: 2;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="toolbar">
+    <div class="toolbar-row">
+      <div>
+        <h1>🏷️ 장비 QR 라벨</h1>
+        <div class="meta">{{ rows|length }}개 라벨</div>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-secondary" onclick="goBack()">← 닫기</button>
+        <button class="btn btn-primary" onclick="window.print()">🖨️ 인쇄</button>
+      </div>
+    </div>
+
+    <div class="options-panel">
+
+      <!-- 사이즈 -->
+      <div class="opt-group">
+        <div class="lbl">라벨 사이즈</div>
+        <div class="size-presets">
+          <button type="button" data-preset="small" onclick="applyPreset('small', this)">소형 50×30</button>
+          <button type="button" data-preset="medium" class="active" onclick="applyPreset('medium', this)">중형 70×40</button>
+          <button type="button" data-preset="large" onclick="applyPreset('large', this)">대형 100×60</button>
+        </div>
+        <div class="size-input-row">
+          <input type="number" id="size-w" value="70" min="20" max="200">
+          <span>×</span>
+          <input type="number" id="size-h" value="40" min="15" max="200">
+          <span>mm</span>
+          <button type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="applyCustomSize()">적용</button>
+        </div>
+      </div>
+
+      <!-- 한 줄에 몇 개 -->
+      <div class="opt-group">
+        <div class="lbl">한 줄에 표시</div>
+        <div class="size-presets">
+          {% for n in [1,2,3,4] %}
+          <button type="button" id="cols-{{n}}" onclick="applyCols({{n}}, this)" {% if n == 2 %}class="active"{% endif %}>{{n}}열</button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- 로고 크기 (눈에 잘 띄게 강조 + 프리셋) -->
+      <div class="opt-group" style="grid-column: span 2; background: #FFF7E0; padding: 12px 14px; border-radius: 8px; border: 1.5px solid #F0C36D;">
+        <div class="lbl" style="color: #92400E; font-size: 13px; text-transform: none; letter-spacing: 0;">
+          🖼️ 회사 로고 크기 
+          <span id="logo-scale-label" style="background: #92400E; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 6px;">100%</span>
+        </div>
+        <!-- 빠른 프리셋 -->
+        <div class="size-presets" style="margin-bottom: 8px;">
+          <button type="button" data-logo-preset="80" onclick="setLogoScale(80, this)">작게 80%</button>
+          <button type="button" data-logo-preset="100" class="active" onclick="setLogoScale(100, this)">기본 100%</button>
+          <button type="button" data-logo-preset="130" onclick="setLogoScale(130, this)">크게 130%</button>
+          <button type="button" data-logo-preset="160" onclick="setLogoScale(160, this)">아주 크게 160%</button>
+          <button type="button" data-logo-preset="200" onclick="setLogoScale(200, this)">최대 200%</button>
+        </div>
+        <!-- 슬라이더 -->
+        <input type="range" id="logo-scale" min="40" max="250" step="5" value="100" oninput="applyLogoScale(this.value)" style="width: 100%; accent-color: #92400E;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #92400E; margin-top: 2px;">
+          <span>40%</span><span>드래그하여 미세 조정</span><span>250%</span>
+        </div>
+      </div>
+
+      <!-- 표시 필드 -->
+      <div class="opt-group" style="grid-column: span 2;">
+        <div class="lbl">표시 항목 선택</div>
+        <div class="field-list" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px;">
+          <label><input type="checkbox" id="f-logo" checked onchange="refresh()"> 🖼️ 회사 로고 (QR 위)</label>
+          <label><input type="checkbox" id="f-company" checked onchange="refresh()"> 회사명</label>
+          <label><input type="checkbox" id="f-name" checked onchange="refresh()"> 장비명</label>
+          <label><input type="checkbox" id="f-model" checked onchange="refresh()"> 모델명</label>
+          <label><input type="checkbox" id="f-serial" checked onchange="refresh()"> 시리얼 번호</label>
+          <label><input type="checkbox" id="f-purchase-date" checked onchange="refresh()"> 구입일</label>
+          <label><input type="checkbox" id="f-purchase-vendor" onchange="refresh()"> 구입처</label>
+          <label><input type="checkbox" id="f-department" onchange="refresh()"> 관리부서</label>
+          <label><input type="checkbox" id="f-manager" onchange="refresh()"> 담당자</label>
+          <label><input type="checkbox" id="f-location" onchange="refresh()"> 보관위치</label>
+          <label><input type="checkbox" id="f-status" onchange="refresh()"> 상태</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page">
+    {% if rows %}
+    <div class="label-grid" id="label-grid">
+      {% for r in rows %}
+      <div class="label" data-row='{{ {"asset_code": r.asset_code, "name": r.name, "model": r.model, "manufacturer": r.manufacturer, "serial_number": r.serial_number, "purchase_vendor": r.purchase_vendor, "purchase_date": r.purchase_date|string if r.purchase_date else "", "location": r.location, "department": r.department, "manager": r.manager, "status": r.status, "qr_data": r.qr_data}|tojson }}'>
+        <div class="label-left">
+          {% if request.state.company.logo_image %}
+          <div class="logo-area field-logo">
+            <img src="/company/{{ request.state.company.logo_image }}" alt="logo">
+          </div>
+          {% endif %}
+          <div class="qr" data-qr="{{ r.qr_data }}"><div class="qr-fallback">{{ r.qr_data }}</div></div>
+          <div class="asset-code">{{ r.asset_code }}</div>
+        </div>
+        <div class="label-right">
+          <div class="label-head">
+            <div class="company field-company">{{ request.state.company.company_name or '회사 자산' }}</div>
+            <div class="name field-name">{{ r.name }}</div>
+            <div class="model field-model">{{ r.model }}</div>
+          </div>
+          <div class="label-divider"></div>
+          <div class="label-info cols-2" data-grid>
+            <div class="row field-serial"><span class="k">S/N</span><span class="v">{{ r.serial_number or '—' }}</span></div>
+            <div class="row field-purchase-date"><span class="k">구입일</span><span class="v">{{ r.purchase_date or '—' }}</span></div>
+            <div class="row field-purchase-vendor" style="display:none;"><span class="k">구입처</span><span class="v">{{ r.purchase_vendor or '—' }}</span></div>
+            <div class="row field-department" style="display:none;"><span class="k">부서</span><span class="v">{{ r.department or '—' }}</span></div>
+            <div class="row field-manager" style="display:none;"><span class="k">담당자</span><span class="v">{{ r.manager or '—' }}</span></div>
+            <div class="row field-location" style="display:none;"><span class="k">위치</span><span class="v">{{ r.location or '—' }}</span></div>
+            <div class="row field-status" style="display:none;"><span class="k">상태</span><span class="v">{{ r.status }}</span></div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align:center; padding: 80px 20px; color: #71717A;">
+      <div style="font-size: 48px; margin-bottom: 12px;">🏷️</div>
+      <div style="font-size: 16px; font-weight: 600; color: #18181B;">인쇄할 라벨이 없습니다</div>
+      <div style="font-size: 13px; margin-top: 8px;">먼저 장비 개체를 등록해주세요.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+// ============================================================
+// QR 코드 렌더링 - 라이브러리 안 떴을 때 폴백으로 외부 API 사용
+// ============================================================
+function renderAllQRs() {
+  const qrs = document.querySelectorAll('.qr[data-qr]');
+  qrs.forEach(el => {
+    const data = el.dataset.qr;
+    if (!data) return;
+
+    const cssVar = getComputedStyle(document.documentElement).getPropertyValue('--qr-size').trim();
+    const px = parseInt(cssVar) || 100;
+    const renderSize = Math.max(64, px * 2);  // 2x로 그려서 인쇄 시 선명하게
+
+    // 1차: qrcode.js 라이브러리 (canvas)
+    if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
+      QRCode.toCanvas(data, {
+        width: renderSize, margin: 0,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#FFFFFF' }
+      }, (err, canvas) => {
+        if (err) {
+          fallbackQR(el, data, renderSize);
+          return;
+        }
+        el.innerHTML = '';
+        el.appendChild(canvas);
+      });
+    } else {
+      // 2차: api.qrserver.com 이미지
+      fallbackQR(el, data, renderSize);
+    }
+  });
+}
+
+function fallbackQR(el, data, size) {
+  el.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}`;
+  img.alt = data;
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.onerror = () => {
+    el.innerHTML = `<div class="qr-fallback">${data}</div>`;
+  };
+  el.appendChild(img);
+}
+
+// ============================================================
+// 사이즈 프리셋
+// ============================================================
+const PRESETS = {
+  small:  { w: 50,  h: 30, qr: 55,  logo: 42, asset: 7,  name: 10, small: 7,  company: 7 },
+  medium: { w: 70,  h: 40, qr: 70,  logo: 60, asset: 8,  name: 11, small: 8,  company: 8 },
+  large:  { w: 100, h: 60, qr: 100, logo: 90, asset: 10, name: 14, small: 10, company: 10 },
+};
+
+function mmToPx(mm) { return Math.round(mm * 3.78); }  // 96dpi 기준
+
+function applySize(wMm, hMm, qrPx, fontSizes) {
+  const root = document.documentElement;
+  root.style.setProperty('--label-w', mmToPx(wMm) + 'px');
+  root.style.setProperty('--label-h', mmToPx(hMm) + 'px');
+  root.style.setProperty('--qr-size', qrPx + 'px');
+  root.style.setProperty('--qr-size-plus', (qrPx + 10) + 'px');
+  root.style.setProperty('--logo-h', (fontSizes.logo || 22) + 'px');
+  root.style.setProperty('--asset-fs', fontSizes.asset + 'px');
+  root.style.setProperty('--name-fs', fontSizes.name + 'px');
+  root.style.setProperty('--small-fs', fontSizes.small + 'px');
+  root.style.setProperty('--company-fs', fontSizes.company + 'px');
+  document.getElementById('size-w').value = wMm;
+  document.getElementById('size-h').value = hMm;
+  setTimeout(renderAllQRs, 80);
+}
+
+function applyPreset(name, btn) {
+  const p = PRESETS[name];
+  applySize(p.w, p.h, p.qr, p);
+  document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  // 사이즈 변경 시 로고 크기도 새 기준으로 재계산
+  const slider = document.getElementById('logo-scale');
+  if (slider) setTimeout(() => applyLogoScale(slider.value), 50);
+}
+
+function applyCustomSize() {
+  const w = parseInt(document.getElementById('size-w').value) || 70;
+  const h = parseInt(document.getElementById('size-h').value) || 40;
+  // 사이즈 자동 추정
+  const qrPx = Math.min(mmToPx(h) - 30, mmToPx(w) * 0.45);
+  const scale = h / 40;
+  applySize(w, h, Math.max(50, Math.round(qrPx)), {
+    logo: Math.max(28, Math.round(60 * scale)),
+    asset: Math.max(7, Math.round(8 * scale)),
+    name: Math.max(9, Math.round(11 * scale)),
+    small: Math.max(7, Math.round(8 * scale)),
+    company: Math.max(7, Math.round(8 * scale)),
+  });
+  document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+  const slider = document.getElementById('logo-scale');
+  if (slider) setTimeout(() => applyLogoScale(slider.value), 50);
+}
+
+function applyCols(n, btn) {
+  document.documentElement.style.setProperty('--cols', n);
+  document.querySelectorAll('[id^=cols-]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ============================================================
+// 필드 표시/숨김
+// ============================================================
+const FIELD_MAP = {
+  'f-logo': '.field-logo',
+  'f-name': '.field-name',
+  'f-model': '.field-model',
+  'f-company': '.field-company',
+  'f-serial': '.field-serial',
+  'f-purchase-date': '.field-purchase-date',
+  'f-purchase-vendor': '.field-purchase-vendor',
+  'f-department': '.field-department',
+  'f-manager': '.field-manager',
+  'f-location': '.field-location',
+  'f-status': '.field-status',
+};
+
+function refresh() {
+  Object.entries(FIELD_MAP).forEach(([cbId, selector]) => {
+    const checked = document.getElementById(cbId).checked;
+    document.querySelectorAll(selector).forEach(el => {
+      el.style.display = checked ? '' : 'none';
+    });
+  });
+}
+
+// ============================================================
+// 로고 크기 슬라이더 (50% ~ 200%)
+// ============================================================
+function applyLogoScale(val) {
+  const scale = (parseInt(val) || 100) / 100;
+  const root = document.documentElement;
+  // 직접 픽셀로 계산 (CSS calc 단위 충돌 회피)
+  // 현재 사이즈 프리셋 기준 기본 로고 높이
+  const baseLogoH = parseFloat(getComputedStyle(root).getPropertyValue('--logo-h')) || 60;
+  const actualH = Math.round(baseLogoH * scale);
+  root.style.setProperty('--logo-scale', scale);
+  root.style.setProperty('--logo-h-actual', actualH + 'px');
+
+  // 로고/QR 영역의 가로 폭을 로고 크기에 맞춰 함께 조절
+  const qrPx = parseFloat(getComputedStyle(root).getPropertyValue('--qr-size')) || 70;
+  // 로고가 커지면 가로폭도 확장 (qr 폭 또는 로고 폭 중 큰 값 + padding)
+  const logoWidth = Math.max(qrPx, actualH * 1.6);  // 로고 가로:세로 ≈ 1.6:1 가정
+  const newQrSizePlus = Math.round(Math.max(qrPx + 10, logoWidth + 8));
+  root.style.setProperty('--qr-size-plus', newQrSizePlus + 'px');
+  root.style.setProperty('--logo-w-actual', logoWidth + 'px');
+
+  const lbl = document.getElementById('logo-scale-label');
+  if (lbl) lbl.textContent = val + '%';
+  // 프리셋 버튼 active 표시 갱신
+  document.querySelectorAll('[data-logo-preset]').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.logoPreset) === parseInt(val));
+  });
+}
+
+function setLogoScale(val, btn) {
+  document.getElementById('logo-scale').value = val;
+  applyLogoScale(val);
+}
+
+// ============================================================
+// 닫기 — 이전 화면으로 (window.close()는 새 창에서만 작동하므로)
+// ============================================================
+function goBack() {
+  // 저장 한 번 더 (안전)
+  saveSettings();
+  if (document.referrer && document.referrer !== location.href) {
+    history.back();
+  } else {
+    // referrer가 없거나 직접 진입이면 보유장비 목록으로
+    window.location.href = '/equipment';
+  }
+}
+
+// ============================================================
+// 설정 자동 저장 / 복원 (localStorage)
+// ============================================================
+const STORAGE_KEY = 'qr_label_settings_v1';
+
+function gatherSettings() {
+  const s = { fields: {}, layout: {} };
+  // 필드 체크박스
+  Object.keys(FIELD_MAP).forEach(id => {
+    const cb = document.getElementById(id);
+    if (cb) s.fields[id] = cb.checked;
+  });
+  // 사이즈 (현재 활성 프리셋)
+  const activePreset = document.querySelector('[data-preset].active');
+  s.layout.preset = activePreset ? activePreset.dataset.preset : null;
+  s.layout.sizeW = document.getElementById('size-w')?.value || '70';
+  s.layout.sizeH = document.getElementById('size-h')?.value || '40';
+  // 열 수
+  const activeCols = document.querySelector('[id^=cols-].active');
+  s.layout.cols = activeCols ? activeCols.id.replace('cols-', '') : '2';
+  // 로고 크기
+  s.layout.logoScale = document.getElementById('logo-scale')?.value || '100';
+  return s;
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(gatherSettings()));
+  } catch (e) { /* 무시 */ }
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) { return null; }
+}
+
+function restoreSettings() {
+  const s = loadSettings();
+  if (!s) return;
+  // 필드
+  if (s.fields) {
+    Object.entries(s.fields).forEach(([id, checked]) => {
+      const cb = document.getElementById(id);
+      if (cb) cb.checked = checked;
+    });
+  }
+  // 사이즈
+  if (s.layout) {
+    if (s.layout.preset && PRESETS[s.layout.preset]) {
+      const btn = document.querySelector(`[data-preset="${s.layout.preset}"]`);
+      if (btn) applyPreset(s.layout.preset, btn);
+    } else if (s.layout.sizeW && s.layout.sizeH) {
+      document.getElementById('size-w').value = s.layout.sizeW;
+      document.getElementById('size-h').value = s.layout.sizeH;
+      applyCustomSize();
+    }
+    // 열 수
+    if (s.layout.cols) {
+      const colBtn = document.getElementById('cols-' + s.layout.cols);
+      if (colBtn) applyCols(parseInt(s.layout.cols), colBtn);
+    }
+    // 로고 크기
+    if (s.layout.logoScale) {
+      const slider = document.getElementById('logo-scale');
+      if (slider) {
+        slider.value = s.layout.logoScale;
+        applyLogoScale(s.layout.logoScale);
+      }
+    }
+  }
+  refresh();
+}
+
+// 모든 컨트롤 변경 시 자동 저장
+function hookAutoSave() {
+  // 필드 체크박스
+  Object.keys(FIELD_MAP).forEach(id => {
+    const cb = document.getElementById(id);
+    if (cb) cb.addEventListener('change', saveSettings);
+  });
+  // 사이즈 프리셋
+  document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => setTimeout(saveSettings, 100)));
+  // 커스텀 사이즈
+  ['size-w', 'size-h'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => setTimeout(saveSettings, 100));
+  });
+  // 열 수
+  document.querySelectorAll('[id^=cols-]').forEach(b => b.addEventListener('click', () => setTimeout(saveSettings, 100)));
+  // 로고 슬라이더
+  const slider = document.getElementById('logo-scale');
+  if (slider) slider.addEventListener('change', saveSettings);
+  document.querySelectorAll('[data-logo-preset]').forEach(b => b.addEventListener('click', () => setTimeout(saveSettings, 100)));
+}
+
+// 초기 실행
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(renderAllQRs, 100);  // 라이브러리 로드 대기
+  restoreSettings();              // 저장된 설정 먼저 복원
+  hookAutoSave();                  // 자동 저장 훅
+  applyLogoScale(document.getElementById('logo-scale')?.value || 100);
+});
+</script>
+
+</body>
+</html>

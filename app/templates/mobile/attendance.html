@@ -1,0 +1,190 @@
+{% extends "mobile/base.html" %}
+{% set active_tab = 'attendance' %}
+{% set back_url = '/m/' %}
+{% block page_title %}근태 관리{% endblock %}
+{% block header_right %}{{ today }}{% endblock %}
+
+{% block content %}
+
+<!-- 탭 전환 -->
+<div style="display: flex; gap: 4px; padding: 4px; background: #F3F4F6; border-radius: 10px; margin-bottom: 14px;">
+  <a href="/m/attendance?tab=fulltime" class="m-tab" style="flex:1; padding:10px; text-align:center; border-radius:8px; text-decoration:none; font-size:13px; font-weight:700;
+                                                            background: {% if tab == 'fulltime' %}#0A0E1A{% else %}transparent{% endif %};
+                                                            color: {% if tab == 'fulltime' %}white{% else %}#71717A{% endif %};">
+    💼 정직원
+  </a>
+  <a href="/m/attendance?tab=alba" class="m-tab" style="flex:1; padding:10px; text-align:center; border-radius:8px; text-decoration:none; font-size:13px; font-weight:700;
+                                                        background: {% if tab == 'alba' %}#0A0E1A{% else %}transparent{% endif %};
+                                                        color: {% if tab == 'alba' %}white{% else %}#71717A{% endif %};">
+    🧢 알바
+  </a>
+</div>
+
+{% if request.query_params.get('checkin') %}
+<div class="m-card" style="background: #D1FAE5; border: 1px solid #6EE7B7; padding: 10px 14px;">
+  <div style="font-size: 13px; font-weight: 700; color: #047857;">✓ 출근 등록 완료</div>
+</div>
+{% elif request.query_params.get('checkout') %}
+<div class="m-card" style="background: #DBEAFE; border: 1px solid #93C5FD; padding: 10px 14px;">
+  <div style="font-size: 13px; font-weight: 700; color: #1E40AF;">✓ 퇴근 등록 완료</div>
+</div>
+{% endif %}
+
+{# ============================================================ #}
+{# 정직원 탭 #}
+{# ============================================================ #}
+{% if tab == 'fulltime' %}
+
+{% if workers_today %}
+{% for w in workers_today %}
+<div class="m-card" style="padding: 16px;">
+  <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+    <div>
+      <div style="font-size: 17px; font-weight: 800; color: #18181B;">{{ w.name }}</div>
+      {% if w.phone %}<div style="font-size: 12px; color: #71717A; margin-top: 2px;">{{ w.phone }}</div>{% endif %}
+    </div>
+    {% if w.check_in and w.check_out %}
+    <span style="padding:4px 12px; border-radius:99px; background:#D1FAE5; color:#047857; font-size:12px; font-weight:700;">✓ 퇴근</span>
+    {% elif w.check_in %}
+    <span style="padding:4px 12px; border-radius:99px; background:#DBEAFE; color:#1E40AF; font-size:12px; font-weight:700;">🏃 근무중</span>
+    {% else %}
+    <span style="padding:4px 12px; border-radius:99px; background:#F3F4F6; color:#6B7280; font-size:12px; font-weight:700;">대기</span>
+    {% endif %}
+  </div>
+
+  {% if w.check_in or w.check_out %}
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; padding: 10px; background: #F8FAFC; border-radius: 8px;">
+    <div>
+      <div style="font-size: 11px; color: #71717A;">출근</div>
+      <div style="font-size: 16px; font-weight: 700; color: #1E40AF;">{{ w.check_in.strftime('%H:%M') if w.check_in else '—' }}</div>
+    </div>
+    <div>
+      <div style="font-size: 11px; color: #71717A;">퇴근</div>
+      <div style="font-size: 16px; font-weight: 700; color: #047857;">{{ w.check_out.strftime('%H:%M') if w.check_out else '—' }}</div>
+    </div>
+    {% if w.check_in and w.check_out %}
+    <div style="grid-column: span 2; padding-top: 8px; border-top: 1px solid #E5E7EB; display: flex; justify-content: space-between; align-items: center;">
+      <span style="font-size: 12px; color: #71717A;">근무 시간</span>
+      <span style="font-size: 15px; font-weight: 800;">{{ ((w.check_out - w.check_in).total_seconds() / 3600) | round(1) }}시간</span>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if not w.check_in %}
+  <form method="post" action="/m/attendance/fulltime/checkin">
+    <input type="hidden" name="worker_id" value="{{ w.id }}">
+    <button class="m-btn" style="width:100%; padding:14px; background:#2563EB; color:white; border:none; border-radius:10px; font-size:16px; font-weight:700;">
+      📥 출근 등록
+    </button>
+  </form>
+  {% elif not w.check_out %}
+  <form method="post" action="/m/attendance/fulltime/checkout"
+        onsubmit="return confirm('{{ w.name }}님 퇴근 처리하시겠습니까?');">
+    <input type="hidden" name="worker_id" value="{{ w.id }}">
+    <button class="m-btn" style="width:100%; padding:14px; background:#059669; color:white; border:none; border-radius:10px; font-size:16px; font-weight:700;">
+      📤 퇴근 등록
+    </button>
+  </form>
+  {% else %}
+  <div style="text-align: center; padding: 12px; color: #71717A; font-size: 13px; background: #F3F4F6; border-radius: 8px;">
+    오늘 근무 완료
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<div style="text-align: center; padding: 60px 20px; color: #71717A;">
+  <div style="font-size: 48px; margin-bottom: 12px;">💼</div>
+  <div style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">등록된 정직원이 없습니다</div>
+  <div style="font-size: 13px; color: #94A3B8;">PC에서 [근무자] 메뉴를 통해 정직원을 등록하세요.</div>
+</div>
+{% endif %}
+
+{# ============================================================ #}
+{# 알바 탭 #}
+{# ============================================================ #}
+{% else %}
+
+<div class="m-card">
+  <div class="m-card-title">🧢 알바 일당 등록</div>
+  <form method="post" action="/m/attendance/checkin" class="m-form">
+    <div class="m-field">
+      <label class="m-label">근무자</label>
+      <select name="worker_id" class="m-input" required>
+        <option value="">선택하세요</option>
+        {% for w in alba_workers %}
+        <option value="{{ w.id }}" data-wage="{{ w.default_daily_wage }}">{{ w.name }}{% if request.state.can_view_amounts %} ({{ '{:,}'.format(w.default_daily_wage) }}원/일){% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="m-field">
+      <label class="m-label">프로젝트</label>
+      <select name="project_id" class="m-input" required>
+        <option value="">선택하세요</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}">{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="m-field">
+      <label class="m-label">근무 시간</label>
+      <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+        <label class="m-hour-opt">
+          <input type="radio" name="hours" value="4" style="display:none;">
+          <span>4h</span>
+        </label>
+        <label class="m-hour-opt">
+          <input type="radio" name="hours" value="8" checked style="display:none;">
+          <span>8h</span>
+        </label>
+        <label class="m-hour-opt">
+          <input type="radio" name="hours" value="10" style="display:none;">
+          <span>10h</span>
+        </label>
+        <label class="m-hour-opt">
+          <input type="radio" name="hours" value="12" style="display:none;">
+          <span>12h</span>
+        </label>
+      </div>
+    </div>
+    <!-- 오퍼비/추가금액 -->
+    <div class="m-field" style="background:#FAF5FF; border:1px solid #DDD6FE; border-radius:10px; padding:12px; margin-top:8px;">
+      <label class="m-label" style="color:#6D28D9; font-weight:700;">💰 추가금액 / 오퍼비 (선택)</label>
+      <input type="text" name="bonus_amount" inputmode="numeric" placeholder="0 (일당과 별도 금액)"
+             style="width:100%; padding:10px; border-radius:8px; border:1px solid #E5E7EB; margin-bottom:6px;">
+      <input name="bonus_memo" placeholder="사유 (예: 오퍼비, 야간수당)"
+             style="width:100%; padding:10px; border-radius:8px; border:1px solid #E5E7EB;">
+    </div>
+    <button type="submit" class="m-btn m-btn-primary" style="padding: 14px; font-size: 16px;">+ 일당 등록</button>
+  </form>
+</div>
+
+{% if today_alba_rows %}
+<div class="m-card" style="padding: 0;">
+  <div style="padding: 14px 16px 8px;">
+    <div class="m-card-title" style="margin: 0;">오늘 등록 ({{ today_alba_rows|length }}건)</div>
+  </div>
+  {% for r in today_alba_rows %}
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-top: 1px solid #F1F5F9;">
+    <div>
+      <div style="font-weight: 700; font-size: 14px;">{{ r.worker_name }}</div>
+      <div style="font-size: 12px; color: #71717A; margin-top: 2px;">{{ r.project_name }} · {{ r.days }}일</div>
+    </div>
+    {% if request.state.can_view_amounts %}
+    <div style="font-weight: 800; font-size: 15px;">{{ '{:,}'.format(r.total_wage) }}원</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endif %}
+
+<style>
+.m-hour-opt { display:block; padding:12px; text-align:center; background:white; border:1.5px solid #E4E4E7; border-radius:10px; font-weight:700; font-size:15px; cursor:pointer; color:#71717A; }
+.m-hour-opt input:checked + span { color: white; }
+.m-hour-opt:has(input:checked) { background: #0A0E1A; border-color: #0A0E1A; color: white; }
+</style>
+
+{% endblock %}

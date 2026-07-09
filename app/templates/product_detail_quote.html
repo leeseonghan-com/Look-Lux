@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }} — 견적 단가표{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <a href="/products" class="text-sm" style="color: var(--ink-4);">← 견적 단가표</a>
+  <div class="flex items-start justify-between mt-2 flex-wrap gap-3">
+    <div>
+      <h1 class="page-title">💰 {{ p.name }}</h1>
+      <div class="page-sub mt-1 flex items-center gap-2 flex-wrap">
+        <span style="font-family: monospace; font-weight: 700; color: #1E40AF;">{{ p.code }}</span>
+        {% if p.spec %}
+        <span>·</span>
+        <span>{{ p.spec }}</span>
+        {% endif %}
+        <span>·</span>
+        <span class="text-xs" style="color:var(--ink-4);">단위: {{ p.unit }}</span>
+      </div>
+      <div class="mt-2 flex items-center gap-2 flex-wrap">
+        {% set cat_colors = {'조명':'#FCD34D', '음향':'#60A5FA', '영상':'#A78BFA', '구조물':'#FB923C', '전원':'#FCA5A5', '특수효과':'#F472B6', '기타':'#94A3B8'} %}
+        <span style="display:inline-block; padding:3px 10px; border-radius:10px; background:{{ cat_colors.get(p.category, '#94A3B8') }}33; color:#1F2937; font-size:12px; font-weight:700;">
+          {{ category_icons.get(p.category, '📦') }} {{ p.category }}
+        </span>
+        {% if p.usage == '겸용' %}
+        <span style="padding:3px 10px; border-radius:10px; background:#FEF3C7; color:#92400E; font-size:12px; font-weight:700;">💎 겸용 (납품+렌탈)</span>
+        {% elif p.usage == '납품' %}
+        <span style="padding:3px 10px; border-radius:10px; background:#DBEAFE; color:#1E40AF; font-size:12px; font-weight:700;">📦 납품 전용</span>
+        {% elif p.usage == '렌탈' %}
+        <span style="padding:3px 10px; border-radius:10px; background:#FED7AA; color:#9A3412; font-size:12px; font-weight:700;">🎬 렌탈 전용</span>
+        {% else %}
+        <span style="padding:3px 10px; border-radius:10px; background:#F3F4F6; color:#6B7280; font-size:12px; font-weight:700;">⚪ 가격 미설정</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex gap-2 flex-wrap">
+      <form method="post" action="/products/{{ p.id }}/delete" style="display:inline;"
+            onsubmit="return confirm('견적 품목 [{{ p.name }}]을(를) 삭제하시겠습니까?');">
+        <button type="submit" class="btn-secondary" style="color: #DC2626;">🗑 삭제</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 💰 KPI (견적 관점 3개만) -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+  <div class="kpi-card" style="border-left:3px solid #2563EB;">
+    <div class="label">📦 납품 단가</div>
+    <div class="value value-sm num">
+      {% if request.state.can_view_amounts %}
+        {{ p.consumer_price|money if p.consumer_price > 0 else '—' }}<span class="unit">원</span>
+      {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
+    </div>
+  </div>
+  <div class="kpi-card" style="border-left:3px solid #9A3412;">
+    <div class="label">🎬 렌탈 1일 단가</div>
+    <div class="value value-sm num" style="color: #9A3412;">
+      {% if request.state.can_view_amounts %}
+        {{ p.rental_daily|money if p.rental_daily > 0 else '—' }}<span class="unit">원</span>
+      {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
+    </div>
+  </div>
+  <div class="kpi-card" style="border-left:3px solid #9A3412;">
+    <div class="label">🎬 렌탈 보증금</div>
+    <div class="value value-sm num" style="color: #9A3412;">
+      {% if request.state.can_view_amounts %}
+        {{ p.rental_deposit|money if p.rental_deposit > 0 else '—' }}<span class="unit">원</span>
+      {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- 📝 견적 품목 정보 수정 -->
+<div class="card mb-5">
+  <h2 class="text-lg font-bold mb-4">📝 견적 품목 정보 수정</h2>
+  <form method="post" action="/products/{{ p.id }}/edit">
+    <!-- 기본 정보 -->
+    <div class="grid md:grid-cols-3 gap-4 mb-4">
+      <div class="md:col-span-2">
+        <label class="label">품목명 *</label>
+        <input name="name" class="input" value="{{ p.name }}" required>
+      </div>
+      <div>
+        <label class="label">카테고리</label>
+        <select name="category" class="input">
+          {% for c in category_options %}
+          <option value="{{ c }}" {% if c == p.category %}selected{% endif %}>{{ category_icons.get(c, '📦') }} {{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">규격 / 사양 (한줄 요약)</label>
+        <input name="spec" class="input" value="{{ p.spec }}" placeholder="견적서에 함께 표시됨">
+      </div>
+      <div>
+        <label class="label">단위</label>
+        <input name="unit" class="input" value="{{ p.unit }}" placeholder="EA / SET / 장">
+      </div>
+    </div>
+
+    <!-- 💰 가격 정보 (견적 상세의 핵심) -->
+    <div style="background:#F8FAFF; border:1px solid #DBEAFE; border-radius:10px; padding:16px; margin-bottom:16px;">
+      <h3 class="font-bold mb-3" style="color:#1E40AF; font-size:14px;">💰 가격 정보 <span class="text-xs" style="font-weight:500; color:#6B7280;">— 견적서 자동완성에 사용</span></h3>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div style="background:white; padding:12px; border-radius:8px; border:1px solid #DBEAFE;">
+          <label class="label" style="color: #1E40AF;">📦 납품 단가</label>
+          <input name="consumer_price" type="text" class="input num money-input" value="{{ p.consumer_price }}">
+        </div>
+        <div style="background:white; padding:12px; border-radius:8px; border:1px solid #FED7AA;">
+          <label class="label" style="color: #9A3412;">🎬 렌탈 1일 단가</label>
+          <input name="rental_daily" type="text" class="input num money-input" value="{{ p.rental_daily }}">
+        </div>
+        <div style="background:white; padding:12px; border-radius:8px; border:1px solid #FED7AA;">
+          <label class="label" style="color: #9A3412;">🎬 렌탈 보증금</label>
+          <input name="rental_deposit" type="text" class="input num money-input" value="{{ p.rental_deposit }}">
+        </div>
+      </div>
+    </div>
+
+    <!-- 메모 -->
+    <div class="mb-4">
+      <label class="label">📝 메모</label>
+      <input name="memo" class="input" value="{{ p.memo }}" placeholder="비고 · 견적 시 참고사항">
+    </div>
+
+    <!-- 견적 상세에서는 제조사/모델/상세사양을 다루지 않음 (재고 관리 영역) -->
+    <input type="hidden" name="manufacturer" value="">
+    <input type="hidden" name="model" value="">
+
+    <div class="flex gap-3 max-w-md ml-auto">
+      <a href="/products" class="btn-secondary">취소</a>
+      <button class="btn-primary flex-1" style="background:#1E40AF; border-color:#1E40AF;">💾 견적 단가표 수정 저장</button>
+    </div>
+  </form>
+</div>
+
+<!-- 안내 -->
+<div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:14px 16px; font-size:12.5px; color:#065F46; line-height:1.7;">
+  💡 이 화면은 <b>견적서 자동완성용 가격표 전용</b>입니다.<br>
+  • 제조사 · 모델 · 상세사양 · 개체(QR) · 부서 · 담당자 · 시리얼 · 구입이력은 
+  <a href="/inventory" style="color:#047857; font-weight:700; text-decoration:underline;">📦 재고/장비 관리</a>에서 별도 등록/조회할 수 있습니다.
+</div>
+
+{% endblock %}

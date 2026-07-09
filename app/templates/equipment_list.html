@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}보유 장비{% endblock %}
+{% block content %}
+
+<div class="mb-5 flex items-center justify-between flex-wrap gap-3">
+  <div>
+    <h1 class="page-title">📦 보유 장비</h1>
+    <p class="page-sub">장비 종류를 등록하면 단가표에 자동 연동됩니다. 같은 종류의 여러 대는 클릭하여 개체별 관리.</p>
+  </div>
+  <div class="flex gap-2 flex-wrap">
+    <form method="post" action="/equipment/sync-all-items" style="display:inline;"
+          onsubmit="return confirm('기존 보유장비를 모두 단가표에 동기화합니다.\n\n• 단가표에 없는 장비: 새로 추가 (가격 0)\n• 이미 연동된 장비: 이름/규격만 업데이트 (가격 보존)\n\n계속하시겠습니까?');">
+      <button type="submit" class="btn-secondary" title="기존 보유장비를 단가표에 일괄 등록" style="background: #EFF6FF; border-color: #BFDBFE; color: #1D4ED8;">
+        🔗 단가표 일괄 연동
+      </button>
+    </form>
+    <a href="/settings/equipment-prefixes" class="btn-secondary" title="관리코드 prefix 설정">🏷️ 관리코드 설정</a>
+    <a href="/equipment/labels" class="btn-secondary">🏷️ 전체 QR 라벨</a>
+    <a href="/equipment/new" class="btn-primary">+ 장비 종류 등록</a>
+  </div>
+</div>
+
+{% if request.query_params.get('synced') %}
+<div class="card mb-4" style="background: #ECFDF5; border-color: #A7F3D0; padding: 12px 16px;">
+  <div class="text-sm font-bold" style="color: #047857;">
+    ✓ 단가표 일괄 연동 완료
+    {% set c = request.query_params.get('created', '0') %}
+    {% set u = request.query_params.get('updated', '0') %}
+    — 신규 추가 <b>{{ c }}건</b>, 정보 업데이트 <b>{{ u }}건</b>
+  </div>
+  {% if c|int > 0 %}
+  <div class="text-xs mt-1" style="color: #065F46;">
+    💡 신규 추가된 품목은 가격이 0입니다. <a href="/items?usage=unset" style="text-decoration: underline; font-weight: 700;">단가표에서 가격 입력 →</a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- 카테고리 필터 칩 -->
+<div class="flex gap-2 mb-4 flex-wrap">
+  {% set cats = [('all', '전체'), ('조명', '🔆 조명'), ('음향', '🔊 음향'), ('영상', '📺 영상'), ('구조물', '🏗️ 구조물'), ('전원', '⚡ 전원'), ('기타', '📦 기타')] %}
+  {% for key, label in cats %}
+  <a href="/equipment?category={{ key }}" class="cat-chip {% if category == key %}active{% endif %}">
+    <span>{{ label }}</span>
+    <span class="cat-chip-count">{{ cat_counts.get(key, 0) }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if rows %}
+<div class="card overflow-x-auto" style="padding: 0;">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th>분류</th>
+        <th>장비명</th>
+        <th class="mobile-hide">제조사 / 모델</th>
+        <th class="mobile-hide">규격</th>
+        <th class="text-center">보유</th>
+        <th class="text-center mobile-hide">대여중</th>
+        <th class="text-center mobile-hide">수리중</th>
+        <th class="text-right">납품가</th>
+        <th class="text-right">렌탈/일</th>
+        <th class="text-center">관리</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr style="cursor: pointer;" onclick="if(!event.target.closest('a,button,form')) location.href='/equipment/{{ r.id }}'">
+        <td>
+          {% set cat_colors = {'조명':'#FCD34D', '음향':'#60A5FA', '영상':'#A78BFA', '구조물':'#FB923C', '전원':'#FCA5A5', '기타':'#94A3B8'} %}
+          {% set cat_icons = {'조명':'🔆', '음향':'🔊', '영상':'📺', '구조물':'🏗️', '전원':'⚡', '기타':'📦'} %}
+          <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:{{ cat_colors.get(r.category, '#94A3B8') }}33; color:#1F2937; font-size:11px; font-weight:700;">
+            {{ cat_icons.get(r.category, '📦') }} {{ r.category }}
+          </span>
+        </td>
+        <td class="font-semibold">
+          {{ r.name }}
+          {% if r.linked_item_id %}
+          <a href="/items/{{ r.linked_item_id }}/edit" title="연동된 단가표 보기" onclick="event.stopPropagation();" style="display: inline-block; margin-left: 4px; padding: 1px 6px; background: #EFF6FF; color: #1D4ED8; font-size: 10px; border-radius: 3px; font-weight: 700; text-decoration: none;">🔗 단가표</a>
+          {% else %}
+          <span title="단가표 미연동" style="display: inline-block; margin-left: 4px; padding: 1px 6px; background: #FEF3C7; color: #92400E; font-size: 10px; border-radius: 3px; font-weight: 700;">⚠ 미연동</span>
+          {% endif %}
+        </td>
+        <td class="mobile-hide text-xs" style="color: var(--ink-4);">
+          {{ r.manufacturer }}
+          {% if r.manufacturer and r.model %} / {% endif %}
+          {{ r.model }}
+        </td>
+        <td class="mobile-hide text-xs" style="color: var(--ink-4);">{{ r.spec }}</td>
+        <td class="text-center">
+          <span class="font-bold" style="color: {% if r.available > 0 %}var(--positive){% else %}var(--ink-5){% endif %};">{{ r.available }}</span>
+          {% if r.total > 0 %}
+          <span class="text-xs" style="color: var(--ink-4);"> / {{ r.total }}</span>
+          {% endif %}
+        </td>
+        <td class="text-center mobile-hide text-xs" style="color: {% if r.on_rent > 0 %}var(--warning){% else %}var(--ink-5){% endif %};">
+          {{ r.on_rent if r.on_rent > 0 else '-' }}
+        </td>
+        <td class="text-center mobile-hide text-xs" style="color: {% if r.in_repair > 0 %}var(--negative){% else %}var(--ink-5){% endif %};">
+          {{ r.in_repair if r.in_repair > 0 else '-' }}
+        </td>
+        <td class="text-right num text-xs {% if r.consumer_price > 0 %}font-bold{% else %}text-slate-300{% endif %}">
+          {{ r.consumer_price|money if r.consumer_price > 0 else '-' }}
+        </td>
+        <td class="text-right num text-xs {% if r.rental_daily > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if r.rental_daily > 0 %}#9A3412{% else %}inherit{% endif %};">
+          {{ r.rental_daily|money if r.rental_daily > 0 else '-' }}
+        </td>
+        <td class="text-center whitespace-nowrap" onclick="event.stopPropagation();">
+          <a href="/equipment/{{ r.id }}/edit" class="text-xs font-semibold hover:underline" style="color: var(--gold-2);">수정</a>
+          <span style="color: var(--line); margin: 0 4px;">·</span>
+          <form method="post" action="/equipment/{{ r.id }}/delete" style="display:inline;"
+                onsubmit="return confirm('장비 종류 [{{ r.name }}]을(를) 비활성화하시겠습니까?\n\n※ 등록된 개체는 유지됩니다.');">
+            <button type="submit" style="background: none; border: none; color: #DC2626; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;">삭제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card text-center py-16" style="color: var(--ink-4);">
+  <div class="text-5xl mb-3">📦</div>
+  <div class="text-lg font-bold mb-2" style="color: var(--ink);">
+    {% if category != 'all' %}
+    해당 분류의 장비가 없습니다
+    {% else %}
+    등록된 장비가 없습니다
+    {% endif %}
+  </div>
+  <div class="text-sm mb-5">"장비 종류 등록"으로 LED 무빙라이트, 스피커 등을 먼저 등록한 뒤,<br>같은 종류의 여러 대 각각을 개체로 추가합니다.</div>
+  <a href="/equipment/new" class="btn-primary inline-flex">+ 첫 장비 종류 등록</a>
+</div>
+{% endif %}
+
+<style>
+.cat-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: white;
+  font-size: 13px; font-weight: 600; color: var(--ink-2);
+  text-decoration: none; transition: all 0.15s;
+}
+.cat-chip:hover { background: #F8FAFC; }
+.cat-chip.active { background: #0A0E1A; color: white; border-color: #0A0E1A; }
+.cat-chip-count {
+  display: inline-block; min-width: 22px; padding: 1px 7px;
+  background: rgba(0,0,0,0.08); border-radius: 999px;
+  font-size: 11px; font-weight: 700; text-align: center;
+}
+.cat-chip.active .cat-chip-count { background: rgba(255,255,255,0.2); }
+tbody tr:hover { background: #F8FAFC; }
+</style>
+
+{% endblock %}

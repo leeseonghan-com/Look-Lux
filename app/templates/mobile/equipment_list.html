@@ -1,0 +1,91 @@
+{% extends "mobile/base.html" %}
+{% set active_tab = 'equipment' %}
+{% set back_url = '/m/' %}
+{% block page_title %}보유 장비{% endblock %}
+{% block header_right %}{{ eq_rows|length }}종{% endblock %}
+
+{% block content %}
+
+<form method="get" style="margin-bottom: 12px;">
+  <input type="search" name="q" value="{{ q }}" placeholder="🔍 장비명 / 모델 / 개체코드 검색"
+         style="width: 100%; padding: 14px; border: 1.5px solid #E4E4E7; border-radius: 10px; font-size: 16px; background: white; -webkit-appearance: none;">
+</form>
+
+{% if eq_rows %}
+<div class="m-card" style="padding: 0;">
+  {% for r in eq_rows %}
+  {# 카테고리별 색상 #}
+  {% set cat_colors = {'조명':'#F59E0B', '음향':'#3B82F6', '영상':'#8B5CF6', '구조물':'#F97316', '전원':'#EF4444', '특수효과':'#EC4899', '기타':'#94A3B8'} %}
+  {% set cat_icons = {'조명':'🔆', '음향':'🔊', '영상':'📺', '구조물':'🏗️', '전원':'⚡', '특수효과':'✨', '기타':'📦'} %}
+
+  <div style="border-bottom: 1px solid #F1F5F9;">
+    <!-- 종류 헤더 (클릭으로 펼침/접기) -->
+    <a href="{% if expand_id == r.id %}/m/equipment{% if q %}?q={{ q }}{% endif %}{% else %}/m/equipment?expand={{ r.id }}{% if q %}&q={{ q }}{% endif %}{% endif %}"
+       style="display: block; padding: 14px 16px; text-decoration: none; color: inherit;
+              background: {% if expand_id == r.id %}#F8FAFC{% else %}white{% endif %};">
+      <div style="display: flex; align-items: start; gap: 10px;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <span style="display:inline-block; padding:2px 7px; border-radius:8px; background:{{ cat_colors.get(r.category, '#94A3B8') }}33; color:{{ cat_colors.get(r.category, '#94A3B8') }}; font-size:10px; font-weight:700;">{{ cat_icons.get(r.category, '📦') }} {{ r.category }}</span>
+          </div>
+          <div style="font-weight: 700; font-size: 15px; color: #18181B; margin-bottom: 2px;">{{ r.name }}</div>
+          {% if r.model or r.spec %}
+          <div style="font-size: 12px; color: #71717A;">{{ r.model }}{% if r.model and r.spec %} · {% endif %}{{ r.spec }}</div>
+          {% endif %}
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 24px; font-weight: 800; line-height: 1; color: #18181B;">{{ r.total }}</div>
+          <div style="font-size: 10px; color: #71717A; margin-top: 2px;">총 개체</div>
+        </div>
+      </div>
+
+      <!-- 상태 요약 (배지 형태) -->
+      {% if r.total > 0 %}
+      <div style="display: flex; gap: 6px; margin-top: 8px; font-size: 11px;">
+        {% if r.available > 0 %}
+        <span style="padding:2px 8px; background:#D1FAE5; color:#047857; border-radius:6px; font-weight:700;">보유 {{ r.available }}</span>
+        {% endif %}
+        {% if r.on_rent > 0 %}
+        <span style="padding:2px 8px; background:#FED7AA; color:#9A3412; border-radius:6px; font-weight:700;">대여 {{ r.on_rent }}</span>
+        {% endif %}
+        {% if r.in_repair > 0 %}
+        <span style="padding:2px 8px; background:#FECACA; color:#991B1B; border-radius:6px; font-weight:700;">수리 {{ r.in_repair }}</span>
+        {% endif %}
+        <span style="margin-left:auto; color: #94A3B8; font-size: 14px;">{% if expand_id == r.id %}▲{% else %}▼{% endif %}</span>
+      </div>
+      {% endif %}
+    </a>
+
+    <!-- 펼친 개체 목록 -->
+    {% if expand_id == r.id and r.units %}
+    <div style="background: #F8FAFC; padding: 4px 0;">
+      {% for u in r.units %}
+      <a href="/m/equipment/{{ u.id }}" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px 10px 24px; text-decoration: none; color: inherit; border-bottom: 1px solid #F1F5F9;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-family: ui-monospace, monospace; font-weight: 700; font-size: 13px; color: #C9A961;">
+            {{ u.asset_code }}
+          </div>
+          <div style="font-size: 11px; color: #71717A;">
+            {% if u.location %}📍 {{ u.location }}{% endif %}
+            {% if u.serial_number %}{% if u.location %} · {% endif %}S/N {{ u.serial_number }}{% endif %}
+          </div>
+        </div>
+        {% if u.status == '보유중' %}<span class="badge badge-green">보유</span>
+        {% elif u.status == '대여중' %}<span class="badge badge-blue">대여</span>
+        {% elif u.status == '수리중' %}<span class="badge badge-yellow">수리</span>
+        {% else %}<span class="badge badge-gray">{{ u.status }}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div style="text-align: center; padding: 60px 20px; color: #71717A;">
+  <div style="font-size: 48px; margin-bottom: 12px;">📦</div>
+  <div style="font-size: 15px; font-weight: 600;">{% if q %}검색 결과 없음{% else %}등록된 장비가 없습니다{% endif %}</div>
+</div>
+{% endif %}
+
+{% endblock %}

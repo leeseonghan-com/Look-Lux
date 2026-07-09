@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-4">
+  <a href="/vendors" class="text-sm text-slate-500">← 거래처 목록</a>
+  <h1 class="text-2xl font-bold text-slate-800 mt-2">✏️ 거래처 수정</h1>
+</div>
+
+<form method="post" action="/vendors/{{ v.id }}/edit" class="card space-y-4 max-w-2xl">
+  <div class="grid md:grid-cols-2 gap-4">
+    <div><label class="label">거래처명 *</label><input name="name" class="input" value="{{ v.name }}" required></div>
+    <div>
+      <label class="label">유형</label>
+      <select name="vendor_type" class="input">
+        <option value="consumer" {% if v.vendor_type == 'consumer' %}selected{% endif %}>소비자</option>
+        <option value="dealer" {% if v.vendor_type == 'dealer' %}selected{% endif %}>대리점</option>
+      </select>
+    </div>
+    <div><label class="label">담당자</label><input name="contact_person" class="input" value="{{ v.contact_person }}"></div>
+    <div><label class="label">연락처</label><input name="phone" class="input" value="{{ v.phone }}"></div>
+    <div><label class="label">이메일</label><input name="email" class="input" value="{{ v.email }}"></div>
+    <div><label class="label">사업자번호</label><input name="biz_number" class="input" value="{{ v.biz_number }}"></div>
+  </div>
+  <div><label class="label">주소</label><input name="address" class="input" value="{{ v.address }}"></div>
+  <div><label class="label">메모</label><input name="memo" class="input" value="{{ v.memo }}"></div>
+
+  <div class="flex gap-2 pt-2">
+    <button class="btn-primary flex-1">저장</button>
+    <a href="/vendors" class="btn-secondary">취소</a>
+  </div>
+</form>
+
+{% endblock %}

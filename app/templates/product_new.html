@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{% if quote %}견적 품목 수정{% else %}새 견적 품목 등록{% endif %}{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <a href="/products" class="text-sm" style="color: var(--ink-4);">← 견적 단가표</a>
+  <h1 class="page-title mt-2">💰 {% if quote %}견적 품목 수정{% else %}새 견적 품목 등록{% endif %}</h1>
+  <p class="page-sub">
+    견적서 작성 시 자동완성으로 불러올 <b>가격 정보</b>만 관리합니다. 실물 장비(제조사·모델·상세사양·개체별 QR·부서·담당자·시리얼)는
+    <a href="/inventory" style="color:#059669; font-weight:600;">📦 재고/장비 관리</a>에서 별도로 등록하세요.
+  </p>
+</div>
+
+<form method="post" action="/products/new" class="space-y-5 max-w-3xl">
+
+  <!-- 📝 기본 정보 (견적 자동완성에 필요한 최소 정보만) -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4">📝 기본 정보</h2>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div>
+        <label class="label">품목 코드</label>
+        <input name="code" class="input" value="{{ suggested_code }}" placeholder="자동 생성">
+        <div class="text-xs mt-1" style="color: var(--ink-4);">비워두면 자동 생성 (I-001 형식)</div>
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">품목명 *</label>
+        <input name="name" class="input" required placeholder="예: LED 무빙라이트 230W">
+        <div class="text-xs mt-1" style="color: var(--ink-4);">견적서에 표시될 이름</div>
+      </div>
+
+      <div>
+        <label class="label">카테고리</label>
+        <select name="category" class="input">
+          {% for c in category_options %}
+          <option value="{{ c }}">{{ category_icons.get(c, '📦') }} {{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="md:col-span-1">
+        <label class="label">단위</label>
+        <input name="unit" class="input" value="EA" placeholder="EA / SET / 장 / 일">
+        <div class="text-xs mt-1" style="color: var(--ink-4);">견적서 수량 단위</div>
+      </div>
+      <div class="md:col-span-1">
+        <label class="label">규격 / 사양 (한줄 요약)</label>
+        <input name="spec" class="input" placeholder="예: Beam/Spot/Wash">
+        <div class="text-xs mt-1" style="color: var(--ink-4);">견적서에 함께 표시됨</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 💰 가격 정보 (견적 단가표의 핵심) -->
+  <div class="card" style="border-left: 4px solid #2563EB; background:#F8FAFF;">
+    <h2 class="text-lg font-bold mb-2" style="color: #1E40AF;">💰 가격 정보 <span class="text-xs" style="color:#6B7280; font-weight:500;">— 견적서 자동완성용 (핵심)</span></h2>
+    <p class="text-xs mb-4" style="color: var(--ink-4);">
+      납품가와 렌탈가 <b>둘 다 입력하면</b> 견적서 유형(납품/렌탈)에 맞게 자동 적용됩니다. 사용하지 않는 가격은 <code>0</code>으로 두세요.
+    </p>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div style="background:white; padding:12px; border-radius:8px; border:1px solid #DBEAFE;">
+        <label class="label" style="color: #1E40AF;">📦 납품 단가</label>
+        <input name="consumer_price" type="text" class="input num money-input" value="0" placeholder="0">
+        <div class="text-xs mt-1" style="color: var(--ink-4);">판매 시 소비자가 (원)</div>
+      </div>
+      <div style="background:white; padding:12px; border-radius:8px; border:1px solid #FED7AA;">
+        <label class="label" style="color: #9A3412;">🎬 렌탈 1일 단가</label>
+        <input name="rental_daily" type="text" class="input num money-input" value="0" placeholder="0">
+        <div class="text-xs mt-1" style="color: var(--ink-4);">렌탈 시 하루 임대료 (원)</div>
+      </div>
+      <div style="background:white; padding:12px; border-radius:8px; border:1px solid #FED7AA;">
+        <label class="label" style="color: #9A3412;">🎬 렌탈 보증금</label>
+        <input name="rental_deposit" type="text" class="input num money-input" value="0" placeholder="0">
+        <div class="text-xs mt-1" style="color: var(--ink-4);">렌탈 시 보증금 (원)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메모 -->
+  <div class="card">
+    <label class="label">📝 메모</label>
+    <input name="memo" class="input" placeholder="비고 · 견적 시 참고사항 (예: 최소 3일 이상 렌탈, 야간 할증 별도 등)">
+  </div>
+
+  <!-- 안내 배너 -->
+  <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:14px 16px; font-size:12.5px; color:#065F46; line-height:1.7;">
+    💡 <b>이 화면은 견적서 자동완성용 가격표 전용입니다.</b><br>
+    • 실물 장비의 <b>제조사·모델·상세사양·개체별 QR·부서·담당자·시리얼·구입이력</b>은 
+    <a href="/inventory/new" style="color:#047857; font-weight:700; text-decoration:underline;">📦 재고/장비 관리 → 새 장비 등록</a>에서 관리합니다.<br>
+    • 두 정보는 완전히 분리되어 관리되며, 서로 영향을 주지 않습니다.
+  </div>
+
+  <div class="flex gap-3 max-w-md ml-auto">
+    <a href="/products" class="btn-secondary">취소</a>
+    <button class="btn-primary flex-1" style="background:#1E40AF; border-color:#1E40AF;">💾 견적 단가표에 등록</button>
+  </div>
+</form>
+
+{% endblock %}

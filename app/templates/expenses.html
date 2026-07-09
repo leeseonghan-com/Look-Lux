@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}비용처리{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-800">💰 비용처리</h1>
+    <p class="text-sm text-slate-500 mt-1">총 {{ rows|length }}건 · 합계 <span class="font-bold text-slate-800 num">{{ total|money }}원</span></p>
+  </div>
+  <div class="flex items-center gap-2">
+    <a href="/expenses/by-vendor" class="btn-secondary">📊 거래처별 집계</a>
+    <a href="/expenses/new" class="btn-primary">+ 새 비용 등록</a>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <form method="get" id="exp-filter-form" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+    <div style="flex:2; min-width:200px;">
+      <label class="label">🔍 키워드 검색 (내용·거래처·항목·프로젝트명·금액)</label>
+      <input name="q" class="input" value="{{ search_q or '' }}" placeholder="예: 현수막, ABC상사, 50000" autocomplete="off">
+    </div>
+    <div style="flex:1; min-width:200px; position:relative;" id="proj-picker">
+      <label class="label">프로젝트별 필터 <span class="text-xs" style="color:#6B7280;">(검색 가능 · 최신순)</span></label>
+      <input type="text" id="proj-search-input" class="input"
+             placeholder="🔍 프로젝트명·거래처 검색"
+             autocomplete="off"
+             value="{{ selected_project.name if selected_project else '' }}">
+      <input type="hidden" name="project_id" id="proj-id-hidden" value="{{ selected_project_id or '' }}">
+      <div id="proj-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50; background:white; border:1px solid #E5E7EB; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.08); max-height:320px; overflow-y:auto; margin-top:2px;">
+        <div class="proj-opt" data-value="" data-label="(전체 프로젝트)" style="padding:10px 12px; cursor:pointer; border-bottom:1px solid #F3F4F6; color:#6B7280; font-weight:600;">
+          📋 전체 프로젝트
+        </div>
+        {% for p in projects %}
+        <div class="proj-opt" data-value="{{ p.id }}" data-label="{{ p.name }}{% if p.vendor_name %} · {{ p.vendor_name }}{% endif %}"
+             style="padding:10px 12px; cursor:pointer; border-bottom:1px solid #F3F4F6;">
+          <div style="font-weight:600;">{{ p.name }}</div>
+          <div style="font-size:11px; color:#6B7280; margin-top:1px;">
+            {% if p.code %}{{ p.code }}{% endif %}
+            {% if p.event_date %} · {{ p.event_date }}{% endif %}
+            {% if p.vendor_name %} · 🏢 {{ p.vendor_name }}{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <button class="btn-primary" type="submit">검색</button>
+      {% if search_q or selected_project_id %}
+      <a href="/expenses" class="btn-secondary">초기화</a>
+      {% endif %}
+    </div>
+  </form>
+  {% if search_q %}
+  <div class="text-xs mt-2" style="color: var(--ink-4);">
+    🔍 "<b>{{ search_q }}</b>" 검색 결과 — {{ rows|length }}건
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  .proj-opt:hover, .proj-opt.proj-highlighted { background: #F0F9FF; }
+  .proj-opt:last-child { border-bottom: none; }
+  #proj-search-input.proj-selected { background: #ECFDF5; border-color: #6EE7B7; font-weight: 600; }
+</style>
+<script>
+(function() {
+  const input = document.getElementById('proj-search-input');
+  const hidden = document.getElementById('proj-id-hidden');
+  const dropdown = document.getElementById('proj-dropdown');
+  const picker = document.getElementById('proj-picker');
+  const form = document.getElementById('exp-filter-form');
+  if (!input || !dropdown || !hidden) return;
+
+  if (hidden.value) input.classList.add('proj-selected');
+
+  function filter(q) {
+    const ql = (q || '').toLowerCase().trim();
+    let visible = 0;
+    dropdown.querySelectorAll('.proj-opt').forEach(opt => {
+      if (!opt.dataset.value) { opt.style.display = ''; return; }  // "전체" 항상 표시
+      const label = (opt.dataset.label || '').toLowerCase();
+      const match = !ql || label.includes(ql);
+      opt.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+  }
+  function pick(opt) {
+    hidden.value = opt.dataset.value;
+    input.value = opt.dataset.value ? opt.dataset.label : '';
+    input.classList.toggle('proj-selected', !!opt.dataset.value);
+    dropdown.style.display = 'none';
+    // 즉시 적용 (select와 같은 UX)
+    if (form) form.submit();
+  }
+
+  input.addEventListener('focus', () => { filter(''); dropdown.style.display = 'block'; });
+  input.addEventListener('input', () => {
+    hidden.value = '';
+    input.classList.remove('proj-selected');
+    filter(input.value);
+    dropdown.style.display = 'block';
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { dropdown.style.display = 'none'; input.blur(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const first = dropdown.querySelector('.proj-opt:not([style*="display: none"])');
+      if (first) pick(first);
+    }
+  });
+  dropdown.querySelectorAll('.proj-opt').forEach(opt => {
+    opt.addEventListener('mousedown', e => { e.preventDefault(); pick(opt); });
+  });
+  document.addEventListener('mousedown', e => {
+    if (!picker.contains(e.target)) dropdown.style.display = 'none';
+  });
+})();
+</script>
+
+<div class="card overflow-x-auto">
+  <table class="dt">
+    <thead>
+      <tr>
+        <th>날짜</th><th>항목</th><th class="mobile-hide">프로젝트</th>
+        <th class="mobile-hide">거래처</th><th>내용</th>
+        <th class="text-right">금액</th><th class="text-center">영수증</th><th class="text-center">수정/삭제</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="whitespace-nowrap text-xs">{{ r.date }}</td>
+        <td><span class="badge badge-blue">{{ r.category }}</span></td>
+        <td class="mobile-hide text-xs">{{ r.project_name }}</td>
+        <td class="mobile-hide text-xs">{{ r.vendor }}</td>
+        <td>
+          {{ r.description }}
+          {% if not r.has_evidence %}
+          <span title="{{ r.tax_excluded_note or '증빙 없는 현금 거래' }}" style="display: inline-block; margin-left: 4px; padding: 1px 5px; background: #FEF3C7; color: #92400E; font-size: 9px; border-radius: 3px; font-weight: 700; vertical-align: 1px;">⚠ 증빙없음</span>
+          {% endif %}
+        </td>
+        <td class="text-right num font-bold">{% if request.state.can_view_amounts %}{{ r.amount|money }}{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}</td>
+        <td class="text-center">
+          {% if r.receipt %}
+          <a href="/receipts/{{ r.receipt }}" target="_blank" class="text-slate-600 hover:text-slate-900">📷</a>
+          {% elif not r.has_evidence %}
+          <span style="color: #92400E; font-size: 12px;" title="증빙 없는 현금 거래">⚠</span>
+          {% endif %}
+        </td>
+        <td class="text-center whitespace-nowrap">
+          <a href="/expenses/{{ r.id }}/edit" class="text-slate-600 text-xs hover:text-slate-900 mr-2">수정</a>
+          <form method="post" action="/expenses/{{ r.id }}/delete" class="inline" onsubmit="return confirm('삭제하시겠습니까?')">
+            <button class="text-red-500 hover:text-red-700 text-xs">삭제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not rows %}
+      <tr><td colspan="8" class="text-center py-8 text-slate-400">등록된 비용이 없습니다.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

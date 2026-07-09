@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0A0E1A">
+<meta name="description" content="광고/이벤트 정산·견적·장비 관리 시스템">
+<!-- PWA + TWA 호환 (모든 페이지에서 manifest 인식) -->
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="정산관리">
+<title>{% block title %}{% endblock %} — {{ request.state.company.company_name if request.state.company else 'Settlement' }}</title>
+<script>
+// Service Worker 등록 (PWA 자격 + TWA 자격)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+</script>
+
+<!-- 폰트: Inter (영문/숫자) + Pretendard (한글) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/static/app.js"></script>
+<script src="/static/vendor-search.js"></script>
+
+<style>
+  :root {
+    /* ===== 컨설팅 + 테슬라 톤 ===== */
+    --bg: #FAFAFA;             /* 페이지 배경 — 거의 화이트, 미세하게 그레이 */
+    --surface: #FFFFFF;        /* 카드 표면 */
+    --surface-2: #F4F4F5;      /* 입력칸 비활성 */
+    --ink: #0A0E1A;            /* 거의 블랙 (헤드라인) */
+    --ink-2: #18181B;          /* 본문 */
+    --ink-3: #3F3F46;          /* 보조 텍스트 */
+    --ink-4: #71717A;          /* 메타 */
+    --ink-5: #A1A1AA;          /* 플레이스홀더 */
+    --line: #E4E4E7;           /* 경계선 */
+    --line-2: #F4F4F5;         /* 부드러운 경계 */
+    --accent: #0A0E1A;         /* 강조 = 잉크 */
+    --accent-hover: #27272A;
+    --positive: #15803D;       /* 매출/순이익 (+) — 차분한 그린 */
+    --negative: #B91C1C;       /* 비용 (-) — 깊은 와인레드 */
+    --warning: #B45309;        /* 미수금 — 머스타드/앰버 */
+    --link: #1D4ED8;
+
+    /* 이전 디자인 변수 호환 (페이지 별 직접 지정 색상이 새 톤 따라가도록) */
+    --navy: var(--ink);
+    --navy-2: var(--ink-2);
+    --gold: var(--ink);
+    --gold-2: var(--ink-3);
+    --gold-light: var(--line);
+    --cream: var(--surface-2);
+    --ivory: var(--surface-2);
+    --paper: var(--surface);
+    --text-dark: var(--ink-2);
+    --text-mid: var(--ink-4);
+  }
+
+  /* 이전 font-serif 클래스를 산세리프로 강제 (Noto Serif 더 이상 안 씀) */
+  .font-serif, .font-display { font-family: 'Inter', 'Pretendard', sans-serif !important; font-weight: 700; letter-spacing: -0.025em; }
+
+  * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+  body {
+    font-family: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink-2);
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    letter-spacing: -0.011em;
+  }
+
+  /* 한글 가독성: Pretendard 우선 */
+  :lang(ko), [lang="ko"] { font-family: 'Pretendard', 'Inter', sans-serif; }
+
+  /* ===== 타이포 ===== */
+  .display {
+    font-family: 'Inter', 'Pretendard', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    color: var(--ink);
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  /* ===== 사이드바 ===== */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+  }
+  .brand {
+    padding: 22px 24px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand-mark {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-weight: 700; font-size: 15px; letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+  .brand-mark::before {
+    content: '';
+    width: 8px; height: 8px;
+    background: var(--ink);
+    border-radius: 1px;
+    transform: rotate(45deg);
+  }
+  .brand-sub {
+    font-size: 11px; font-weight: 500;
+    color: var(--ink-4);
+    margin-top: 6px;
+    letter-spacing: 0;
+  }
+
+  .nav-link {
+    display: flex; align-items: center; gap: 11px;
+    padding: 8px 14px;
+    color: var(--ink-3);
+    font-size: 13.5px; font-weight: 500;
+    border-radius: 6px;
+    margin: 1px 8px;
+    transition: all 0.12s ease;
+    letter-spacing: -0.005em;
+    position: relative;
+  }
+  .nav-link:hover { color: var(--ink); background: var(--surface-2); }
+  .nav-link.active {
+    color: var(--ink);
+    background: var(--surface-2);
+    font-weight: 600;
+  }
+  .nav-link.active::before {
+    content: '';
+    position: absolute; left: -8px; top: 8px; bottom: 8px;
+    width: 2px; background: var(--ink); border-radius: 2px;
+  }
+  .nav-link .icon {
+    display: inline-flex; width: 16px; justify-content: center;
+    font-size: 14px; color: var(--ink-4);
+  }
+  .nav-link.active .icon { color: var(--ink); }
+
+  .nav-section {
+    font-size: 10px; font-weight: 600;
+    color: var(--ink-5);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0 22px;
+    margin: 20px 0 6px;
+  }
+
+  /* ===== 모바일 ===== */
+  .mobile-topbar { background: var(--surface); border-bottom: 1px solid var(--line); color: var(--ink); }
+  .mobile-bottom-nav { background: var(--surface); border-top: 1px solid var(--line); }
+  .mobile-nav-item {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 9px 4px;
+    color: var(--ink-4); font-size: 10px; font-weight: 500;
+  }
+  .mobile-nav-item.active { color: var(--ink); }
+  .mobile-nav-item .icon { font-size: 16px; margin-bottom: 2px; }
+
+  /* ===== 버튼 ===== */
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px 16px;
+    background: var(--ink);
+    color: white;
+    font-size: 13px; font-weight: 600;
+    border-radius: 6px;
+    transition: all 0.15s;
+    letter-spacing: -0.005em;
+    border: 1px solid var(--ink);
+  }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); transform: translateY(-1px); }
+  .btn-secondary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px 16px;
+    background: var(--surface);
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+    font-size: 13px; font-weight: 500;
+    border-radius: 6px;
+    transition: all 0.15s;
+  }
+  .btn-secondary:hover { border-color: var(--ink-4); background: var(--surface-2); }
+  .btn-danger {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px 16px;
+    background: var(--negative);
+    color: white;
+    font-size: 13px; font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid var(--negative);
+  }
+  .btn-danger:hover { background: #991B1B; }
+  .btn-gold { /* 호환용 — 컨설팅톤은 단색 */
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px 16px;
+    background: var(--ink); color: white;
+    font-size: 13px; font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid var(--ink);
+  }
+  .btn-gold:hover { background: var(--accent-hover); }
+
+  /* ===== 입력 ===== */
+  .input {
+    width: 100%;
+    padding: 9px 13px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 13.5px;
+    color: var(--ink);
+    transition: all 0.12s;
+    font-family: inherit;
+  }
+  .input::placeholder { color: var(--ink-5); }
+  .input:focus {
+    outline: none;
+    border-color: var(--ink);
+    box-shadow: 0 0 0 3px rgba(10, 14, 26, 0.06);
+  }
+  .label {
+    display: block;
+    font-size: 12px; font-weight: 500;
+    color: var(--ink-3);
+    margin-bottom: 6px;
+    letter-spacing: 0;
+  }
+  select.input { appearance: none; padding-right: 32px;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2371717A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 13px center;
+  }
+
+  /* ===== 카드 ===== */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 22px;
+  }
+  .card-elev {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 22px;
+    transition: all 0.15s;
+  }
+  .card-elev:hover {
+    border-color: var(--ink-5);
+  }
+  .card-luxe { /* 호환용 */
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 24px;
+  }
+
+  /* ===== 배지 ===== */
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 3px 8px;
+    font-size: 11px; font-weight: 600;
+    border-radius: 4px;
+    letter-spacing: 0;
+    line-height: 1.4;
+  }
+  .badge-green { background: #DCFCE7; color: #14532D; }
+  .badge-red { background: #FEE2E2; color: #7F1D1D; }
+  .badge-orange { background: #FEF3C7; color: #78350F; }
+  .badge-blue { background: #DBEAFE; color: #1E3A8A; }
+  .badge-gray { background: var(--surface-2); color: var(--ink-3); }
+  .badge-gold { background: var(--surface-2); color: var(--ink-3); }
+  .badge-navy { background: var(--ink); color: white; }
+  .badge-dot { padding: 3px 8px 3px 18px; position: relative; }
+  .badge-dot::before {
+    content: ''; position: absolute; left: 8px; top: 50%;
+    width: 5px; height: 5px; border-radius: 50%;
+    transform: translateY(-50%);
+    background: currentColor;
+  }
+
+  /* ===== 테이블 ===== */
+  table.dt {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+  }
+  table.dt thead th {
+    padding: 11px 14px;
+    background: var(--surface);
+    color: var(--ink-4);
+    font-weight: 500;
+    font-size: 11px;
+    text-align: left;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--line);
+  }
+  table.dt tbody td {
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--line-2);
+    color: var(--ink-2);
+    font-size: 13.5px;
+  }
+  table.dt tbody tr { transition: background 0.1s; }
+  table.dt tbody tr:hover { background: var(--surface-2); }
+  table.dt tbody tr:last-child td { border-bottom: none; }
+
+  /* ===== KPI 카드 ===== */
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 22px 24px;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .kpi-card:hover { border-color: var(--ink-5); }
+  .kpi-card .label {
+    font-size: 11px; font-weight: 500;
+    color: var(--ink-4);
+    letter-spacing: 0.04em;
+    margin-bottom: 14px;
+    text-transform: uppercase;
+  }
+  .kpi-card .value {
+    font-family: 'Inter', 'Pretendard', sans-serif;
+    font-size: 28px; font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.035em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .kpi-card .value-sm { font-size: 22px; }
+  .kpi-card .unit {
+    font-size: 13px; font-weight: 500;
+    color: var(--ink-4);
+    margin-left: 5px;
+  }
+  .kpi-card .delta {
+    margin-top: 8px;
+    font-size: 11.5px; font-weight: 500;
+    color: var(--ink-4);
+  }
+
+  /* ===== 페이지 헤더 ===== */
+  .page-title {
+    font-family: 'Inter', 'Pretendard', sans-serif;
+    font-size: 26px; font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.035em;
+    line-height: 1.15;
+  }
+  .page-sub {
+    color: var(--ink-4);
+    font-size: 14px;
+    margin-top: 6px;
+    letter-spacing: -0.005em;
+  }
+
+  /* ===== 기타 ===== */
+  hr.divider {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 28px 0;
+  }
+  .divider-gold { /* 호환용 — 단색으로 변경 */
+    height: 1px;
+    background: var(--line);
+    margin: 20px 0;
+  }
+
+  /* 스크롤바 */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #D4D4D8; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #A1A1AA; }
+
+  @media (max-width: 768px) {
+    .mobile-hide { display: none; }
+    .page-title { font-size: 22px; }
+    .kpi-card .value { font-size: 24px; }
+    .kpi-card .value-sm { font-size: 18px; }
+    .card { padding: 18px; }
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+{% if request.state.user %}
+{% set path = request.url.path %}
+
+<!-- 데스크탑 사이드바 -->
+<aside class="hidden md:flex md:flex-col fixed inset-y-0 left-0 w-60 sidebar">
+  <div class="brand">
+    <div class="brand-mark">{{ request.state.company.company_name if request.state.company and request.state.company.company_name else 'Settlement' }}</div>
+    <div class="brand-sub">{{ request.state.user.name }} · {% if request.state.is_admin %}🛡 관리자{% else %}👤 직원{% endif %}</div>
+  </div>
+
+  {% set perms = request.state.perms or {} %}
+  {% set is_admin = request.state.is_admin %}
+  <nav class="flex-1 py-4 overflow-y-auto">
+    <a href="/" class="nav-link {% if path == '/' %}active{% endif %}"><span class="icon">◇</span>전체 현황</a>
+
+    <div class="nav-section">업무</div>
+    {% if is_admin or perms.get('projects') %}
+    <a href="/projects" class="nav-link {% if path.startswith('/project') %}active{% endif %}"><span class="icon">▤</span>프로젝트</a>
+    {% endif %}
+    {% if is_admin or perms.get('quotes') %}
+    <a href="/quotes" class="nav-link {% if path.startswith('/quote') %}active{% endif %}"><span class="icon">✎</span>견적서</a>
+    {% endif %}
+    {% if is_admin or perms.get('products') %}
+    <a href="/products" class="nav-link {% if path.startswith('/product') or path.startswith('/item') %}active{% endif %}"><span class="icon">💰</span>견적 단가표</a>
+    <a href="/inventory" class="nav-link {% if path.startswith('/inventory') or path.startswith('/equipment') %}active{% endif %}"><span class="icon">📦</span>재고/장비</a>
+    {% endif %}
+
+    <div class="nav-section">현장</div>
+    {% if is_admin or perms.get('attendance') %}
+    <a href="/attendance" class="nav-link {% if path.startswith('/attendance') %}active{% endif %}"><span class="icon">⚐</span>근태 관리</a>
+    {% endif %}
+    {% if is_admin or perms.get('expenses') %}
+    <a href="/expenses" class="nav-link {% if path.startswith('/expense') %}active{% endif %}"><span class="icon">₩</span>비용처리</a>
+    {% endif %}
+
+    {% if is_admin or perms.get('workers') or perms.get('vendors') %}
+    <div class="nav-section">관리</div>
+    {% if is_admin or perms.get('workers') %}
+    <a href="/workers" class="nav-link {% if path.startswith('/worker') %}active{% endif %}"><span class="icon">◯</span>근무자</a>
+    {% endif %}
+    {% if is_admin or perms.get('vendors') %}
+    <a href="/vendors" class="nav-link {% if path.startswith('/vendor') %}active{% endif %}"><span class="icon">◊</span>거래처</a>
+    {% endif %}
+    {% endif %}
+
+    {% if is_admin %}
+    <div class="nav-section">관리자</div>
+    <a href="/employees" class="nav-link {% if path.startswith('/employee') %}active{% endif %}"><span class="icon">👥</span>직원 관리</a>
+    <a href="/settings" class="nav-link {% if path.startswith('/settings') %}active{% endif %}"><span class="icon">⚙</span>회사 설정</a>
+    <a href="/backup" class="nav-link {% if path.startswith('/backup') %}active{% endif %}"><span class="icon">📦</span>데이터 백업</a>
+    {% endif %}
+    <a href="/m/" target="_blank" class="nav-link"><span class="icon">📱</span>모바일 앱</a>
+  </nav>
+
+  <div class="px-3 py-4 border-t" style="border-color: var(--line);">
+    <a href="/logout" class="block px-3 py-2 text-xs font-medium" style="color: var(--ink-4);">→ 로그아웃</a>
+  </div>
+</aside>
+
+<!-- 모바일 상단바 -->
+<header class="md:hidden mobile-topbar px-4 py-3 flex items-center justify-between sticky top-0 z-20">
+  <div class="brand-mark text-sm">{{ request.state.company.company_name if request.state.company and request.state.company.company_name else 'Settlement' }}</div>
+  <a href="/logout" class="text-xs" style="color: var(--ink-4);">로그아웃</a>
+</header>
+
+<!-- 모바일 하단 네비 -->
+<nav class="md:hidden fixed bottom-0 inset-x-0 mobile-bottom-nav z-20">
+  <div class="grid grid-cols-5">
+    <a href="/" class="mobile-nav-item {% if path == '/' %}active{% endif %}"><span class="icon">◇</span>홈</a>
+    <a href="/projects" class="mobile-nav-item {% if path.startswith('/project') %}active{% endif %}"><span class="icon">▤</span>프로젝트</a>
+    <a href="/quotes" class="mobile-nav-item {% if path.startswith('/quote') %}active{% endif %}"><span class="icon">✎</span>견적</a>
+    <a href="/attendance" class="mobile-nav-item {% if path.startswith('/attendance') %}active{% endif %}"><span class="icon">⚐</span>근태</a>
+    <a href="/expenses" class="mobile-nav-item {% if path.startswith('/expense') %}active{% endif %}"><span class="icon">₩</span>비용</a>
+  </div>
+</nav>
+
+<main class="md:ml-60 px-5 md:px-12 py-8 pb-24 md:pb-12 max-w-[1400px]">
+  {% block content %}{% endblock %}
+</main>
+
+{% else %}
+<main>{% block content_nologin %}{% endblock %}</main>
+{% endif %}
+
+{# ────── 배포 버전 배지 (우측 하단, 화면에만 표시 · 인쇄 제외) ────── #}
+<div id="deploy-version-badge" title="배포 버전 — 브라우저 캐시가 남아있으면 이전 버전이 표시됩니다"
+     style="position:fixed; right:10px; bottom:10px; z-index:9990;
+            background:rgba(10,14,26,0.85); color:#C9A961;
+            padding:4px 10px; border-radius:999px;
+            font-size:10.5px; font-weight:600; letter-spacing:0.03em;
+            font-family:'Inter', monospace; cursor:pointer;
+            box-shadow:0 2px 8px rgba(0,0,0,0.15);"
+     onclick="this.style.display='none';">
+  ⚡ v2026.07.09-1600 · 캐버스복원/자동완성/다크모드
+</div>
+<style>@media print { #deploy-version-badge { display:none !important; } }</style>
+
+</body>
+</html>

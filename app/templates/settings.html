@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+{% block title %}회사 설정{% endblock %}
+{% block content %}
+
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="page-title">회사 설정</h1>
+    <p class="page-sub">회사 정보와 견적서 양식을 한 곳에서 관리합니다.</p>
+  </div>
+  {% if request.query_params.get('saved') %}
+  <div class="badge badge-dot badge-green text-sm py-2 px-3">저장되었습니다</div>
+  {% endif %}
+</div>
+
+<form method="post" action="/settings" enctype="multipart/form-data" class="space-y-5 max-w-5xl">
+
+  <!-- 1. 회사 기본정보 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4" style="color: var(--ink);">🏢 회사 기본정보</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="label">상호 (회사명)</label>
+        <input name="company_name" class="input" value="{{ s.company_name }}" placeholder="(주)회사명">
+      </div>
+      <div>
+        <label class="label">대표자명</label>
+        <input name="representative" class="input" value="{{ s.representative }}" placeholder="홍길동">
+      </div>
+      <div>
+        <label class="label">사업자등록번호</label>
+        <input name="biz_number" class="input" value="{{ s.biz_number }}" placeholder="123-45-67890">
+      </div>
+      <div>
+        <label class="label">대표 전화</label>
+        <input name="phone" class="input" value="{{ s.phone }}" placeholder="02-1234-5678">
+      </div>
+      <div>
+        <label class="label">업태</label>
+        <input name="biz_type" class="input" value="{{ s.biz_type }}" placeholder="서비스업">
+      </div>
+      <div>
+        <label class="label">종목</label>
+        <input name="biz_item" class="input" value="{{ s.biz_item }}" placeholder="행사기획, 장비대여">
+      </div>
+      <div>
+        <label class="label">팩스</label>
+        <input name="fax" class="input" value="{{ s.fax }}" placeholder="02-1234-5679">
+      </div>
+      <div>
+        <label class="label">이메일</label>
+        <input name="email" type="email" class="input" value="{{ s.email }}" placeholder="contact@company.com">
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">주소</label>
+        <input name="address" class="input" value="{{ s.address }}" placeholder="서울특별시 ○○구 ○○동 ○○빌딩 5층">
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">입금 계좌 (은행 + 계좌번호 + 예금주)</label>
+        <input name="bank_account" class="input" value="{{ s.bank_account }}" placeholder="○○은행 123-456-7890 ((주)회사명)">
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 로고 & 도장 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4" style="color: var(--ink);">🖼️ 로고 & 도장</h2>
+    <div class="grid md:grid-cols-2 gap-6">
+
+      <div>
+        <label class="label">회사 로고</label>
+        <div class="p-4 rounded-lg" style="background: var(--surface-2); border: 1px dashed var(--line);">
+          {% if s.logo_image %}
+          <div class="mb-3 flex items-center gap-4">
+            <img src="/company/{{ s.logo_image }}" style="max-height: 80px; max-width: 200px;" class="bg-white p-2 rounded shadow-sm">
+            <label class="text-xs cursor-pointer" style="color: var(--negative);">
+              <input type="checkbox" name="remove_logo" value="yes" class="mr-1">
+              로고 제거
+            </label>
+          </div>
+          {% else %}
+          <div class="text-center py-6 text-sm" style="color: var(--ink-4);">
+            <div class="text-3xl mb-2">📁</div>
+            아직 로고가 없습니다
+          </div>
+          {% endif %}
+          <input name="logo" type="file" accept="image/*" class="input text-xs">
+          <p class="text-xs mt-2" style="color: var(--ink-4);">PNG/JPG 권장. 견적서 좌측 상단에 표시됩니다.</p>
+        </div>
+      </div>
+
+      <div>
+        <label class="label">대표 도장 / 직인</label>
+        <div class="p-4 rounded-lg" style="background: var(--surface-2); border: 1px dashed var(--line);">
+          {% if s.stamp_image %}
+          <div class="mb-3 flex items-center gap-4">
+            <img src="/company/{{ s.stamp_image }}" style="max-height: 100px; max-width: 100px;" class="bg-white p-2 rounded shadow-sm">
+            <label class="text-xs cursor-pointer" style="color: var(--negative);">
+              <input type="checkbox" name="remove_stamp" value="yes" class="mr-1">
+              도장 제거
+            </label>
+          </div>
+          {% else %}
+          <div class="text-center py-6 text-sm" style="color: var(--ink-4);">
+            <div class="text-3xl mb-2">⚫</div>
+            아직 도장이 없습니다
+          </div>
+          {% endif %}
+          <input name="stamp" type="file" accept="image/*" class="input text-xs">
+          <p class="text-xs mt-2" style="color: var(--ink-4);">투명 배경 PNG 권장. 견적서 회사명 옆과 서명란에 표시됩니다.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 견적서 기본값 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-4" style="color: var(--ink);">📝 견적서 기본값</h2>
+    <p class="text-xs mb-4" style="color: var(--ink-4);">새 견적서 작성 시 자동으로 채워질 값입니다.</p>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="label">유효기간 (일)</label>
+        <input name="default_valid_days" type="number" min="1" class="input num" value="{{ s.default_valid_days }}">
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">결제 조건</label>
+        <input name="default_payment_terms" class="input" value="{{ s.default_payment_terms }}">
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">납품 기일</label>
+        <input name="default_delivery_terms" class="input" value="{{ s.default_delivery_terms }}">
+      </div>
+      <div class="md:col-span-2">
+        <label class="label">특기사항 기본값</label>
+        <textarea name="quote_footer_notes" rows="2" class="input">{{ s.quote_footer_notes }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 견적서 디자인 -->
+  <div class="card">
+    <h2 class="text-lg font-bold mb-1" style="color: var(--ink);">🎨 견적서 디자인</h2>
+    <p class="text-xs mb-5" style="color: var(--ink-4);">색상·제목·표시 항목을 자유롭게 수정할 수 있습니다.</p>
+
+    <!-- 테마 프리셋 -->
+    <div class="mb-6">
+      <label class="label">테마 프리셋</label>
+      <div class="grid grid-cols-3 gap-3">
+        <label class="cursor-pointer">
+          <input type="radio" name="quote_theme" value="classic" class="sr-only peer" {% if s.quote_theme == 'classic' %}checked{% endif %} onchange="schedulePreview()">
+          <div class="theme-card">
+            <div class="theme-swatch" style="background: #1F3A5F;"><div class="theme-accent" style="background: #C9A961;"></div></div>
+            <div class="text-sm font-bold mt-2" style="color: var(--ink);">클래식 네이비</div>
+            <div class="text-xs mt-0.5" style="color: var(--ink-4);">정통 비즈니스</div>
+          </div>
+        </label>
+        <label class="cursor-pointer">
+          <input type="radio" name="quote_theme" value="charcoal" class="sr-only peer" {% if s.quote_theme == 'charcoal' %}checked{% endif %} onchange="schedulePreview()">
+          <div class="theme-card">
+            <div class="theme-swatch" style="background: #0A0E1A;"><div class="theme-accent" style="background: #52525B;"></div></div>
+            <div class="text-sm font-bold mt-2" style="color: var(--ink);">모던 차콜</div>
+            <div class="text-xs mt-0.5" style="color: var(--ink-4);">스타트업·테크</div>
+          </div>
+        </label>
+        <label class="cursor-pointer">
+          <input type="radio" name="quote_theme" value="mustard" class="sr-only peer" {% if s.quote_theme == 'mustard' %}checked{% endif %} onchange="schedulePreview()">
+          <div class="theme-card">
+            <div class="theme-swatch" style="background: #78350F;"><div class="theme-accent" style="background: #B45309;"></div></div>
+            <div class="text-sm font-bold mt-2" style="color: var(--ink);">머스타드 골드</div>
+            <div class="text-xs mt-0.5" style="color: var(--ink-4);">웜톤·이벤트</div>
+          </div>
+        </label>
+      </div>
+      <style>
+        .theme-card { padding: 14px; border: 2px solid var(--line); border-radius: 8px; transition: all 0.15s; background: white; }
+        input[type=radio]:checked + .theme-card { border-color: var(--ink); background: var(--surface-2); }
+        .theme-swatch { height: 56px; border-radius: 6px; padding: 8px; display: flex; align-items: flex-end; }
+        .theme-accent { width: 24px; height: 6px; border-radius: 2px; }
+      </style>
+    </div>
+
+    <hr class="divider">
+
+    <!-- 색상 직접 지정 -->
+    <div class="mb-6">
+      <label class="label">색상 직접 지정 (선택 — 비우면 테마 기본값)</label>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="flex items-center gap-3 p-3 rounded-lg" style="background: var(--surface-2);">
+          <input type="color" name="quote_color_primary" value="{{ s.quote_color_primary or '#1F3A5F' }}" class="w-12 h-10 rounded cursor-pointer border" oninput="schedulePreview()">
+          <div class="flex-1">
+            <div class="text-xs font-semibold" style="color: var(--ink);">메인 색상</div>
+            <div class="text-xs" style="color: var(--ink-4);">헤더 / 합계 배경</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 p-3 rounded-lg" style="background: var(--surface-2);">
+          <input type="color" name="quote_color_accent" value="{{ s.quote_color_accent or '#C9A961' }}" class="w-12 h-10 rounded cursor-pointer border" oninput="schedulePreview()">
+          <div class="flex-1">
+            <div class="text-xs font-semibold" style="color: var(--ink);">강조 색상</div>
+            <div class="text-xs" style="color: var(--ink-4);">총 합계 숫자색</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- 텍스트 수정 -->
+    <div class="mb-6">
+      <label class="label">텍스트 직접 수정</label>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-xs mb-1.5" style="color: var(--ink-4);">납품용 견적서 제목</div>
+          <input name="quote_title_normal" class="input" value="{{ s.quote_title_normal }}" placeholder="견  적  서" oninput="schedulePreview()">
+        </div>
+        <div>
+          <div class="text-xs mb-1.5" style="color: var(--ink-4);">렌탈용 견적서 제목</div>
+          <input name="quote_title_rental" class="input" value="{{ s.quote_title_rental }}" placeholder="렌 탈 견 적 서" oninput="schedulePreview()">
+        </div>
+        <div class="md:col-span-2">
+          <div class="text-xs mb-1.5" style="color: var(--ink-4);">인사문구 (제목 아래)</div>
+          <input name="quote_greeting" class="input" value="{{ s.quote_greeting }}" placeholder="아래와 같이 견적합니다." oninput="schedulePreview()">
+        </div>
+        <div class="md:col-span-2">
+          <div class="text-xs mb-1.5" style="color: var(--ink-4);">하단 메시지 (도장 위에 표시 — 선택)</div>
+          <textarea name="quote_footer_message" rows="2" class="input" placeholder="예: 본 견적서를 검토해 주시기 바랍니다. 감사합니다." oninput="schedulePreview()">{{ s.quote_footer_message }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- 표시 항목 -->
+    <div class="mb-6">
+      <label class="label">표시 항목 켜고 끄기</label>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+        <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded" style="background: var(--surface-2);">
+          <input type="checkbox" name="show_logo" {% if s.show_logo %}checked{% endif %} onchange="schedulePreview()">
+          <span>회사 로고</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded" style="background: var(--surface-2);">
+          <input type="checkbox" name="show_spec" {% if s.show_spec %}checked{% endif %} onchange="schedulePreview()">
+          <span>규격 / 사양</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded" style="background: var(--surface-2);">
+          <input type="checkbox" name="show_unit" {% if s.show_unit %}checked{% endif %} onchange="schedulePreview()">
+          <span>단위</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded" style="background: var(--surface-2);">
+          <input type="checkbox" name="show_memo" {% if s.show_memo %}checked{% endif %} onchange="schedulePreview()">
+          <span>비고 (메모 컬럼)</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded" style="background: var(--surface-2);">
+          <input type="checkbox" name="show_bank_in_quote" {% if s.show_bank_in_quote %}checked{% endif %} onchange="schedulePreview()">
+          <span>입금 계좌</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded" style="background: var(--surface-2);">
+          <input type="checkbox" name="show_stamp_in_sign" {% if s.show_stamp_in_sign %}checked{% endif %} onchange="schedulePreview()">
+          <span>하단 서명란 도장</span>
+        </label>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- 큰 화면 미리보기 안내 -->
+    <div class="mb-6 p-5 rounded-lg" style="background: #F0F9FF; border: 1px solid #BAE6FD;">
+      <div class="flex items-start gap-4">
+        <div class="text-3xl">🖼️</div>
+        <div class="flex-1">
+          <div class="text-base font-bold" style="color: #0C4A6E;">큰 화면으로 미리보기</div>
+          <p class="text-sm mt-1" style="color: #075985;">
+            아래 옵션을 변경하면 <b>우측 미리보기가 실시간으로 갱신</b>되며 이 화면이 <b>인쇄 결과와 완전히 동일</b>합니다.
+            큰 화면으로 자세히 보고 싶다면 아래 버튼을 눌러주세요.
+          </p>
+          <a href="/settings/quote-designer" class="btn-primary inline-flex mt-3">🔍 큰 미리보기 열기 →</a>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- 폰트 크기 -->
+    <div>
+      <label class="label">폰트 크기 <span id="font-scale-label" style="color: var(--ink);">{{ s.quote_font_scale }}%</span></label>
+      <input type="range" name="quote_font_scale" min="70" max="140" step="5" value="{{ s.quote_font_scale }}" class="w-full"
+             oninput="document.getElementById('font-scale-label').textContent = this.value + '%'; schedulePreview();">
+      <div class="flex justify-between text-xs mt-1" style="color: var(--ink-4);">
+        <span>작게 70%</span><span>기본 100%</span><span>크게 140%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 미리보기 -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-bold" style="color: var(--ink);">👁️ 미리보기</h2>
+      <div class="flex gap-2 items-center">
+        <span class="text-xs" style="color: var(--ink-4);">설정을 바꾸면 자동 갱신됩니다</span>
+        <button type="button" onclick="openFullPreview()" class="btn-secondary text-xs">새 창에서 보기</button>
+      </div>
+    </div>
+    <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #FFFFFF;">
+      <iframe id="quote-preview-frame" src="/settings/preview" style="width: 100%; height: 1400px; border: none; background: #FFFFFF;"></iframe>
+    </div>
+    <div class="mt-2 text-xs" style="color: var(--ink-4);">
+      ⚡ 이 미리보기는 <b>실제 인쇄 화면과 100% 동일</b>합니다. 여기 보이는 그대로 인쇄됩니다.
+    </div>
+  </div>
+
+  <div class="flex gap-3 max-w-md ml-auto">
+    <button class="btn-primary flex-1">💾 저장</button>
+    <a href="/" class="btn-secondary">취소</a>
+  </div>
+</form>
+
+<script>
+let previewTimer;
+function schedulePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(refreshPreview, 350);
+}
+
+function refreshPreview() {
+  const iframe = document.getElementById('quote-preview-frame');
+  const form = document.querySelector('form');
+  const fd = new FormData(form);
+
+  // 체크박스 명시적 처리 (선택 해제된 것은 빈 값으로)
+  ['show_logo','show_spec','show_unit','show_memo','show_bank_in_quote','show_stamp_in_sign'].forEach(k => {
+    if (!fd.has(k)) fd.set(k, '');
+  });
+
+  const params = new URLSearchParams();
+  fd.forEach((v, k) => {
+    // 파일 업로드는 미리보기에 안 보냄
+    if (k === 'logo' || k === 'stamp') return;
+    if (typeof v === 'string') params.append(k, v);
+  });
+  iframe.src = '/settings/preview?' + params.toString();
+}
+
+function openFullPreview() {
+  const iframe = document.getElementById('quote-preview-frame');
+  window.open(iframe.src, '_blank');
+}
+
+// 초기 로드 시 미리보기 갱신
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(refreshPreview, 300);
+});
+</script>
+
+{% endblock %}

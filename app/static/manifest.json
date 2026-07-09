@@ -1,0 +1,72 @@
+{
+  "name": "정산관리 시스템",
+  "short_name": "정산관리",
+  "description": "광고/이벤트 정산·견적·장비 관리 모바일 앱",
+  "start_url": "/m/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A0E1A",
+  "theme_color": "#0A0E1A",
+  "lang": "ko-KR",
+  "categories": ["business", "productivity"],
+  "id": "/m/",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "QR 스캔",
+      "short_name": "스캔",
+      "description": "장비 QR 코드 스캔",
+      "url": "/m/scan",
+      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "근태 입력",
+      "short_name": "근태",
+      "description": "오늘 근태 등록",
+      "url": "/m/attendance",
+      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "비용 등록",
+      "short_name": "비용",
+      "description": "비용 빠른 등록",
+      "url": "/m/expense/new",
+      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

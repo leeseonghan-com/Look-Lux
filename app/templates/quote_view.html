@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}견적서 {{ q.quote_number }}{% endblock %}
+{% block content %}
+
+<div class="mb-4 flex items-center justify-between flex-wrap gap-2">
+  <div>
+    <a href="/quotes" class="text-sm text-slate-500">← 견적서 목록</a>
+    <h1 class="text-2xl font-bold text-slate-800 mt-2">
+      <span class="badge {% if q.quote_type == '렌탈' %}badge-orange{% else %}badge-blue{% endif %} text-xs mr-2">
+        {% if q.quote_type == '렌탈' %}🎬 렌탈{% else %}📦 납품{% endif %}
+      </span>
+      {{ q.quote_number }}
+    </h1>
+  </div>
+  <div class="flex gap-2 flex-wrap">
+    <a href="/quotes/{{ q.id }}/edit" class="btn-secondary">✏️ 수정</a>
+    <a href="/quotes/{{ q.id }}/print" target="_blank" class="btn-secondary">🖨️ 인쇄 / PDF</a>
+    <form method="post" action="/quotes/{{ q.id }}/delete" onsubmit="return confirm('삭제하시겠습니까?')" class="inline">
+      <button class="btn-danger">삭제</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="flex items-center gap-3 mb-3 flex-wrap">
+    <span class="text-sm text-slate-500">현재 상태:</span>
+    <span class="badge {% if q.status == '수주' %}badge-green{% elif q.status == '실주' %}badge-red{% elif q.status == '견적' %}badge-orange{% else %}badge-gray{% endif %}">{{ q.status }}</span>
+    {% if q.project_id %}
+    <a href="/projects/{{ q.project_id }}" class="badge badge-green" style="text-decoration: none;">
+      📋 연결된 프로젝트 보기 →
+    </a>
+    {% endif %}
+  </div>
+
+  {% if not q.project_id %}
+  <form method="post" action="/quotes/{{ q.id }}/status" class="flex gap-2 mb-2"
+        onsubmit="return confirmStatusChange(this);">
+    <select name="status" class="input flex-1" id="status-select">
+      <option value="견적" {% if q.status == '견적' %}selected{% endif %}>견적</option>
+      <option value="수주" {% if q.status == '수주' %}selected{% endif %}>수주 ✨ (프로젝트 등록 화면으로 이동)</option>
+      <option value="실주" {% if q.status == '실주' %}selected{% endif %}>실주</option>
+      <option value="보류" {% if q.status == '보류' %}selected{% endif %}>보류</option>
+      <option value="취소" {% if q.status == '취소' %}selected{% endif %}>취소</option>
+    </select>
+    <button class="btn-primary">상태 변경</button>
+  </form>
+  {% if q.status != '수주' %}
+  <a href="/quotes/{{ q.id }}/to-project" class="btn-primary inline-block" style="background: #059669; border-color: #059669;">
+    ✨ 프로젝트로 직접 등록
+  </a>
+  {% else %}
+  <a href="/quotes/{{ q.id }}/to-project" class="btn-primary inline-block" style="background: #059669; border-color: #059669;">
+    📋 프로젝트 등록 화면으로 이동
+  </a>
+  {% endif %}
+  {% else %}
+  <div class="text-sm" style="color: var(--ink-4);">
+    ✓ 이 견적서는 프로젝트로 등록되었습니다.
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function confirmStatusChange(form) {
+  const sel = form.querySelector('select[name="status"]');
+  if (sel.value === '수주') {
+    return confirm('상태를 "수주"로 변경합니다.\n\n수주 확정 시 자동으로 프로젝트 등록 화면으로 이동합니다.\n\n계속하시겠습니까?');
+  }
+  return true;
+}
+</script>
+
+<div class="card mb-4">
+  <div class="grid md:grid-cols-2 gap-4 mb-4">
+    <div>
+      <div class="text-xs text-slate-500">거래처</div>
+      <div class="font-bold text-slate-800">{{ q.vendor_name }}</div>
+      <div class="text-sm text-slate-600">{{ q.vendor_contact }} · {{ q.vendor_phone }}</div>
+    </div>
+    <div>
+      <div class="text-xs text-slate-500">프로젝트</div>
+      <div class="font-bold text-slate-800">{{ q.project_name or '-' }}</div>
+      <div class="text-sm text-slate-600">견적일 {{ q.quote_date }} · 유효기간 {{ q.valid_until or '-' }}</div>
+    </div>
+  </div>
+
+  {% if q.quote_type == '렌탈' %}
+  <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 text-sm">
+    🎬 <strong>렌탈 견적</strong> · 렌탈 일수: <strong>{{ q.rental_days }}일</strong>
+    <span class="text-xs text-amber-700 ml-2">(아래 금액은 일수가 적용된 최종 금액)</span>
+  </div>
+  {% endif %}
+
+  <table class="dt mb-4">
+    <thead>
+      <tr><th>#</th><th>품명</th><th>규격</th><th class="text-right">수량</th><th>단위</th><th class="text-right">{% if q.quote_type == '렌탈' %}1일 단가{% else %}단가{% endif %}</th><th class="text-right">금액</th></tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td>{{ it.seq }}</td>
+        <td class="font-semibold">{{ it.name }}</td>
+        <td class="text-xs">{{ it.spec }}</td>
+        <td class="text-right num">{{ it.quantity|int }}</td>
+        <td class="text-center">{{ it.unit }}</td>
+        <td class="text-right num">{{ it.unit_price|money_raw }}원</td>
+        <td class="text-right num font-bold">{{ it.amount|money_raw }}원</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="max-w-sm ml-auto space-y-1.5 text-sm">
+    <div class="flex justify-between"><span>공급가액 합계</span><span class="num font-bold">{{ q.subtotal|money_raw }}원</span></div>
+    <div class="flex justify-between text-red-600"><span>할인금액</span><span class="num font-bold">-{{ q.discount|money_raw }}원</span></div>
+    <div class="flex justify-between border-t border-slate-200 pt-1.5"><span>할인 후 공급가액</span><span class="num font-bold">{{ q.after_discount|money_raw }}원</span></div>
+    <div class="flex justify-between"><span>부가세 10%</span><span class="num font-bold">{{ q.vat|money_raw }}원</span></div>
+    <div class="flex justify-between text-lg border-t-2 border-slate-800 pt-2"><span class="font-bold">총 합계금액</span><span class="num font-bold text-slate-800">{{ q.total|money_raw }}원</span></div>
+  </div>
+
+  {# ───── 납품 견적 — 원가/마진 분석 카드 (관리자용, 인쇄 미포함) ───── #}
+  {% if margin_info and request.state.can_view_amounts %}
+    {% if margin_info.has_data %}
+    <div class="mt-5 pt-4 border-t-2 border-dashed" style="border-color:#F59E0B;">
+      <div class="text-xs mb-3" style="color:#B45309; font-weight:700;">💼 원가·마진 분석 (관리자 전용 — 인쇄본에 포함 안 됨)</div>
+      <div class="grid grid-cols-3 gap-3">
+        <div style="background:#FEF3C7; border-radius:8px; padding:10px 14px;">
+          <div class="text-xs" style="color:#78350F;">총 원가</div>
+          <div class="text-lg font-bold num" style="color:#92400E;">{{ margin_info.total_cost|money_raw }}원</div>
+        </div>
+        <div style="background:#DBEAFE; border-radius:8px; padding:10px 14px;">
+          <div class="text-xs" style="color:#1E3A8A;">총 납품가</div>
+          <div class="text-lg font-bold num" style="color:#1E40AF;">{{ margin_info.total_sell|money_raw }}원</div>
+        </div>
+        <div style="background:#D1FAE5; border-radius:8px; padding:10px 14px;">
+          <div class="text-xs" style="color:#065F46;">마진 (금액 · %)</div>
+          <div class="text-lg font-bold num" style="color:#047857;">
+            {{ margin_info.margin_amount|money_raw }}원
+            <span style="font-size:11px; margin-left:6px;">({{ "%.1f"|format(margin_info.margin_pct) }}%)</span>
+          </div>
+        </div>
+      </div>
+      <details class="mt-3">
+        <summary class="text-xs cursor-pointer" style="color:#78350F;">품목별 마진 상세 보기</summary>
+        <table class="dt mt-2 text-xs">
+          <thead><tr><th>#</th><th>품명</th><th class="text-right">원가</th><th class="text-right">납품가</th><th class="text-right">마진</th><th class="text-right">마진율</th></tr></thead>
+          <tbody>
+            {% for ln in margin_info.lines %}
+            <tr>
+              <td>{{ ln.seq }}</td>
+              <td>{{ ln.name }}</td>
+              <td class="text-right num">{{ ln.line_cost|money_raw }}</td>
+              <td class="text-right num">{{ ln.amount|money_raw }}</td>
+              <td class="text-right num" style="color:{% if ln.line_margin >= 0 %}#047857{% else %}#DC2626{% endif %};">{{ ln.line_margin|money_raw }}</td>
+              <td class="text-right num">{{ "%.1f"|format(ln.line_pct) }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+    </div>
+    {% else %}
+    <div class="mt-4 text-xs" style="color:#6B7280;">
+      💡 각 품목에 <b>원가</b>를 입력하면 마진율이 자동 계산됩니다. 견적서 <a href="/quotes/{{ q.id }}/edit" style="color:#2563EB; font-weight:600;">수정하기</a> → "💼 원가 컬럼" 체크 후 원가 입력.
+    </div>
+    {% endif %}
+  {% endif %}
+
+  {% if q.notes %}
+  <div class="mt-5 pt-4 border-t border-slate-200">
+    <div class="text-xs text-slate-500 mb-1">특기사항</div>
+    <div class="text-sm">{{ q.notes }}</div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

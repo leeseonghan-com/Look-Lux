@@ -1,0 +1,45 @@
+{% extends "mobile/base.html" %}
+{% set active_tab = 'quotes' %}
+{% set back_url = '/m/' %}
+{% block page_title %}견적서{% endblock %}
+{% block header_right %}<a href="/m/quote/new" style="background:#0A0E1A; color:white; padding:6px 12px; border-radius:8px; font-size:13px; font-weight:700; text-decoration:none;">+ 작성</a>{% endblock %}
+
+{% block content %}
+
+{% if quotes %}
+<div class="m-card" style="padding: 0;">
+  {% for q in quotes %}
+  <a href="/quotes/{{ q.id }}" class="list-item" target="_blank">
+    <div class="list-item-inner">
+      <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 4px;">
+        <span style="font-family: ui-monospace, monospace; font-size: 11px; color: #C9A961; font-weight: 700;">{{ q.quote_number }}</span>
+        {% if q.quote_type == '렌탈' %}
+        <span style="font-size: 9px; padding: 1px 6px; background: #FED7AA; color: #9A3412; border-radius: 3px; font-weight: 700;">🎬 렌탈</span>
+        {% else %}
+        <span style="font-size: 9px; padding: 1px 6px; background: #DBEAFE; color: #1E40AF; border-radius: 3px; font-weight: 700;">📦 납품</span>
+        {% endif %}
+      </div>
+      <div class="list-item-title">{{ q.project_name or q.vendor_name or '(제목 없음)' }}</div>
+      <div class="list-item-sub">{{ q.vendor_name }} · {{ q.quote_date }}</div>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: end; gap: 4px;">
+      {% if request.state.can_view_amounts %}
+      <div style="font-weight: 800; font-size: 14px; color: #18181B;">{{ '{:,}'.format(q.total) }}원</div>
+      {% endif %}
+      {% if q.status == '수주' %}<span class="badge badge-green">수주</span>
+      {% elif q.status == '실주' %}<span class="badge badge-red">실주</span>
+      {% elif q.status == '견적' %}<span class="badge badge-yellow">견적</span>
+      {% else %}<span class="badge badge-gray">{{ q.status }}</span>{% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div style="text-align: center; padding: 60px 20px; color: #71717A;">
+  <div style="font-size: 48px; margin-bottom: 12px;">📄</div>
+  <div style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">작성된 견적서가 없습니다</div>
+  <a href="/m/quote/new" style="display: inline-block; background: #0A0E1A; color: white; padding: 10px 20px; border-radius: 10px; text-decoration: none; font-weight: 700;">+ 첫 견적서 작성</a>
+</div>
+{% endif %}
+
+{% endblock %}
