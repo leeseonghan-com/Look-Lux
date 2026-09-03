@@ -127,9 +127,51 @@
     </div>
     <div>
       <label class="label">프로젝트명</label>
-      <input name="project_name" class="input" placeholder="행사명" value="{{ quote.project_name if quote else '' }}">
+      <input id="q-project-name" name="project_name" class="input" placeholder="행사명" value="{{ quote.project_name if quote else '' }}">
+    </div>
+    <div class="md:col-span-2 lg:col-span-3">
+      <label class="label">
+        기존 프로젝트 연결
+        <span class="text-xs text-slate-500 font-normal ml-2">— 이미 등록된 프로젝트가 있으면 선택하세요 (자동으로 수주 상태가 되고 금액·거래처가 동기화됩니다)</span>
+      </label>
+      <div class="flex gap-2 items-center">
+        <select id="q-project-id" name="project_id" class="input flex-1" {% if quote and quote.project_id %}disabled title="이미 프로젝트에 연결된 견적입니다"{% endif %}>
+          <option value="">— 신규 (연결 안 함) —</option>
+          {% for p in projects %}
+            <option value="{{ p.id }}"
+              data-name="{{ p.name }}"
+              data-event="{{ p.event_date }}"
+              data-vendor-id="{{ p.vendor_id }}"
+              {% if quote and quote.project_id == p.id %}selected{% endif %}>
+              [{{ p.code }}] {{ p.name }}{% if p.event_date %} · {{ p.event_date }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+        {% if quote and quote.project_id %}
+          <a href="/projects/{{ quote.project_id }}" class="btn-secondary text-sm" target="_blank">🔗 열기</a>
+          <input type="hidden" name="project_id" value="{{ quote.project_id }}">
+        {% endif %}
+      </div>
     </div>
   </div>
+
+  <script>
+    // 프로젝트 선택 시 프로젝트명·행사일 자동 채우기
+    (function(){
+      const sel = document.getElementById('q-project-id');
+      const nameInput = document.getElementById('q-project-name');
+      const eventInput = document.querySelector('[name="event_date"]');
+      if(!sel) return;
+      sel.addEventListener('change', function(){
+        const opt = sel.options[sel.selectedIndex];
+        if(!opt || !opt.value) return;
+        const pname = opt.getAttribute('data-name') || '';
+        const pevent = opt.getAttribute('data-event') || '';
+        if(nameInput && !nameInput.value.trim()) nameInput.value = pname;
+        if(eventInput && pevent && !eventInput.value) eventInput.value = pevent;
+      });
+    })();
+  </script>
 
   <style>
     .qv-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #F3F4F6; }

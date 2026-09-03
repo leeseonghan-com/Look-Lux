@@ -1,165 +1,212 @@
 {% extends "base.html" %}
-{% block title %}비용처리{% endblock %}
+{% block title %}하청/외주 지급{% endblock %}
 {% block content %}
 
-<div class="flex items-center justify-between mb-4">
+<div class="flex items-center justify-between mb-4 flex-wrap gap-2">
   <div>
-    <h1 class="text-2xl font-bold text-slate-800">💰 비용처리</h1>
-    <p class="text-sm text-slate-500 mt-1">총 {{ rows|length }}건 · 합계 <span class="font-bold text-slate-800 num">{{ total|money }}원</span></p>
+    <h1 class="text-2xl font-bold text-slate-800">🏗️ 하청/외주 지급</h1>
+    <p class="text-sm text-slate-500 mt-1">
+      거래처에 발주한 하청·외주 작업의 지급 관리 · 총 {{ rows|length }}건
+    </p>
   </div>
   <div class="flex items-center gap-2">
+    <a href="/expenses/unpaid" class="btn-secondary" style="{% if unpaid_count %}background:#FEF2F2; border-color:#FCA5A5; color:#B91C1C;{% endif %}">
+      💸 거래처별 미지급{% if unpaid_count %} <span class="badge badge-red" style="margin-left:6px;">{{ unpaid_count }}</span>{% endif %}
+    </a>
     <a href="/expenses/by-vendor" class="btn-secondary">📊 거래처별 집계</a>
-    <a href="/expenses/new" class="btn-primary">+ 새 비용 등록</a>
+    <a href="/expenses/new" class="btn-primary">+ 발주 등록</a>
   </div>
 </div>
 
-<div class="card mb-4">
-  <form method="get" id="exp-filter-form" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
-    <div style="flex:2; min-width:200px;">
-      <label class="label">🔍 키워드 검색 (내용·거래처·항목·프로젝트명·금액)</label>
-      <input name="q" class="input" value="{{ search_q or '' }}" placeholder="예: 현수막, ABC상사, 50000" autocomplete="off">
+{% if request.query_params.get('bulk') %}
+<div class="card mb-3" style="background:#ECFDF5; border-color:#6EE7B7;">
+  <div style="font-size:14px; font-weight:700; color:#047857;">
+    ✓ {{ request.query_params.get('bulk') }}건 지급 상태가 변경되었습니다.
+  </div>
+</div>
+{% endif %}
+
+<!-- 요약 카드 -->
+<div class="grid gap-3 mb-4" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+  <div class="card" style="padding:14px; background:#FEF2F2; border-color:#FCA5A5;">
+    <div class="text-xs font-bold" style="color:#7F1D1D;">💸 미지급</div>
+    <div class="num font-bold mt-1" style="font-size:22px; color:#B91C1C;">
+      {% if request.state.can_view_amounts %}{{ unpaid_total|money }}원{% else %}—{% endif %}
     </div>
-    <div style="flex:1; min-width:200px; position:relative;" id="proj-picker">
-      <label class="label">프로젝트별 필터 <span class="text-xs" style="color:#6B7280;">(검색 가능 · 최신순)</span></label>
-      <input type="text" id="proj-search-input" class="input"
-             placeholder="🔍 프로젝트명·거래처 검색"
-             autocomplete="off"
-             value="{{ selected_project.name if selected_project else '' }}">
-      <input type="hidden" name="project_id" id="proj-id-hidden" value="{{ selected_project_id or '' }}">
-      <div id="proj-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50; background:white; border:1px solid #E5E7EB; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.08); max-height:320px; overflow-y:auto; margin-top:2px;">
-        <div class="proj-opt" data-value="" data-label="(전체 프로젝트)" style="padding:10px 12px; cursor:pointer; border-bottom:1px solid #F3F4F6; color:#6B7280; font-weight:600;">
-          📋 전체 프로젝트
-        </div>
-        {% for p in projects %}
-        <div class="proj-opt" data-value="{{ p.id }}" data-label="{{ p.name }}{% if p.vendor_name %} · {{ p.vendor_name }}{% endif %}"
-             style="padding:10px 12px; cursor:pointer; border-bottom:1px solid #F3F4F6;">
-          <div style="font-weight:600;">{{ p.name }}</div>
-          <div style="font-size:11px; color:#6B7280; margin-top:1px;">
-            {% if p.code %}{{ p.code }}{% endif %}
-            {% if p.event_date %} · {{ p.event_date }}{% endif %}
-            {% if p.vendor_name %} · 🏢 {{ p.vendor_name }}{% endif %}
-          </div>
-        </div>
-        {% endfor %}
-      </div>
+    <div class="text-xs mt-1" style="color:#7F1D1D;">{{ unpaid_count }}건</div>
+  </div>
+  <div class="card" style="padding:14px; background:#ECFDF5; border-color:#6EE7B7;">
+    <div class="text-xs font-bold" style="color:#065F46;">✓ 지급완료</div>
+    <div class="num font-bold mt-1" style="font-size:22px; color:#047857;">
+      {% if request.state.can_view_amounts %}{{ paid_total|money }}원{% else %}—{% endif %}
     </div>
-    <div>
-      <button class="btn-primary" type="submit">검색</button>
-      {% if search_q or selected_project_id %}
-      <a href="/expenses" class="btn-secondary">초기화</a>
+    <div class="text-xs mt-1" style="color:#065F46;">{{ paid_count }}건</div>
+  </div>
+  <div class="card" style="padding:14px;">
+    <div class="text-xs font-bold text-slate-600">전체 발주액 (총액)</div>
+    <div class="num font-bold mt-1" style="font-size:22px; color:var(--ink);">
+      {% if request.state.can_view_amounts %}{{ total|money }}원{% else %}—{% endif %}
+    </div>
+    <div class="text-xs mt-1 text-slate-500">
+      {{ rows|length }}건
+      {% if request.state.can_view_amounts and total_vat %}
+      · 공급가 {{ total_supply|money }} / VAT {{ total_vat|money }}
       {% endif %}
     </div>
-  </form>
-  {% if search_q %}
-  <div class="text-xs mt-2" style="color: var(--ink-4);">
-    🔍 "<b>{{ search_q }}</b>" 검색 결과 — {{ rows|length }}건
+  </div>
+  {% if overdue_count %}
+  <div class="card" style="padding:14px; background:#FFF7ED; border-color:#FDBA74;">
+    <div class="text-xs font-bold" style="color:#9A3412;">⚠️ 지급 지연</div>
+    <div class="num font-bold mt-1" style="font-size:22px; color:#C2410C;">{{ overdue_count }}건</div>
+    <div class="text-xs mt-1" style="color:#9A3412;">지급예정일 초과</div>
   </div>
   {% endif %}
 </div>
 
-<style>
-  .proj-opt:hover, .proj-opt.proj-highlighted { background: #F0F9FF; }
-  .proj-opt:last-child { border-bottom: none; }
-  #proj-search-input.proj-selected { background: #ECFDF5; border-color: #6EE7B7; font-weight: 600; }
-</style>
-<script>
-(function() {
-  const input = document.getElementById('proj-search-input');
-  const hidden = document.getElementById('proj-id-hidden');
-  const dropdown = document.getElementById('proj-dropdown');
-  const picker = document.getElementById('proj-picker');
-  const form = document.getElementById('exp-filter-form');
-  if (!input || !dropdown || !hidden) return;
+<!-- 필터 -->
+<div class="card mb-4">
+  <form method="get" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+    <div style="flex:2; min-width:200px;">
+      <label class="label">🔍 검색 (거래처·내용·사양·프로젝트)</label>
+      <input name="q" class="input" value="{{ search_q or '' }}" placeholder="예: ABC음향, 라인어레이" autocomplete="off">
+    </div>
+    <div style="flex:1; min-width:180px;">
+      <label class="label">프로젝트</label>
+      <select name="project_id" class="input">
+        <option value="">전체 프로젝트</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}" {% if selected_project_id == p.id %}selected{% endif %}>
+          {{ p.name }}{% if p.event_date %} · {{ p.event_date }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="min-width:130px;">
+      <label class="label">지급 상태</label>
+      <select name="pay" class="input">
+        <option value="">전체</option>
+        <option value="미지급" {% if pay_filter == '미지급' %}selected{% endif %}>💸 미지급</option>
+        <option value="지급완료" {% if pay_filter == '지급완료' %}selected{% endif %}>✓ 지급완료</option>
+      </select>
+    </div>
+    <div>
+      <button class="btn-primary" type="submit">검색</button>
+      {% if search_q or selected_project_id or pay_filter %}
+      <a href="/expenses" class="btn-secondary">초기화</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
 
-  if (hidden.value) input.classList.add('proj-selected');
-
-  function filter(q) {
-    const ql = (q || '').toLowerCase().trim();
-    let visible = 0;
-    dropdown.querySelectorAll('.proj-opt').forEach(opt => {
-      if (!opt.dataset.value) { opt.style.display = ''; return; }  // "전체" 항상 표시
-      const label = (opt.dataset.label || '').toLowerCase();
-      const match = !ql || label.includes(ql);
-      opt.style.display = match ? '' : 'none';
-      if (match) visible++;
-    });
-  }
-  function pick(opt) {
-    hidden.value = opt.dataset.value;
-    input.value = opt.dataset.value ? opt.dataset.label : '';
-    input.classList.toggle('proj-selected', !!opt.dataset.value);
-    dropdown.style.display = 'none';
-    // 즉시 적용 (select와 같은 UX)
-    if (form) form.submit();
-  }
-
-  input.addEventListener('focus', () => { filter(''); dropdown.style.display = 'block'; });
-  input.addEventListener('input', () => {
-    hidden.value = '';
-    input.classList.remove('proj-selected');
-    filter(input.value);
-    dropdown.style.display = 'block';
-  });
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { dropdown.style.display = 'none'; input.blur(); }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const first = dropdown.querySelector('.proj-opt:not([style*="display: none"])');
-      if (first) pick(first);
-    }
-  });
-  dropdown.querySelectorAll('.proj-opt').forEach(opt => {
-    opt.addEventListener('mousedown', e => { e.preventDefault(); pick(opt); });
-  });
-  document.addEventListener('mousedown', e => {
-    if (!picker.contains(e.target)) dropdown.style.display = 'none';
-  });
-})();
-</script>
-
+<!-- 목록 -->
 <div class="card overflow-x-auto">
   <table class="dt">
     <thead>
       <tr>
-        <th>날짜</th><th>항목</th><th class="mobile-hide">프로젝트</th>
-        <th class="mobile-hide">거래처</th><th>내용</th>
-        <th class="text-right">금액</th><th class="text-center">영수증</th><th class="text-center">수정/삭제</th>
+        <th>발주일</th>
+        <th>역할</th>
+        <th>거래처</th>
+        <th class="mobile-hide">프로젝트</th>
+        <th>작업 내용</th>
+        <th class="text-right">지급액(총액)</th>
+        <th class="text-center">지급예정</th>
+        <th class="text-center">지급 상태</th>
+        <th class="text-center">계산서</th>
+        <th class="text-center">관리</th>
       </tr>
     </thead>
     <tbody>
       {% for r in rows %}
-      <tr>
+      <tr {% if r.is_overdue %}style="background:#FFFBEB;"{% endif %}>
         <td class="whitespace-nowrap text-xs">{{ r.date }}</td>
         <td><span class="badge badge-blue">{{ r.category }}</span></td>
-        <td class="mobile-hide text-xs">{{ r.project_name }}</td>
-        <td class="mobile-hide text-xs">{{ r.vendor }}</td>
         <td>
-          {{ r.description }}
-          {% if not r.has_evidence %}
-          <span title="{{ r.tax_excluded_note or '증빙 없는 현금 거래' }}" style="display: inline-block; margin-left: 4px; padding: 1px 5px; background: #FEF3C7; color: #92400E; font-size: 9px; border-radius: 3px; font-weight: 700; vertical-align: 1px;">⚠ 증빙없음</span>
+          <div class="font-semibold text-sm">{{ r.vendor_name }}</div>
+          {% if r.vendor_phone %}
+          <div class="text-xs text-slate-400">{{ r.vendor_phone }}</div>
           {% endif %}
         </td>
-        <td class="text-right num font-bold">{% if request.state.can_view_amounts %}{{ r.amount|money }}{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}</td>
+        <td class="mobile-hide text-xs">{{ r.project_name }}</td>
+        <td>
+          <div>{{ r.description }}</div>
+          {% if r.spec_detail %}
+          <div class="text-xs text-slate-500 mt-1" style="white-space:pre-line; max-width:280px;">{{ r.spec_detail }}</div>
+          {% endif %}
+        </td>
+        <td class="text-right num font-bold">
+          {% if request.state.can_view_amounts %}
+            {{ r.amount|money }}
+            {% if r.vat_amount %}
+            <div class="text-xs" style="font-weight:400; color:var(--ink-4);">
+              공급가 {{ r.supply_amount|money }}<br>VAT {{ r.vat_amount|money }}
+            </div>
+            {% endif %}
+          {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
+        </td>
+        <td class="text-center text-xs whitespace-nowrap">
+          {% if r.pay_due_date %}
+            {% if r.is_overdue %}
+            <span style="color:#B91C1C; font-weight:700;">⚠️ {{ r.pay_due_date }}</span>
+            {% else %}
+            {{ r.pay_due_date }}
+            {% endif %}
+          {% else %}
+          <span class="text-slate-400">—</span>
+          {% endif %}
+        </td>
         <td class="text-center">
+          <form method="post" action="/expenses/{{ r.id }}/toggle-pay" style="display:inline;">
+            {% if r.pay_status == '미지급' %}
+            <button type="submit" class="pay-badge pay-unpaid" title="클릭 → 지급완료">💸 미지급</button>
+            {% else %}
+            <button type="submit" class="pay-badge pay-paid" title="클릭 → 미지급">✓ 지급완료</button>
+            {% endif %}
+          </form>
+          {% if r.pay_date %}
+          <div class="text-xs text-slate-400 mt-1">{{ r.pay_date }}</div>
+          {% endif %}
+        </td>
+        <td class="text-center">
+          {% if r.has_tax_invoice %}
+          <span title="세금계산서 발행됨" style="color:#047857;">📄</span>
+          {% else %}
+          <span title="세금계산서 없음" class="text-slate-300">—</span>
+          {% endif %}
           {% if r.receipt %}
-          <a href="/receipts/{{ r.receipt }}" target="_blank" class="text-slate-600 hover:text-slate-900">📷</a>
-          {% elif not r.has_evidence %}
-          <span style="color: #92400E; font-size: 12px;" title="증빙 없는 현금 거래">⚠</span>
+          <a href="/receipts/{{ r.receipt }}" target="_blank" title="첨부파일" style="margin-left:4px;">📷</a>
           {% endif %}
         </td>
         <td class="text-center whitespace-nowrap">
           <a href="/expenses/{{ r.id }}/edit" class="text-slate-600 text-xs hover:text-slate-900 mr-2">수정</a>
-          <form method="post" action="/expenses/{{ r.id }}/delete" class="inline" onsubmit="return confirm('삭제하시겠습니까?')">
-            <button class="text-red-500 hover:text-red-700 text-xs">삭제</button>
+          <form method="post" action="/expenses/{{ r.id }}/delete" style="display:inline;" onsubmit="return confirm('삭제하시겠습니까?')">
+            <button class="text-red-500 hover:text-red-700 text-xs" style="background:none;border:none;cursor:pointer;">삭제</button>
           </form>
         </td>
       </tr>
       {% endfor %}
       {% if not rows %}
-      <tr><td colspan="8" class="text-center py-8 text-slate-400">등록된 비용이 없습니다.</td></tr>
+      <tr>
+        <td colspan="10" class="text-center py-12 text-slate-400">
+          <div style="font-size:36px;">🏗️</div>
+          <div class="mt-2 font-semibold">등록된 하청/외주 발주가 없습니다</div>
+          <div class="text-xs mt-1">거래처에 발주한 작업을 등록하고 지급 여부를 관리하세요.</div>
+          <a href="/expenses/new" class="inline-block mt-3 btn-primary" style="padding:8px 16px;">+ 첫 발주 등록</a>
+        </td>
+      </tr>
       {% endif %}
     </tbody>
   </table>
 </div>
+
+<style>
+  .pay-badge {
+    padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 700;
+    cursor: pointer; border: 1.5px solid transparent; white-space: nowrap;
+  }
+  .pay-badge.pay-unpaid { background: #FEF2F2; color: #B91C1C; border-color: #FCA5A5; }
+  .pay-badge.pay-unpaid:hover { background: #FEE2E2; }
+  .pay-badge.pay-paid { background: #ECFDF5; color: #047857; border-color: #6EE7B7; }
+  .pay-badge.pay-paid:hover { background: #D1FAE5; }
+</style>
 
 {% endblock %}

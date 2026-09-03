@@ -1,296 +1,228 @@
 {% extends "base.html" %}
-{% block title %}비용 수정{% endblock %}
+{% block title %}하청/외주 발주 수정{% endblock %}
 {% block content %}
 
 <div class="mb-4">
-  <a href="/expenses" class="text-sm text-slate-500">← 비용처리 목록</a>
-  <h1 class="text-2xl font-bold text-slate-800 mt-2">✏️ 비용 수정</h1>
+  <a href="/expenses" class="text-sm text-slate-500">← 하청/외주 지급 목록</a>
+  <h1 class="text-2xl font-bold text-slate-800 mt-2">🏗️ 하청/외주 발주 수정</h1>
 </div>
 
-<form method="post" action="/expenses/{{ e.id }}/edit" enctype="multipart/form-data" class="card space-y-4 max-w-2xl"
-      onsubmit="return finalizeVendorBeforeSubmit()">
-  <div class="grid md:grid-cols-2 gap-4">
-    <div>
-      <label class="label">프로젝트 *</label>
-      <select name="project_id" class="input" required>
-        {% for p in projects %}
-        <option value="{{ p.id }}" {% if p.id == e.project_id %}selected{% endif %}>{{ p.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label class="label">날짜 *</label>
-      <input type="date" name="expense_date" class="input" value="{{ e.expense_date }}" required>
-    </div>
-  </div>
+<form method="post" action="/expenses/{{ e.id }}/edit" enctype="multipart/form-data" class="card space-y-4" style="max-width:720px;">
 
-  <div class="grid md:grid-cols-2 gap-4">
-    <div>
-      <label class="label">항목 *</label>
-      <select name="category" class="input" required>
-        {% for c in ['재료비','식비','교통비','장비대여','숙박비','기타'] %}
-        <option value="{{ c }}" {% if c == e.category %}selected{% endif %}>{{ c }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label class="label">결제 수단</label>
-      <select name="payment_method" class="input">
-        {% for m in ['현금','카드','계좌이체'] %}
-        <option value="{{ m }}" {% if m == e.payment_method %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-      </select>
-    </div>
-  </div>
-
+  <!-- 1. 프로젝트 -->
   <div>
-    <label class="label">거래처
-      <span class="text-xs" style="color:#6B7280;">— 검색해서 선택하거나 새 거래처 즉시 등록</span>
+    <label class="label" style="font-weight:700;">
+      1. 프로젝트 <span style="color:#DC2626;">*</span>
+      <span style="color: var(--ink-4); font-size: 11px; font-weight: 500;">(프로젝트명·코드·거래처명으로 검색)</span>
     </label>
-    <div class="vendor-picker" id="vendor-picker">
-      <input type="text" id="vendor-input" class="input {% if e.vendor_id or e.vendor_name %}vp-selected{% endif %}"
-             placeholder="🔍 거래처명·연락처·사업자번호로 검색" autocomplete="off"
-             value="{{ e.vendor_name }}">
-      <input type="hidden" name="vendor_id" id="vendor-id" value="{{ e.vendor_id or '' }}">
-      <input type="hidden" name="vendor_name" id="vendor-name" value="{{ e.vendor_name }}">
-      <div class="vendor-results" id="vendor-results" style="display:none;"></div>
-    </div>
+    {% set sel_proj = projects|selectattr('id', 'equalto', e.project_id)|first if e.project_id else None %}
+    <div data-project-search data-name="project_id" data-required="1"
+         data-initial-id="{{ e.project_id or '' }}"
+         data-initial-name="{{ sel_proj.name if sel_proj else '' }}"></div>
   </div>
 
-  <!-- 거래처 즉시 등록 모달 -->
-  <div id="vendor-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:100; align-items:center; justify-content:center; padding:20px;">
-    <div style="background:white; border-radius:12px; padding:24px; max-width:480px; width:100%;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-        <h3 style="font-size:18px; font-weight:700; margin:0;">➕ 새 거래처 등록</h3>
-        <button type="button" onclick="closeVendorModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#6B7280;">×</button>
-      </div>
-      <div class="space-y-3">
-        <div><label class="label">거래처명 *</label><input id="qv-name" class="input" required></div>
-        <div class="grid grid-cols-2 gap-2">
-          <div><label class="label">담당자</label><input id="qv-contact" class="input"></div>
-          <div><label class="label">연락처</label><input id="qv-phone" class="input"></div>
-        </div>
-        <div><label class="label">사업자번호</label><input id="qv-biz" class="input" placeholder="000-00-00000"></div>
-        <div id="qv-error" style="display:none; background:#FEE2E2; color:#991B1B; padding:8px 12px; border-radius:6px; font-size:13px;"></div>
-      </div>
-      <div style="display:flex; gap:8px; margin-top:20px;">
-        <button type="button" onclick="closeVendorModal()" class="btn-secondary" style="flex:1;">취소</button>
-        <button type="button" onclick="submitVendorQuick()" class="btn-primary" style="flex:1;" id="qv-submit">💾 등록 후 사용</button>
-      </div>
-    </div>
-  </div>
-  <div><label class="label">내용 *</label><input name="description" class="input" value="{{ e.description }}" required></div>
+  <!-- 2. 거래처 (하청업체) -->
   <div>
-    <label class="label">금액 (원) *</label>
-    <input name="amount" type="text" class="input num money-input" value="{{ e.amount }}" required>
+    <label class="label" style="font-weight:700;">
+      2. 거래처 (하청업체) <span style="color:#DC2626;">*</span>
+      <span style="color: var(--ink-4); font-size: 11px; font-weight: 500;">(이름·사업자번호로 검색 · 없으면 즉시 등록)</span>
+    </label>
+    {% set sel_vendor = vendors|selectattr('id', 'equalto', e.vendor_id)|first if e.vendor_id else None %}
+    <div data-vendor-search data-name="vendor_id"
+         data-initial-id="{{ e.vendor_id or '' }}"
+         data-initial-name="{{ sel_vendor.name if sel_vendor else '' }}"></div>
+    {% if e.vendor_name and not e.vendor_id %}
+    <p class="text-xs mt-1" style="color:#B45309;">⚠ 기존 입력값: {{ e.vendor_name }} (거래처 마스터에 없음 — 위에서 검색해 선택하거나 새로 등록하세요)</p>
+    {% endif %}
   </div>
 
-  <!-- 증빙 여부 토글 -->
+  <!-- 3. 역할 -->
   <div>
-    <label class="label">증빙 자료</label>
-    <div class="grid grid-cols-2 gap-2 max-w-md">
-      <label class="cursor-pointer">
-        <input type="radio" name="has_evidence" value="yes" class="sr-only peer" {% if e.has_evidence %}checked{% endif %} onchange="toggleEvidence()">
-        <div class="evi-opt">
-          <div class="font-bold">✓ 증빙 있음</div>
-          <div class="text-xs mt-1" style="color: var(--ink-4);">영수증·세금계산서 첨부</div>
-        </div>
+    <label class="label" style="font-weight:700;">3. 하청 역할</label>
+    <select name="category" class="input" style="font-size:16px;">
+      {% for role in roles %}
+      <option value="{{ role }}" {% if e.category == role %}selected{% endif %}>{{ role }}</option>
+      {% endfor %}
+      {% if e.category not in roles %}
+      <option value="{{ e.category }}" selected>{{ e.category }} (기존)</option>
+      {% endif %}
+    </select>
+  </div>
+
+  <!-- 4. 발주일 -->
+  <div>
+    <label class="label" style="font-weight:700;">4. 발주일 / 작업일</label>
+    <input type="date" name="expense_date" class="input" value="{{ e.expense_date }}" style="font-size:16px;">
+  </div>
+
+  <!-- 5. 작업 내용 -->
+  <div>
+    <label class="label" style="font-weight:700;">5. 작업 내용 <span style="color:#DC2626;">*</span></label>
+    <input type="text" name="description" class="input" required value="{{ e.description }}" style="font-size:16px;">
+  </div>
+
+  <!-- 6. 상세 사양 -->
+  <div>
+    <label class="label" style="font-weight:700;">6. 상세 사양</label>
+    <textarea name="spec_detail" class="input" rows="4" style="font-size:15px;">{{ e.spec_detail }}</textarea>
+  </div>
+
+  <!-- 7. 금액 + 부가세 -->
+  <div style="background:#FFFBEB; padding:14px; border-radius:10px; border:1.5px solid #FCD34D;">
+    <div style="font-size:14px; font-weight:800; color:#92400E; margin-bottom:10px;">💰 지급 금액</div>
+
+    <div>
+      <label class="label" style="font-weight:700;">부가세 처리 방식</label>
+      <select name="vat_mode" id="vat-mode" class="input" style="font-size:16px;">
+        <option value="supply" {% if e.vat_mode == 'supply' %}selected{% endif %}>공급가 입력 (부가세 10% 별도 추가)</option>
+        <option value="total" {% if e.vat_mode == 'total' %}selected{% endif %}>총액 입력 (부가세 포함 금액)</option>
+        <option value="none" {% if e.vat_mode == 'none' or not e.vat_mode %}selected{% endif %}>부가세 없음 (현금거래·간이과세)</option>
+      </select>
+    </div>
+
+    <div style="margin-top:10px;">
+      <label class="label" style="font-weight:700;">
+        금액 (원) <span style="color:#DC2626;">*</span>
+        <span class="text-xs" id="amount-hint" style="color:#92400E; font-weight:400;"></span>
       </label>
-      <label class="cursor-pointer">
-        <input type="radio" name="has_evidence" value="no" class="sr-only peer" {% if not e.has_evidence %}checked{% endif %} onchange="toggleEvidence()">
-        <div class="evi-opt">
-          <div class="font-bold">⚠ 증빙 없음</div>
-          <div class="text-xs mt-1" style="color: var(--ink-4);">현금 거래 등</div>
-        </div>
-      </label>
+      <input type="text" name="amount" id="amount-input" class="input" required inputmode="numeric"
+             value="{% if e.vat_mode == 'total' %}{{ e.amount }}{% elif e.vat_mode == 'supply' %}{{ e.supply_amount or e.amount }}{% else %}{{ e.amount }}{% endif %}"
+             style="font-size:20px; font-weight:800; text-align:right;">
+    </div>
+
+    <div id="vat-result" style="margin-top:12px; padding:12px; background:white; border-radius:8px; border:1px solid #FDE68A;">
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;">
+        <span style="color:#78716C;">공급가액</span>
+        <span class="num" id="disp-supply" style="font-weight:700;">0원</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;">
+        <span style="color:#78716C;">부가세 (10%)</span>
+        <span class="num" id="disp-vat" style="font-weight:700;">0원</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding-top:8px; border-top:1.5px solid #FDE68A;">
+        <span style="font-size:14px; font-weight:800;">실제 지급 총액</span>
+        <span class="num" id="disp-total" style="font-size:19px; font-weight:900; color:#B45309;">0원</span>
+      </div>
     </div>
   </div>
 
-  <!-- 증빙 있음 -->
-  <div id="evi-yes-section" {% if not e.has_evidence %}style="display:none;"{% endif %}>
-    <label class="label">📷 영수증 사진</label>
+  <!-- 8. 지급 관리 -->
+  <div style="background:#F0FDF4; padding:14px; border-radius:10px; border:1.5px solid #86EFAC;">
+    <div style="font-size:14px; font-weight:800; color:#166534; margin-bottom:10px;">
+      💵 지급 관리
+      {% if e.pay_date %}
+      <span style="font-weight:400; font-size:12px; color:#047857; margin-left:8px;">— 지급일: {{ e.pay_date }}</span>
+      {% endif %}
+    </div>
+    <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+      <div>
+        <label class="label" style="font-weight:700;">지급 상태</label>
+        <select name="pay_status" class="input" style="font-size:16px;">
+          <option value="미지급" {% if e.pay_status == '미지급' %}selected{% endif %}>💸 미지급</option>
+          <option value="지급완료" {% if e.pay_status == '지급완료' %}selected{% endif %}>✓ 지급완료</option>
+        </select>
+      </div>
+      <div>
+        <label class="label" style="font-weight:700;">지급 예정일</label>
+        <input type="date" name="pay_due_date" class="input" value="{{ e.pay_due_date or '' }}" style="font-size:16px;">
+      </div>
+    </div>
+    <div class="mt-3">
+      <label class="label" style="font-weight:700;">지급 메모</label>
+      <input type="text" name="pay_memo" class="input" value="{{ e.pay_memo }}" style="font-size:16px;">
+    </div>
+  </div>
+
+  <!-- 9. 결제 수단 -->
+  <div>
+    <label class="label" style="font-weight:700;">8. 결제 수단</label>
+    <select name="payment_method" class="input" style="font-size:16px;">
+      {% for pm in ['계좌이체', '현금', '카드', '어음'] %}
+      <option value="{{ pm }}" {% if e.payment_method == pm %}selected{% endif %}>{{ pm }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- 10. 세금계산서 -->
+  <div>
+    <label class="label" style="font-weight:700;">9. 세금계산서</label>
+    <select name="has_tax_invoice" class="input" style="font-size:16px;">
+      <option value="no" {% if not e.has_tax_invoice %}selected{% endif %}>미발행 / 대기</option>
+      <option value="yes" {% if e.has_tax_invoice %}selected{% endif %}>📄 발행 완료</option>
+    </select>
+  </div>
+
+  <!-- 11. 첨부 -->
+  <div>
+    <label class="label" style="font-weight:700;">10. 계약서·계산서 사진</label>
     {% if e.receipt_image %}
-    <div class="mb-2 flex items-center gap-3 p-2 bg-slate-50 rounded-lg">
+    <div class="mb-2">
       <a href="/receipts/{{ e.receipt_image }}" target="_blank">
-        <img src="/receipts/{{ e.receipt_image }}" class="h-20 rounded border border-slate-200">
+        <img src="/receipts/{{ e.receipt_image }}" alt="첨부" style="max-width:180px; border-radius:8px; border:1px solid var(--line);">
       </a>
-      <label class="text-xs text-red-600 cursor-pointer">
-        <input type="checkbox" name="remove_receipt" value="yes" class="mr-1">
-        영수증 제거
+      <label class="text-xs mt-1" style="display:block; color:#B91C1C;">
+        <input type="checkbox" name="remove_receipt" value="yes"> 기존 사진 삭제
       </label>
     </div>
     {% endif %}
-    <input name="receipt" type="file" accept="image/*" capture="environment" class="input">
-    <p class="text-xs text-slate-500 mt-1">새 사진을 선택하면 기존 사진이 교체됩니다.</p>
+    <input type="file" name="receipt" accept="image/*" capture="environment" class="input">
   </div>
 
-  <!-- 증빙 없음 -->
-  <div id="evi-no-section" {% if e.has_evidence %}style="display:none;"{% endif %}>
-    <div style="background: #FEF3C7; border: 1.5px solid #FCD34D; border-radius: 8px; padding: 14px;">
-      <div style="font-size: 13px; font-weight: 700; color: #92400E; margin-bottom: 8px;">⚠ 세무 신고 시 비용 인정 안 됨</div>
-      <p style="font-size: 12px; color: #92400E; line-height: 1.5; margin-bottom: 10px;">
-        적격 증빙(세금계산서·신용카드매출전표·현금영수증)이 없는 지출은 비용으로 공제받지 못합니다.
-      </p>
-      <label class="label" style="color: #78350F;">📝 메모 (사유, 상황 기록)</label>
-      <textarea name="tax_excluded_note" class="input" rows="2"
-        placeholder="예: 현장 주차비 (영수증 없는 미터기 주차)">{{ e.tax_excluded_note or '' }}</textarea>
-    </div>
-  </div>
-
-  <div class="flex gap-2 pt-2">
-    <button class="btn-primary flex-1">저장</button>
-    <a href="/expenses" class="btn-secondary">취소</a>
+  <div style="padding-top:8px;">
+    <button type="submit" class="btn-primary" style="width:100%; padding:16px; font-size:17px; font-weight:800;">💾 저장</button>
   </div>
 </form>
 
-<style>
-  .evi-opt { padding: 14px; border: 1.5px solid var(--line); border-radius: 8px; background: white; transition: all 0.15s; text-align: center; }
-  input[type=radio]:checked + .evi-opt { border-color: var(--ink); background: var(--ink); color: white; }
-  input[type=radio]:checked + .evi-opt .text-xs { color: rgba(255,255,255,0.7) !important; }
-  input[type=radio][value="no"]:checked + .evi-opt { border-color: #B45309; background: #FEF3C7; color: #92400E; }
-  input[type=radio][value="no"]:checked + .evi-opt .text-xs { color: #78350F !important; }
-</style>
+<div style="max-width:720px; margin-top:12px; display:flex; justify-content:space-between;">
+  <a href="/expenses" class="text-sm text-slate-500">← 취소하고 목록으로</a>
+  <form method="post" action="/expenses/{{ e.id }}/delete" onsubmit="return confirm('이 발주 내역을 삭제하시겠습니까?');">
+    <button type="submit" class="text-sm" style="background:none; border:none; color:#DC2626; cursor:pointer; text-decoration:underline;">🗑 삭제</button>
+  </form>
+</div>
 
-<style>
-  .vendor-picker { position: relative; }
-  .vendor-results {
-    position: absolute; z-index: 50; top: 100%; left: 0; right: 0;
-    margin-top: 2px; max-height: 320px; overflow-y: auto;
-    background: white; border: 1px solid #E5E7EB; border-radius: 8px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
-  }
-  .vp-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #F3F4F6; }
-  .vp-item:hover { background: #F0F9FF; }
-  .vp-empty { padding: 10px 12px; }
-  .vp-add-btn {
-    width: 100%; padding: 10px; background: #ECFDF5; color: #047857;
-    border: 1px dashed #34D399; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px;
-  }
-  .vp-add-btn:hover { background: #D1FAE5; }
-  #vendor-input.vp-selected { background: #ECFDF5; border-color: #6EE7B7; font-weight: 600; }
-</style>
 <script>
-// ★ submit 절대 차단 안 되게 — 함수 정의는 최상단, try/catch로 보호
-function finalizeVendorBeforeSubmit() {
+/* 금액 콤마 + 부가세 계산 */
+(function () {
   try {
-    const v = document.getElementById('vendor-input');
-    const idH = document.getElementById('vendor-id');
-    const nH = document.getElementById('vendor-name');
-    if (v && nH) {
-      if (idH && !idH.value) nH.value = (v.value || '').trim();
+    var input = document.getElementById('amount-input');
+    var modeSel = document.getElementById('vat-mode');
+    var hint = document.getElementById('amount-hint');
+    var dS = document.getElementById('disp-supply');
+    var dV = document.getElementById('disp-vat');
+    var dT = document.getElementById('disp-total');
+    if (!input || !modeSel) return;
+    function raw(v) { return String(v || '').replace(/[^0-9]/g, ''); }
+    function fmt(n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; }
+    function calc() {
+      var n = parseInt(raw(input.value), 10) || 0;
+      var mode = modeSel.value, supply, vat, total;
+      if (mode === 'total') {
+        total = n; supply = Math.round(n / 1.1); vat = n - supply;
+        if (hint) hint.textContent = '— 부가세가 포함된 총액';
+      } else if (mode === 'none') {
+        supply = n; vat = 0; total = n;
+        if (hint) hint.textContent = '— 부가세 없음';
+      } else {
+        supply = n; vat = Math.round(n * 0.1); total = n + vat;
+        if (hint) hint.textContent = '— 부가세 제외 공급가액';
+      }
+      if (dS) dS.textContent = fmt(supply);
+      if (dV) dV.textContent = fmt(vat) + (mode === 'none' ? ' (없음)' : '');
+      if (dT) dT.textContent = fmt(total);
     }
-  } catch (e) { console.error('vendor submit:', e); }
-  return true;  // 무조건 submit 진행
-}
-
-function toggleEvidence() {
-  try {
-    const val = document.querySelector('input[name="has_evidence"]:checked').value;
-    const y = document.getElementById('evi-yes-section');
-    const n = document.getElementById('evi-no-section');
-    if (y) y.style.display = (val === 'yes') ? '' : 'none';
-    if (n) n.style.display = (val === 'no') ? '' : 'none';
-  } catch (e) { console.error(e); }
-}
-
-// 모달 함수 정의 (전역) — onclick에서 직접 호출
-function openVendorModal(prefill) {
-  try {
-    document.getElementById('qv-name').value = prefill || '';
-    document.getElementById('qv-contact').value = '';
-    document.getElementById('qv-phone').value = '';
-    document.getElementById('qv-biz').value = '';
-    document.getElementById('qv-error').style.display = 'none';
-    document.getElementById('vendor-modal').style.display = 'flex';
-    setTimeout(() => document.getElementById('qv-name').focus(), 50);
-  } catch (e) { console.error(e); }
-}
-function closeVendorModal() {
-  const m = document.getElementById('vendor-modal');
-  if (m) m.style.display = 'none';
-}
-async function submitVendorQuick() {
-  const name = document.getElementById('qv-name').value.trim();
-  const errBox = document.getElementById('qv-error');
-  const btn = document.getElementById('qv-submit');
-  if (!name) { errBox.textContent = '거래처명을 입력하세요'; errBox.style.display = 'block'; return; }
-  btn.disabled = true; btn.textContent = '⏳ 등록 중...';
-  try {
-    const form = new FormData();
-    form.append('name', name);
-    form.append('contact_person', document.getElementById('qv-contact').value.trim());
-    form.append('phone', document.getElementById('qv-phone').value.trim());
-    form.append('biz_number', document.getElementById('qv-biz').value.trim());
-    const res = await fetch('/api/vendors/quick-create', {method:'POST', body: form});
-    const data = await res.json();
-    if (data.ok) {
-      const vInput = document.getElementById('vendor-input');
-      document.getElementById('vendor-id').value = data.id;
-      document.getElementById('vendor-name').value = data.name;
-      if (vInput) { vInput.value = data.name; vInput.classList.add('vp-selected'); }
-      const vr = document.getElementById('vendor-results');
-      if (vr) vr.style.display = 'none';
-      closeVendorModal();
-    } else {
-      errBox.textContent = data.error || '등록 실패'; errBox.style.display = 'block';
-    }
-  } catch (e) {
-    errBox.textContent = '네트워크 오류: ' + e.message; errBox.style.display = 'block';
-  } finally {
-    btn.disabled = false; btn.textContent = '💾 등록 후 사용';
-  }
-}
-
-// 거래처 검색 — DOMContentLoaded 안에서 초기화
-document.addEventListener('DOMContentLoaded', function() {
-  try {
-    const vInput = document.getElementById('vendor-input');
-    const vIdHidden = document.getElementById('vendor-id');
-    const vNameHidden = document.getElementById('vendor-name');
-    const vResults = document.getElementById('vendor-results');
-    let vSearchTimer = null;
-    if (!vInput || !vResults) return;
-
-    async function searchVendor(q) {
-      try {
-        const res = await fetch('/api/vendors/search?q=' + encodeURIComponent(q || '') + '&limit=15');
-        if (!res.ok) { vResults.style.display = 'none'; return; }
-        const items = await res.json();
-        if (items.length === 0) {
-          vResults.innerHTML = `<div class="vp-empty"><div style="color:#6B7280; padding:8px 12px;">"${q}"에 일치하는 거래처가 없습니다</div>${q ? `<button type="button" class="vp-add-btn" onclick="openVendorModal('${q.replace(/'/g, "\\'")}')">➕ "${q}" 거래처 즉시 등록</button>` : ''}</div>`;
-        } else {
-          let html = items.map(v => `<div class="vp-item" data-id="${v.id}" data-name="${v.name.replace(/"/g, '&quot;')}"><div style="font-weight:600;">🏢 ${v.name}</div><div style="font-size:11px; color:#6B7280;">${[v.contact_person, v.phone, v.biz_number].filter(Boolean).join(' · ') || '상세정보 없음'}</div></div>`).join('');
-          if (q) html += `<div class="vp-empty"><button type="button" class="vp-add-btn" onclick="openVendorModal('${q.replace(/'/g, "\\'")}')">➕ 위 결과에 없으면 "${q}" 즉시 등록</button></div>`;
-          vResults.innerHTML = html;
-          vResults.querySelectorAll('.vp-item').forEach(el => {
-            el.addEventListener('mousedown', e => {
-              e.preventDefault();
-              vIdHidden.value = el.dataset.id;
-              vNameHidden.value = el.dataset.name;
-              vInput.value = el.dataset.name;
-              vInput.classList.add('vp-selected');
-              vResults.style.display = 'none';
-            });
-          });
-        }
-        vResults.style.display = 'block';
-      } catch (e) { vResults.style.display = 'none'; }
-    }
-
-    vInput.addEventListener('focus', () => searchVendor(vInput.value));
-    vInput.addEventListener('input', () => {
-      vIdHidden.value = '';
-      vNameHidden.value = vInput.value.trim();
-      vInput.classList.remove('vp-selected');
-      clearTimeout(vSearchTimer);
-      vSearchTimer = setTimeout(() => searchVendor(vInput.value), 200);
+    input.addEventListener('input', function () {
+      var d = raw(input.value);
+      input.value = d ? Number(d).toLocaleString('ko-KR') : '';
+      calc();
     });
-    document.addEventListener('mousedown', e => {
-      const picker = document.getElementById('vendor-picker');
-      if (picker && !picker.contains(e.target)) vResults.style.display = 'none';
-    });
-  } catch (e) { console.error('vendor init:', e); }
-});
+    modeSel.addEventListener('change', calc);
+    /* 초기 표시: 기존 값에 콤마 적용 */
+    var initDigits = raw(input.value);
+    input.value = initDigits ? Number(initDigits).toLocaleString('ko-KR') : '';
+    calc();
+  } catch (err) { console.error('amount', err); }
+})();
+
 </script>
 
 {% endblock %}

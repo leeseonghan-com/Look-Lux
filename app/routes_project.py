@@ -3,13 +3,49 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlmodel import Session, select
+from sqlalchemy import or_
 
 from database import engine, Project, Vendor, Expense, Attendance, User
 from template_utils import templates
 
 router = APIRouter()
+
+
+@router.get("/api/projects/search")
+def project_search_api(request: Request, q: str = "", limit: int = 10):
+    """프로젝트 검색 (이름·코드·장소·거래처명 부분일치).
+    빈 쿼리면 최근 등록순. 거래처 검색 위젯과 동일한 UX용."""
+    if not request.session.get("user_id"):
+        raise HTTPException(401)
+    q = (q or "").strip()
+    with Session(engine, expire_on_commit=False) as s:
+        vendors_map = {v.id: v.name for v in s.exec(select(Vendor)).all()}
+        stmt = select(Project)
+        if q:
+            like = f"%{q}%"
+            # 거래처명으로도 찾을 수 있게 매칭되는 vendor_id 수집
+            vids = [vid for vid, vname in vendors_map.items() if q.lower() in (vname or "").lower()]
+            conds = [
+                Project.name.ilike(like),
+                Project.code.ilike(like),
+                Project.location.ilike(like),
+            ]
+            if vids:
+                conds.append(Project.vendor_id.in_(vids))
+            stmt = stmt.where(or_(*conds))
+        stmt = stmt.order_by(Project.created_at.desc(), Project.id.desc()).limit(max(1, min(50, limit)))
+        rows = s.exec(stmt).all()
+    return JSONResponse([{
+        "id": p.id,
+        "name": p.name or "",
+        "code": p.code or "",
+        "event_date": p.event_date.isoformat() if p.event_date else "",
+        "location": p.location or "",
+        "status": p.status or "",
+        "vendor_name": vendors_map.get(p.vendor_id, "") if p.vendor_id else "",
+    } for p in rows])
 
 
 VAT_RATE = 0.1  # 한국 부가세 10% 고정
@@ -22,37 +58,45 @@ CATEGORY_ICONS = {
 }
 
 
+# ⭐ 준비중 → 진행중 자동 전환 시점 (행사일 몇 일 전부터 진행중)
+IMMINENT_DAYS = 3  # 행사일 3일 전부터 자동 '진행중'
+
+
 def auto_status(project) -> tuple[str, str]:
     """행사일 기준 자동 상태 계산 (DB 수정 안 함, 표시용)
     반환: (진행상태, 정산상태)
 
-    규칙:
+    규칙 (사용자 요구사항 반영):
     - status가 '취소'인 경우 → 그대로 유지
-    - 행사일 없음 → 기존 status 그대로, 정산상태도 그대로
-    - 행사일이 오늘 이후 → '진행중' (단 사용자가 '준비중'으로 명시 설정한 경우 유지)
-    - 행사일이 오늘 이전 → '완료' + 정산상태는 무조건 '미수금'으로 자동 전환
-      (단 paid_date가 있거나 settlement_status가 '입금완료'면 입금완료 유지)
+    - 행사일 없음 → 기존 status 그대로 (자동전환 불가)
+    - 행사일까지 4일 이상 남음 → '준비중'
+    - 행사일 3일 전 ~ 당일 → '진행중'
+    - 행사일 지남 → '완료' + 정산상태 자동 계산
+      * 입금완료 표시 있으면 '입금완료'
+      * 아니면 '미수금'
     """
     if project.status == "취소":
         return ("취소", project.settlement_status or "미수금")
     if not project.event_date:
+        # 행사일 없는 프로젝트는 사용자가 명시 설정한 상태 유지
         return (project.status or "준비중", project.settlement_status or "미수금")
 
     today = date.today()
-    is_past = project.event_date < today
-    is_today = project.event_date == today
+    days_until = (project.event_date - today).days   # 양수=미래, 0=오늘, 음수=과거
+    is_past = days_until < 0
+    is_imminent = 0 <= days_until <= IMMINENT_DAYS   # 3일 전 ~ 당일
 
-    # 진행상태
+    # 진행상태 자동 계산
     if is_past:
         new_status = "완료"
-    elif is_today:
-        # 행사 당일은 무조건 진행중
+    elif is_imminent:
+        # 3일 전부터 당일까지: 자동 진행중
         new_status = "진행중"
     else:
-        # 행사일이 미래: 기본 진행중 (단 '준비중'을 명시 설정한 경우 유지)
-        new_status = "진행중" if project.status != "준비중" else "준비중"
+        # 행사일까지 4일 이상 남음: 준비중
+        new_status = "준비중"
 
-    # 정산상태: 행사일 지나면 미수금이 기본, 입금된 건 유지
+    # 정산상태: 행사일 지나면 미수금 기본, 입금된 건 유지
     if is_past:
         if project.paid_date or project.settlement_status == "입금완료":
             new_settle = "입금완료"
@@ -62,6 +106,51 @@ def auto_status(project) -> tuple[str, str]:
         new_settle = project.settlement_status or "미수금"
 
     return (new_status, new_settle)
+
+
+def days_until_event(project) -> Optional[int]:
+    """행사일까지 남은 일수 (양수=미래, 0=오늘, 음수=과거, None=행사일 없음)"""
+    if not project.event_date:
+        return None
+    return (project.event_date - date.today()).days
+
+
+def sync_auto_status_to_db(session, project) -> bool:
+    """⭐ 자동 계산된 상태를 DB에 반영 (변경 있으면 True 반환)
+    - 사용자가 '취소'로 명시한 프로젝트는 건드리지 않음
+    - 사용자가 수동으로 '완료'로 바꾼 프로젝트도 유지
+    - 행사일이 지났는데 정산이 완료되지 않은 건 계속 '완료 + 미수금'으로 저장
+    """
+    if project.status == "취소":
+        return False
+    if not project.event_date:
+        return False
+    new_status, new_settle = auto_status(project)
+    changed = False
+    if project.status != new_status:
+        project.status = new_status
+        changed = True
+    # 정산상태는 사용자 명시 '입금완료'는 유지 (자동 미수금 덮어쓰기 방지)
+    if project.settlement_status != new_settle:
+        # 입금완료로 이미 저장돼 있으면 유지
+        if project.settlement_status != "입금완료":
+            project.settlement_status = new_settle
+            changed = True
+    if changed:
+        session.add(project)
+    return changed
+
+
+def sync_all_project_statuses(session) -> int:
+    """모든 프로젝트에 대해 자동 상태 반영. 변경된 건수 반환."""
+    projects = session.exec(select(Project)).all()
+    changed_count = 0
+    for p in projects:
+        if sync_auto_status_to_db(session, p):
+            changed_count += 1
+    if changed_count > 0:
+        session.commit()
+    return changed_count
 
 
 def unified_status(project) -> dict:
@@ -172,6 +261,12 @@ def project_list(
     search_q = (q or "").strip().lower()
 
     with Session(engine, expire_on_commit=False) as s:
+        # ⭐ 목록 조회 시마다 자동 상태 반영 (준비중↔진행중↔완료)
+        try:
+            sync_all_project_statuses(s)
+        except Exception as ex:
+            print(f"[WARN] auto-status sync failed: {ex}")
+
         # 정렬 기준별 order_by
         stmt = select(Project)
         sort = (sort or "created_desc").strip()
@@ -557,6 +652,12 @@ def project_detail(request: Request, pid: int):
         p = s.get(Project, pid)
         if not p:
             raise HTTPException(404)
+        # ⭐ 상세 조회 시 자동 상태 반영
+        try:
+            if sync_auto_status_to_db(s, p):
+                s.commit()
+        except Exception as ex:
+            print(f"[WARN] project detail auto-status failed: {ex}")
         v = s.get(Vendor, p.vendor_id) if p.vendor_id else None
         # 연결된 견적서 조회 (project_id로 역참조)
         from database import Quote

@@ -150,9 +150,45 @@
 .m-vat-opt { display:block; padding:10px 6px; text-align:center; background:white; border:1.5px solid #E4E4E7; border-radius:10px; font-weight:700; font-size:12px; cursor:pointer; color:#71717A; line-height:1.4; }
 .m-vat-opt small { font-size: 10px; opacity: 0.7; font-weight: 500; }
 .m-vat-opt:has(input:checked) { background: #0A0E1A; border-color: #0A0E1A; color: white; }
-.q-item { padding: 12px; background: #F8FAFC; border-radius: 10px; margin-bottom: 8px; }
-.q-item input, .q-item select { width: 100%; padding: 10px; border: 1px solid #E5E7EB; border-radius: 8px; font-size: 14px; margin-bottom: 6px; box-sizing: border-box; }
-.q-item .q-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* ⭐ 카드형 견적서 품목 UI — 세로 스크롤 */
+.q-item {
+  padding: 16px; background: white; border: 1.5px solid #E5E7EB;
+  border-radius: 14px; margin-bottom: 14px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+}
+.q-item .q-item-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #F1F5F9;
+}
+.q-item .q-item-number {
+  font-size: 15px; font-weight: 800; color: #0A0E1A;
+  background: #FEF3C7; padding: 5px 12px; border-radius: 6px;
+}
+.q-item .q-field-label {
+  display: block; font-size: 12px; font-weight: 700; color: #52525B;
+  margin-bottom: 5px; margin-top: 10px;
+}
+.q-item input, .q-item select {
+  width: 100%; padding: 14px 12px; border: 1.5px solid #D1D5DB;
+  border-radius: 10px; font-size: 16px; box-sizing: border-box;
+  background: white; margin: 0;
+}
+.q-item input:focus, .q-item select:focus {
+  outline: none; border-color: #0A0E1A; box-shadow: 0 0 0 3px rgba(10,14,26,0.1);
+}
+.q-item input.q-name-input { font-size: 17px; font-weight: 700; }
+.q-item .q-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.q-item .q-amount-display {
+  margin-top: 14px; padding: 12px; background: #F0FDF4;
+  border: 1.5px solid #86EFAC; border-radius: 10px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.q-item .q-amount-label { font-size: 12px; font-weight: 700; color: #166534; }
+.q-item .q-amount-value { font-size: 20px; font-weight: 900; color: #14532D; }
+.q-item .q-delete-btn {
+  background: #FEE2E2; color: #991B1B; border: none;
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 700;
+}
 </style>
 
 <script>
@@ -190,18 +226,30 @@ function renderItems() {
   }
   container.innerHTML = items.map((it, idx) => `
     <div class="q-item">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-        <span style="font-size:12px; font-weight:700; color:#71717A;">#${idx+1}</span>
-        <button type="button" onclick="removeItem(${it.id})" style="background:#FEE2E2; color:#991B1B; border:none; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700;">삭제</button>
+      <div class="q-item-header">
+        <span class="q-item-number">품목 #${idx+1}</span>
+        <button type="button" onclick="removeItem(${it.id})" class="q-delete-btn">🗑 삭제</button>
       </div>
-      <input placeholder="품명 *" value="${it.name}" oninput="updateItem(${it.id}, 'name', this.value)">
-      <input placeholder="규격" value="${it.spec}" oninput="updateItem(${it.id}, 'spec', this.value)">
+      <label class="q-field-label">품명 *</label>
+      <input class="q-name-input" placeholder="예: LED 무빙라이트 230W" value="${it.name}" oninput="updateItem(${it.id}, 'name', this.value)">
+      <label class="q-field-label">규격</label>
+      <input placeholder="예: Beam/Spot/Wash" value="${it.spec}" oninput="updateItem(${it.id}, 'spec', this.value)">
       <div class="q-row">
-        <input placeholder="수량" type="number" min="0" step="0.5" inputmode="decimal" value="${it.quantity}" oninput="updateItem(${it.id}, 'quantity', this.value)">
-        <input placeholder="단위" value="${it.unit}" oninput="updateItem(${it.id}, 'unit', this.value)">
+        <div>
+          <label class="q-field-label">수량</label>
+          <input placeholder="수량" type="number" min="0" step="0.5" inputmode="decimal" value="${it.quantity}" oninput="updateItem(${it.id}, 'quantity', this.value)">
+        </div>
+        <div>
+          <label class="q-field-label">단위</label>
+          <input placeholder="EA" value="${it.unit}" oninput="updateItem(${it.id}, 'unit', this.value)">
+        </div>
       </div>
-      <input placeholder="단가" type="text" inputmode="numeric" value="${it.unit_price}" oninput="updateItem(${it.id}, 'unit_price', this.value)">
-      <div style="text-align:right; font-weight:800; font-size:14px; margin-top:4px;" id="amt-${it.id}">${it.amount.toLocaleString('ko-KR')}원</div>
+      <label class="q-field-label">단가 (원)</label>
+      <input placeholder="0" type="text" inputmode="numeric" value="${it.unit_price}" oninput="updateItem(${it.id}, 'unit_price', this.value)">
+      <div class="q-amount-display">
+        <span class="q-amount-label">💰 금액</span>
+        <span class="q-amount-value" id="amt-${it.id}">${it.amount.toLocaleString('ko-KR')}원</span>
+      </div>
     </div>
   `).join('');
 }

@@ -77,19 +77,23 @@ SHEET_SCHEMA = {
         ],
         "unique_field": "code",
     },
-    "비용": {
+    "하청외주지급": {
         "model": Expense,
         "fields": [
             ("프로젝트ID", "project_id"),
-            ("날짜", "expense_date"),
-            ("항목", "category"),
+            ("발주일", "expense_date"),
+            ("역할", "category"),
             ("거래처명", "vendor_name"),
-            ("내용", "description"),
-            ("금액", "amount"),
+            ("작업내용", "description"),
+            ("상세사양", "spec_detail"),
+            ("지급액", "amount"),
             ("결제수단", "payment_method"),
-            ("영수증파일", "receipt_image"),
-            ("증빙여부", "has_evidence"),
-            ("세무제외메모", "tax_excluded_note"),
+            ("지급상태", "pay_status"),
+            ("지급예정일", "pay_due_date"),
+            ("지급일", "pay_date"),
+            ("지급메모", "pay_memo"),
+            ("세금계산서", "has_tax_invoice"),
+            ("첨부파일", "receipt_image"),
         ],
         "unique_field": None,  # 자유 추가
     },
@@ -339,7 +343,8 @@ def _parse_value(value, field_name: str, model):
     # date
     if field_name in (
         "event_date", "invoice_date", "settle_due_date", "paid_date",
-        "expense_date", "work_date", "pay_date", "quote_date", "valid_until",
+        "expense_date", "work_date", "pay_date", "pay_due_date",
+        "quote_date", "valid_until",
         "purchase_date", "last_check_date", "log_date",
     ):
         if isinstance(value, datetime):

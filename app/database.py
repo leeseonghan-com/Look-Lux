@@ -83,20 +83,46 @@ class Project(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+# 하청/외주 역할 구분 옵션
+SUBCONTRACT_ROLES = ["음향", "조명", "영상", "무대", "특효", "전기", "운반", "인력", "기타"]
+
+
 class Expense(SQLModel, table=True):
-    """비용처리 (재료비/식비/교통비/기타)"""
+    """⭐ 하청/외주 지급 관리 (v2026.07 재정의)
+    기존 '비용처리(밥값/기름값/재료비)' → '거래처에 지급해야 하는 하청·외주비'로 성격 변경
+    인건비(Attendance)와 동일한 지급 관리 패턴 적용
+    """
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: int = Field(foreign_key="project.id", index=True)
-    expense_date: date
-    category: str  # 재료비/식비/교통비/장비대여/기타
-    vendor_id: Optional[int] = Field(default=None, foreign_key="vendor.id", index=True)  # 거래처 마스터 연결 (선택)
-    vendor_name: str = ""  # 텍스트 — vendor_id 없는 경우 직접 입력값 / 있는 경우 캐시
-    description: str
-    amount: int  # 금액
-    payment_method: str = "현금"  # 현금/카드/계좌이체
-    receipt_image: str = ""  # 영수증 사진 파일명
-    has_evidence: bool = True  # 증빙(영수증·세금계산서·카드매출전표) 여부
-    tax_excluded_note: str = ""  # 세무 신고 제외 사유 메모 (증빙없는 거래 시)
+    expense_date: date                  # 발주일 / 작업일
+    # ★ 하청 역할 구분 (음향/조명/영상/무대/특효/전기/운반/인력/기타)
+    category: str = "기타"
+    # ★ 거래처 (하청업체) — 이제 필수 개념
+    vendor_id: Optional[int] = Field(default=None, foreign_key="vendor.id", index=True)
+    vendor_name: str = ""               # 거래처명 캐시 (또는 직접 입력)
+    description: str                    # 작업 내용 (예: "라인어레이 8통 + 오퍼레이터 1명")
+    amount: int                         # 지급 총액 (공급가 + 부가세) — 실제 지급할 금액
+    # ★ 부가세 처리 (v2026.09 추가)
+    #   'supply' = 입력값이 공급가 → 부가세 10% 별도 추가
+    #   'total'  = 입력값이 총액(부가세 포함) → 공급가/부가세 자동 분리
+    #   'none'   = 부가세 없음 (현금거래·간이과세 등)
+    vat_mode: str = "supply"
+    supply_amount: int = 0              # 공급가액 (부가세 제외)
+    vat_amount: int = 0                 # 부가세액
+    # ★ 상세 사양 (하청 역할별 세부 내용 — 장비 리스트, 인원, 일정 등)
+    spec_detail: str = ""               # 여러 줄 자유 입력
+    # ★ 세금계산서 / 증빙
+    has_tax_invoice: bool = False       # 세금계산서 발행 여부
+    payment_method: str = "계좌이체"     # 계좌이체/현금/카드
+    receipt_image: str = ""             # 계약서·세금계산서 사진
+    # ★ 지급 관리 (인건비와 동일 패턴) — 이제 모든 항목의 핵심
+    pay_status: str = "미지급"           # 미지급 / 지급완료 (기본값을 미지급으로!)
+    pay_due_date: Optional[date] = None # 지급 예정일
+    pay_date: Optional[date] = None     # 실제 지급 일자
+    pay_memo: str = ""                  # 지급 메모 (예: "12/20 계좌이체 완료")
+    # 구버전 호환 필드 (사용 안 함, DB 스키마 유지용)
+    has_evidence: bool = True
+    tax_excluded_note: str = ""
     registered_by: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -334,6 +360,8 @@ class CompanySettings(SQLModel, table=True):
     # JSON 형식: {"음향":"SC","조명":"LB","영상":"VC","구조물":"ST","전원":"PW","기타":"EQ"}
     # 비어있으면 기본값 사용
     equipment_prefixes_json: str = ""
+    # ⭐ 비용처리 → 하청/외주 지급 전환 마이그레이션 완료 플래그 (1회성 데이터 삭제 방지)
+    expense_migrated_subcontract: bool = True   # 신규 설치는 정리 대상 없음 → True
 
 
 # 장비 카테고리별 기본 prefix
@@ -450,6 +478,50 @@ def init_db():
             _add_column_if_missing(conn, "equipment", "spec_data", "spec_data VARCHAR DEFAULT '{}' NOT NULL")
             # ── Expense: 거래처 마스터 연결 ──
             _add_column_if_missing(conn, "expense", "vendor_id", "vendor_id INTEGER")
+            # ⭐ Expense: 거래처 지급 관리 필드 (하청/외주 지급 여부 추적)
+            _add_column_if_missing(conn, "expense", "pay_status", "pay_status VARCHAR DEFAULT '미지급' NOT NULL")
+            _add_column_if_missing(conn, "expense", "pay_due_date", "pay_due_date DATE")
+            _add_column_if_missing(conn, "expense", "pay_date", "pay_date DATE")
+            _add_column_if_missing(conn, "expense", "pay_memo", "pay_memo VARCHAR DEFAULT '' NOT NULL")
+            # ⭐⭐ Expense: 하청/외주 지급 관리로 성격 전환 (v2026.07)
+            _add_column_if_missing(conn, "expense", "spec_detail", "spec_detail VARCHAR DEFAULT '' NOT NULL")
+            _add_column_if_missing(conn, "expense", "has_tax_invoice", "has_tax_invoice BOOLEAN DEFAULT 0 NOT NULL")
+            # ⭐ Expense: 부가세 처리 필드 (v2026.09)
+            _add_column_if_missing(conn, "expense", "vat_mode", "vat_mode VARCHAR DEFAULT 'supply' NOT NULL")
+            _add_column_if_missing(conn, "expense", "supply_amount", "supply_amount INTEGER DEFAULT 0 NOT NULL")
+            _add_column_if_missing(conn, "expense", "vat_amount", "vat_amount INTEGER DEFAULT 0 NOT NULL")
+            # 기존 데이터: 공급가=금액, 부가세=0으로 초기화 (부가세 미적용 상태)
+            _safe_exec(conn, "UPDATE expense SET supply_amount = amount, vat_amount = 0, vat_mode = 'none' WHERE supply_amount = 0 AND amount > 0")
+            # ★ 기존 '비용처리' 데이터(밥값/기름값/재료비 등) 전수 삭제 — 사용자 요청
+            #   1회성 마이그레이션: 플래그 레코드로 중복 실행 방지
+            try:
+                from sqlalchemy import inspect as _insp
+                _i = _insp(conn)
+                if _i.has_table("companysettings") and _i.has_table("expense"):
+                    # 1) 플래그 컬럼 확보 (기존 DB에는 없으므로 추가)
+                    _add_column_if_missing(
+                        conn, "companysettings", "expense_migrated_subcontract",
+                        "expense_migrated_subcontract BOOLEAN DEFAULT 0 NOT NULL"
+                    )
+                    # 2) 설정 행 조회 — 행이 없으면 '신규 설치'이므로 정리 대상 없음
+                    _row = conn.exec_driver_sql(
+                        "SELECT expense_migrated_subcontract FROM companysettings LIMIT 1"
+                    ).fetchone()
+                    if _row is not None:
+                        # ★ 값을 실제로 확인 (행 존재 여부가 아니라 플래그 값 기준)
+                        _done = bool(_row[0])
+                        if not _done:
+                            _cnt = conn.exec_driver_sql("SELECT COUNT(*) FROM expense").fetchone()
+                            _n = int(_cnt[0]) if _cnt else 0
+                            _safe_exec(conn, "DELETE FROM expense")
+                            _safe_exec(conn, "UPDATE companysettings SET expense_migrated_subcontract = 1")
+                            print(f"[MIGRATE] 기존 비용처리 데이터 {_n}건 삭제 완료 (하청/외주 지급으로 전환)")
+                        else:
+                            print("[MIGRATE] 비용→하청/외주 전환 이미 완료됨 (건너뜀)")
+            except Exception as _ex:
+                print(f"[WARN] expense purge migration skip: {_ex}")
+            # 남은 데이터의 기본 지급상태를 '미지급'으로 (구 데이터가 있다면)
+            _safe_exec(conn, "UPDATE expense SET pay_status = '미지급' WHERE pay_status IS NULL OR pay_status = ''")
             # ── QuoteItem: 원가 (납품 견적 마진 계산용) ──
             _add_column_if_missing(conn, "quoteitem", "cost_price", "cost_price INTEGER DEFAULT 0 NOT NULL")
             # ── Item: 견적용/재고용 구분 필드 ──

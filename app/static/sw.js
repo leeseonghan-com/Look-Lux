@@ -1,6 +1,6 @@
 // 정산관리 시스템 - 서비스 워커
 // 오프라인 시 기본 페이지 캐시 + 정적 자원 캐싱
-const CACHE_NAME = 'jeongsan-v1';
+const CACHE_NAME = 'jeongsan-v20260901-1500';
 const STATIC_ASSETS = [
   '/m/',
   '/m/offline',
@@ -35,10 +35,23 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
 
+  // ⭐ HTML 페이지는 항상 네트워크에서 새로 받음 (캐시 저장 안 함)
+  //    → 배포 후에도 옛 화면이 보이는 문제 방지
+  const isHTML = req.mode === 'navigate' ||
+                 (req.headers.get('accept') || '').includes('text/html');
+
+  if (isHTML) {
+    event.respondWith(
+      fetch(req, { cache: 'no-store' })
+        .catch(() => caches.match('/m/offline'))
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(req)
       .then((res) => {
-        // 정적 자원이면 캐시 갱신
+        // 정적 자원만 캐시 (?v= 쿼리로 버전이 바뀌면 자동으로 새 항목이 됨)
         if (url.pathname.startsWith('/static/')) {
           const resClone = res.clone();
           caches.open(CACHE_NAME).then(c => c.put(req, resClone));

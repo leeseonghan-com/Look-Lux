@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}거래처별 미지급{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-800">💸 거래처별 미지급</h1>
+    <p class="text-sm text-slate-500 mt-1">누구에게 얼마를 지급해야 하는지 한눈에 확인하세요.</p>
+  </div>
+  <a href="/expenses" class="btn-secondary">← 전체 발주 목록</a>
+</div>
+
+<!-- 총계 -->
+<div class="card mb-4" style="background:linear-gradient(90deg,#FEF2F2 0%,#FFF7ED 100%); border-color:#FCA5A5;">
+  <div class="flex items-center justify-between flex-wrap gap-4">
+    <div>
+      <div class="text-xs" style="color:#7F1D1D;">총 미지급 잔액</div>
+      <div class="num font-bold" style="font-size:30px; color:#B91C1C;">
+        {% if request.state.can_view_amounts %}{{ grand_total|money }}원{% else %}—{% endif %}
+      </div>
+    </div>
+    <div>
+      <div class="text-xs" style="color:#7F1D1D;">건수</div>
+      <div class="num font-bold" style="font-size:30px; color:#B91C1C;">{{ grand_count }}건</div>
+    </div>
+    <div>
+      <div class="text-xs" style="color:#7F1D1D;">거래처</div>
+      <div class="num font-bold" style="font-size:30px; color:#B91C1C;">{{ vendor_groups|length }}곳</div>
+    </div>
+    {% if overdue_total %}
+    <div>
+      <div class="text-xs" style="color:#9A3412;">⚠️ 지급 지연</div>
+      <div class="num font-bold" style="font-size:30px; color:#C2410C;">
+        {% if request.state.can_view_amounts %}{{ overdue_total|money }}원{% else %}—{% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if not vendor_groups %}
+<div class="card text-center py-12">
+  <div style="font-size:48px;">✅</div>
+  <div class="font-bold text-slate-700 mt-2" style="font-size:18px;">미지급 내역이 없습니다</div>
+  <div class="text-sm text-slate-500 mt-1">모든 하청·외주 지급이 완료되었습니다.</div>
+</div>
+{% endif %}
+
+{% for g in vendor_groups %}
+<div class="card mb-3">
+  <!-- 거래처 헤더 -->
+  <div class="flex items-center justify-between mb-3 pb-2 flex-wrap gap-2" style="border-bottom:1px solid var(--line);">
+    <div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="font-bold text-slate-800" style="font-size:18px;">🏢 {{ g.vendor_name }}</span>
+        {% if g.vendor_phone %}
+        <a href="tel:{{ g.vendor_phone }}" class="text-xs" style="color:var(--link);">📞 {{ g.vendor_phone }}</a>
+        {% endif %}
+        {% if g.overdue_count %}
+        <span class="badge badge-red">⚠️ 지연 {{ g.overdue_count }}건</span>
+        {% endif %}
+      </div>
+      <div class="text-xs text-slate-500 mt-1">
+        미지급 {{ g.count }}건
+        {% if g.earliest_due %} · 가장 이른 지급예정일 <b>{{ g.earliest_due }}</b>{% endif %}
+      </div>
+    </div>
+    <div class="text-right">
+      <div class="text-xs" style="color:#7F1D1D;">지급 예정 합계</div>
+      <div class="num font-bold" style="font-size:24px; color:#B91C1C;">
+        {% if request.state.can_view_amounts %}{{ g.total_amount|money }}원{% else %}—{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 내역 -->
+  <div class="overflow-x-auto">
+    <table class="dt" style="font-size:13px;">
+      <thead>
+        <tr>
+          <th>발주일</th>
+          <th>역할</th>
+          <th>프로젝트</th>
+          <th>작업 내용</th>
+          <th class="text-center">지급예정</th>
+          <th class="text-center">계산서</th>
+          <th class="text-right">금액</th>
+          <th class="text-center">지급 처리</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in g.rows %}
+        <tr {% if it.is_overdue %}style="background:#FFFBEB;"{% endif %}>
+          <td class="whitespace-nowrap text-xs">{{ it.date }}</td>
+          <td><span class="badge badge-blue">{{ it.category }}</span></td>
+          <td class="text-xs">
+            <a href="/projects/{{ it.project_id }}" style="color:var(--link);">{{ it.project_name }}</a>
+          </td>
+          <td>
+            <div>{{ it.description }}</div>
+            {% if it.spec_detail %}
+            <div class="text-xs text-slate-500 mt-1" style="white-space:pre-line; max-width:260px;">{{ it.spec_detail }}</div>
+            {% endif %}
+            {% if it.pay_memo %}
+            <div class="text-xs mt-1" style="color:#B45309;">💬 {{ it.pay_memo }}</div>
+            {% endif %}
+          </td>
+          <td class="text-center text-xs whitespace-nowrap">
+            {% if it.pay_due_date %}
+              {% if it.is_overdue %}
+              <span style="color:#B91C1C; font-weight:700;">⚠️ {{ it.pay_due_date }}</span>
+              {% else %}
+              {{ it.pay_due_date }}
+              {% endif %}
+            {% else %}
+            <span class="text-slate-400">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if it.has_tax_invoice %}
+            <span title="세금계산서 발행됨" style="color:#047857;">📄</span>
+            {% else %}
+            <span class="text-slate-300">—</span>
+            {% endif %}
+          </td>
+          <td class="text-right num font-bold">
+            {% if request.state.can_view_amounts %}
+              {{ it.amount|money }}
+              {% if it.vat_amount %}
+              <div class="text-xs" style="font-weight:400; color:var(--ink-4);">VAT {{ it.vat_amount|money }} 포함</div>
+              {% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center whitespace-nowrap">
+            <form method="post" action="/expenses/{{ it.id }}/toggle-pay" style="display:inline;"
+                  onsubmit="return confirm('{{ g.vendor_name }}\n{{ it.amount|money }}원을 지급완료로 처리하시겠습니까?');">
+              <button type="submit" class="btn-primary" style="padding:5px 12px; font-size:11px; background:#047857;">
+                ✓ 지급완료
+              </button>
+            </form>
+            <a href="/expenses/{{ it.id }}/edit" class="text-slate-500 text-xs ml-1" style="text-decoration:underline;">수정</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

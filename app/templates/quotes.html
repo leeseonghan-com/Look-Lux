@@ -55,8 +55,16 @@
         <td>{{ q.vendor_name }}</td>
         <td class="mobile-hide text-xs">{{ q.project_name }}</td>
         <td class="text-right num font-bold">{% if can_view %}{{ q.total|money }}원{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}</td>
-        <td>
-          <span class="badge {% if q.status == '수주' %}badge-green{% elif q.status == '실주' %}badge-red{% elif q.status == '견적' %}badge-orange{% else %}badge-gray{% endif %}">{{ q.status }}</span>
+        <td onclick="event.stopPropagation();">
+          <select class="quote-status-inline
+            {% if q.status == '수주' %}status-green{% elif q.status == '실주' %}status-red{% elif q.status == '견적' %}status-orange{% else %}status-gray{% endif %}"
+            data-qid="{{ q.id }}" data-current="{{ q.status }}">
+            <option value="견적" {% if q.status == '견적' %}selected{% endif %}>📝 견적</option>
+            <option value="수주" {% if q.status == '수주' %}selected{% endif %}>✅ 수주</option>
+            <option value="실주" {% if q.status == '실주' %}selected{% endif %}>❌ 실주</option>
+            <option value="보류" {% if q.status == '보류' %}selected{% endif %}>⏸ 보류</option>
+            <option value="취소" {% if q.status == '취소' %}selected{% endif %}>🗑 취소</option>
+          </select>
         </td>
       </tr>
       {% endfor %}
@@ -66,5 +74,62 @@
     </tbody>
   </table>
 </div>
+
+<style>
+  .quote-status-inline {
+    padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 700;
+    border: 1px solid transparent; cursor: pointer; min-width: 92px;
+    appearance: menulist;
+  }
+  .quote-status-inline.status-green { background: #ECFDF5; color: #047857; border-color: #6EE7B7; }
+  .quote-status-inline.status-red { background: #FEF2F2; color: #B91C1C; border-color: #FCA5A5; }
+  .quote-status-inline.status-orange { background: #FFF7ED; color: #C2410C; border-color: #FDBA74; }
+  .quote-status-inline.status-gray { background: #F3F4F6; color: #4B5563; border-color: #D1D5DB; }
+  .quote-status-inline:hover { opacity: 0.85; }
+</style>
+
+<script>
+(function(){
+  // 견적 목록 인라인 상태 수정
+  document.querySelectorAll('.quote-status-inline').forEach(function(sel){
+    sel.addEventListener('change', async function(e){
+      const qid = sel.dataset.qid;
+      const oldStatus = sel.dataset.current;
+      const newStatus = sel.value;
+      if (oldStatus === newStatus) return;
+      // 수주로 변경 시 프로젝트 등록 페이지 안내
+      if (newStatus === '수주') {
+        if (!confirm('상태를 "수주"로 변경합니다.\n프로젝트 등록 화면으로 이동됩니다. 계속하시겠어요?')) {
+          sel.value = oldStatus;
+          return;
+        }
+      }
+      try {
+        const fd = new FormData();
+        fd.append('status', newStatus);
+        const res = await fetch('/quotes/' + qid + '/status', {method: 'POST', body: fd, redirect: 'manual'});
+        // 서버가 to-project로 리다이렉트하는 경우 브라우저에서 처리
+        if (newStatus === '수주') {
+          window.location.href = '/quotes/' + qid + '/to-project';
+          return;
+        }
+        // 그 외 상태는 스타일만 업데이트
+        sel.classList.remove('status-green', 'status-red', 'status-orange', 'status-gray');
+        if (newStatus === '수주') sel.classList.add('status-green');
+        else if (newStatus === '실주') sel.classList.add('status-red');
+        else if (newStatus === '견적') sel.classList.add('status-orange');
+        else sel.classList.add('status-gray');
+        sel.dataset.current = newStatus;
+        // 살짝 알림
+        sel.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.35)';
+        setTimeout(()=> { sel.style.boxShadow = ''; }, 900);
+      } catch(err) {
+        alert('상태 변경 실패: ' + err.message);
+        sel.value = oldStatus;
+      }
+    });
+  });
+})();
+</script>
 
 {% endblock %}

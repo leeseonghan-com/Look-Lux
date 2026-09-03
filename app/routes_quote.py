@@ -206,6 +206,17 @@ def quote_new(request: Request, type: str = "납품"):
     with Session(engine, expire_on_commit=False) as s:
         vendors = s.exec(select(Vendor).order_by(Vendor.name)).all()
         vendors_data = [{"id": v.id, "name": v.name} for v in vendors]
+        # ⭐ 견적 미연결 프로젝트 리스트 (진행중/준비중만 노출 — 완료·취소는 제외)
+        open_projects = s.exec(
+            select(Project).where(Project.status.in_(["준비중", "진행중"]))
+            .order_by(Project.created_at.desc())
+        ).all()
+        projects_data = [
+            {"id": p.id, "code": p.code, "name": p.name,
+             "event_date": p.event_date.isoformat() if p.event_date else "",
+             "vendor_id": p.vendor_id or 0}
+            for p in open_projects
+        ]
         year = date.today().year
         count = len(s.exec(select(Quote)).all()) + 1
         prefix = "QR" if type == "렌탈" else "Q"
@@ -213,6 +224,7 @@ def quote_new(request: Request, type: str = "납품"):
         # 회사 설정의 기본 결제/납품 조건을 미리 채움
     return templates.TemplateResponse(request, "quote_new.html", {
         "user": user, "vendors": vendors_data,
+        "projects": projects_data,
         "today": date.today(),
         "valid_until": date.today() + timedelta(days=cs.get("default_valid_days", 30)),
         "default_no": default_no, "quote_type": type,
@@ -252,7 +264,34 @@ async def quote_create(request: Request):
     except (ValueError, TypeError):
         v_id = None
 
+    # ⭐ project_id (기존 프로젝트 연결) 안전 파싱
+    p_id_raw = (form.get("project_id") or "").strip()
+    try:
+        p_id = int(p_id_raw) if p_id_raw else None
+    except (ValueError, TypeError):
+        p_id = None
+
     with Session(engine, expire_on_commit=False) as s:
+        # ⭐ 기존 프로젝트 연결한 경우: 상태를 곧바로 '수주'로, 프로젝트 정보로 폼값 보완
+        pre_status = "견적"
+        if p_id:
+            proj = s.get(Project, p_id)
+            if proj:
+                pre_status = "수주"
+                # 프로젝트명 폼값이 비어있으면 프로젝트에서 채움
+                if not (form.get("project_name") or "").strip():
+                    form_project_name = proj.name
+                else:
+                    form_project_name = form.get("project_name")
+                # 거래처 없으면 프로젝트에서 채움
+                if not v_id and proj.vendor_id:
+                    v_id = proj.vendor_id
+            else:
+                p_id = None
+                form_project_name = form.get("project_name") or ""
+        else:
+            form_project_name = form.get("project_name") or ""
+
         q = Quote(
             quote_number=(form.get("quote_number") or "").strip() or f"Q-{date.today().year}-{int(date.today().timestamp()) % 10000:04d}",
             quote_date=quote_date_p,
@@ -263,7 +302,7 @@ async def quote_create(request: Request):
             vendor_name=(form.get("vendor_name") or "").strip(),
             vendor_contact=(form.get("vendor_contact") or "").strip(),
             vendor_phone=(form.get("vendor_phone") or "").strip(),
-            project_name=(form.get("project_name") or "").strip(),
+            project_name=(form_project_name or "").strip(),
             subtotal=amounts["subtotal"], discount=amounts["discount"],
             after_discount=amounts["after_discount"],
             vat=amounts["vat"], total=amounts["total"],
@@ -272,7 +311,8 @@ async def quote_create(request: Request):
             payment_terms=form.get("payment_terms") or "",
             delivery_terms=form.get("delivery_terms") or "",
             notes=form.get("notes") or "",
-            status="견적",
+            status=pre_status,
+            project_id=p_id,  # ⭐ 기존 프로젝트 연결
             created_by=user.id if user else None,
         )
         s.add(q)
@@ -302,6 +342,15 @@ async def quote_create(request: Request):
             )
             s.add(qi)
         s.commit()
+
+        # ⭐ 기존 프로젝트에 연결된 경우 프로젝트 정보도 동기화
+        if p_id:
+            proj = s.get(Project, p_id)
+            if proj:
+                items_for_sync = s.exec(select(QuoteItem).where(QuoteItem.quote_id == new_id)).all()
+                _sync_project_from_quote(proj, q, items_for_sync)
+                s.add(proj)
+                s.commit()
     return RedirectResponse(f"/quotes/{new_id}", status_code=303)
 
 
@@ -370,8 +419,20 @@ def quote_edit(request: Request, qid: int):
         items_list = _items_to_list(items_raw)
         vendors = s.exec(select(Vendor).order_by(Vendor.name)).all()
         vendors_data = [{"id": v.id, "name": v.name} for v in vendors]
+        # ⭐ 진행중 프로젝트 리스트
+        open_projects = s.exec(
+            select(Project).where(Project.status.in_(["준비중", "진행중"]))
+            .order_by(Project.created_at.desc())
+        ).all()
+        projects_data = [
+            {"id": p.id, "code": p.code, "name": p.name,
+             "event_date": p.event_date.isoformat() if p.event_date else "",
+             "vendor_id": p.vendor_id or 0}
+            for p in open_projects
+        ]
     return templates.TemplateResponse(request, "quote_new.html", {
         "user": user, "vendors": vendors_data,
+        "projects": projects_data,
         "today": date.today(), "valid_until": q_dict["valid_until"],
         "default_no": q_dict["quote_number"], "quote_type": q_dict["quote_type"],
         "quote": q_dict, "existing_items": items_list,
@@ -446,7 +507,35 @@ async def quote_update(request: Request, qid: int):
         q.vendor_name = (form.get("vendor_name") or "").strip()
         q.vendor_contact = (form.get("vendor_contact") or "").strip()
         q.vendor_phone = (form.get("vendor_phone") or "").strip()
+        # ⭐ vendor_id가 없거나 이름이 다르면, 이름으로 거래처 마스터 자동 매칭
+        if q.vendor_name:
+            if not q.vendor_id:
+                matched = s.exec(select(Vendor).where(Vendor.name == q.vendor_name)).first()
+                if matched:
+                    q.vendor_id = matched.id
+            else:
+                # 기존 vendor_id 가 있지만 이름이 다르면(사용자가 다른 이름으로 타이핑) 재매칭
+                current_v = s.get(Vendor, q.vendor_id)
+                if not current_v or current_v.name != q.vendor_name:
+                    matched = s.exec(select(Vendor).where(Vendor.name == q.vendor_name)).first()
+                    q.vendor_id = matched.id if matched else None
         q.project_name = (form.get("project_name") or "").strip()
+
+        # ⭐ project_id (기존 프로젝트 연결 변경) 처리
+        p_id_raw = (form.get("project_id") or "").strip()
+        try:
+            new_pid = int(p_id_raw) if p_id_raw else None
+        except (ValueError, TypeError):
+            new_pid = None
+        # 기존 연결이 없거나 신규로 지정된 경우에만 반영 (기존 연결은 유지)
+        if new_pid and not q.project_id:
+            proj_link = s.get(Project, new_pid)
+            if proj_link:
+                q.project_id = new_pid
+                # 상태가 '견적'이면 '수주'로 승격
+                if q.status == "견적":
+                    q.status = "수주"
+
         q.subtotal = amounts["subtotal"]
         q.discount = amounts["discount"]
         q.after_discount = amounts["after_discount"]
@@ -488,7 +577,60 @@ async def quote_update(request: Request, qid: int):
             )
             s.add(qi)
         s.commit()
+
+        # ⭐ 연결된 프로젝트가 있으면 금액·행사일·프로젝트명 자동 동기화
+        if q.project_id:
+            p = s.get(Project, q.project_id)
+            if p:
+                _sync_project_from_quote(p, q, items)
+                s.add(p)
+                s.commit()
+
     return RedirectResponse(f"/quotes/{qid}", status_code=303)
+
+
+def _sync_project_from_quote(p, q, items):
+    """견적서 수정 시 연결된 프로젝트도 자동 갱신.
+    - 거래처 (vendor_id) ← ⭐ 신규 추가
+    - 매출/공급가/VAT/부가세 모드
+    - 행사일 (event_date)
+    - 프로젝트명 (project_name)
+    ★ 프로젝트 코드는 변경하지 않음 (프로젝트 고유 식별자 유지)
+    ★ status/settlement_status/paid_date/입금정보 등 프로젝트 자체 관리 필드는 건드리지 않음
+    """
+    # ⭐ 거래처 동기화 — 견적서의 vendor_id를 프로젝트에도 반영
+    # (견적 수정 로직에서 vendor_name 기반 자동 매칭이 이미 수행됨)
+    if q.vendor_id is not None:
+        p.vendor_id = q.vendor_id
+
+    # 금액 동기화
+    if q.vat_mode == "total":
+        p.revenue = q.total
+        p.supply_amount = q.after_discount
+        p.vat_amount = q.vat
+    elif q.vat_mode == "cash":
+        p.revenue = q.after_discount
+        p.supply_amount = q.after_discount
+        p.vat_amount = 0
+    else:  # supply
+        p.revenue = q.total
+        p.supply_amount = q.after_discount
+        p.vat_amount = q.vat
+    p.vat_mode = q.vat_mode or "supply"
+    p.cash_no_invoice = (q.vat_mode == "cash")
+
+    # 행사일 동기화 (견적서에 있으면 반영)
+    if q.event_date:
+        p.event_date = q.event_date
+
+    # 프로젝트명 (견적서에 project_name 있으면 반영)
+    if q.project_name:
+        p.name = q.project_name
+
+    # ⭐ 특이사항(메모) 동기화 — 견적서의 notes를 프로젝트 special_notes에 반영
+    # 견적서에 특이사항이 있을 때만 덮어씀 (빈 값으로 지우지 않음)
+    if q.notes:
+        p.special_notes = q.notes
 
 
 @router.get("/quotes/{qid}/print", response_class=HTMLResponse)
@@ -627,7 +769,7 @@ def quote_to_project_create(
     location: str = Form(""),
     amount_input: str = Form("0"),
     vat_mode: str = Form("supply"),
-    status: str = Form("진행중"),
+    status: str = Form("준비중"),
     payment_method: str = Form(""),
     special_notes: str = Form(""),
     memo: str = Form(""),
@@ -659,6 +801,10 @@ def quote_to_project_create(
     cats = ",".join([c.strip() for c in (categories_csv or "").split(",") if c.strip()])
     is_cash_no_invoice = (vat_mode == "cash")
 
+    # ⭐ 날짜 안전 파싱 (다양한 포맷 허용, 잘못돼도 500 에러 안 남)
+    from routes_project import _parse_date_safe, _unique_project_code
+    event_date_parsed = _parse_date_safe(event_date)
+
     with Session(engine, expire_on_commit=False) as s:
         q = s.get(Quote, qid)
         if not q:
@@ -667,26 +813,36 @@ def quote_to_project_create(
             # 이미 연결된 경우 중복 생성 방지
             return RedirectResponse(f"/projects/{q.project_id}", status_code=303)
 
-        p = Project(
-            code=code, name=name,
-            vendor_id=q.vendor_id,
-            event_date=datetime.strptime(event_date, "%Y-%m-%d").date() if event_date else None,
-            location=location,
-            revenue=total,
-            supply_amount=supply,
-            vat_amount=vat,
-            vat_mode=vat_mode,
-            status=status,
-            settlement_status="미수금",
-            payment_method=payment_method,
-            cash_no_invoice=is_cash_no_invoice,
-            special_notes=special_notes,
-            memo=memo,
-            categories=cats,
-        )
-        s.add(p)
-        s.commit()
-        s.refresh(p)
+        # ⭐ 프로젝트 코드 중복 자동 회피 (P-2026-001-A, -B ...)
+        final_code = _unique_project_code(s, code)
+
+        try:
+            p = Project(
+                code=final_code, name=(name or "").strip(),
+                vendor_id=q.vendor_id,
+                event_date=event_date_parsed,
+                location=(location or "").strip(),
+                revenue=total,
+                supply_amount=supply,
+                vat_amount=vat,
+                vat_mode=vat_mode if vat_mode in ("supply", "total", "cash") else "supply",
+                status=status if status in ("준비중", "진행중", "완료", "취소") else "준비중",
+                settlement_status="미수금",
+                payment_method=payment_method or "",
+                cash_no_invoice=is_cash_no_invoice,
+                special_notes=special_notes or "",
+                memo=memo or "",
+                categories=cats,
+            )
+            s.add(p)
+            s.commit()
+            s.refresh(p)
+        except Exception as ex:
+            s.rollback()
+            raise HTTPException(
+                400,
+                f"프로젝트 생성 실패: {type(ex).__name__} — {str(ex)[:200]}"
+            )
 
         # 견적서 ↔ 프로젝트 연결
         q.project_id = p.id

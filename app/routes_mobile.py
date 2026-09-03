@@ -502,6 +502,7 @@ async def mobile_expense_create(request: Request,
             except (ValueError, TypeError):
                 parsed_date = date.today()
         try:
+            # ⭐ 하청/외주 지급으로 전환 — 기본 미지급 상태로 등록
             e = Expense(
                 project_id=pid,
                 category=(category or "기타").strip(),
@@ -509,6 +510,8 @@ async def mobile_expense_create(request: Request,
                 description=(description or "").strip(),
                 vendor_id=v_id, vendor_name=final_vendor_name,
                 expense_date=parsed_date, receipt_image=receipt_path,
+                pay_status="미지급",          # 모바일 등록은 항상 미지급으로 시작
+                payment_method="계좌이체",
                 has_evidence=(has_evidence != "no"),
                 tax_excluded_note=tax_excluded_note.strip() if has_evidence == "no" else "",
                 registered_by=user.id if user else None,

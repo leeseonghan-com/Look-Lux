@@ -143,6 +143,147 @@ def healthcheck_z():
     return {"status": "ok"}
 
 
+@app.get("/deploy-check", response_class=HTMLResponse)
+def deploy_check():
+    """배포 진단 페이지 — 현재 배포된 코드에 어떤 기능이 포함되어 있는지 확인.
+    /deploy-check 로 접속하면 로그인 없이 표시됨.
+    """
+    import os
+    checks = []
+
+    # 1. 배지 버전 확인
+    try:
+        with open("templates/base.html", "r", encoding="utf-8") as f:
+            base_content = f.read()
+    except Exception:
+        try:
+            with open(os.path.join(os.path.dirname(__file__), "templates/base.html"), "r", encoding="utf-8") as f:
+                base_content = f.read()
+        except Exception:
+            base_content = ""
+
+    import re
+    m = re.search(r"_current_version = '([^']+)'", base_content)
+    ver = m.group(1) if m else "(알 수 없음)"
+
+    # 2. 각 기능 검증
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "routes_quote.py"), "r", encoding="utf-8") as f:
+            rq = f.read()
+    except Exception:
+        rq = ""
+
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "templates/mobile/quotes.html"), "r", encoding="utf-8") as f:
+            mq = f.read()
+    except Exception:
+        mq = ""
+
+    # 추가 파일 로드
+    def _read(rel):
+        try:
+            with open(os.path.join(os.path.dirname(__file__), rel), "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            return ""
+
+    rex = _read("routes_expense.py")
+    rpj = _read("routes_project.py")
+    t_new = _read("templates/expense_new.html")
+    t_edit = _read("templates/expense_edit.html")
+    t_list = _read("templates/expenses.html")
+    t_unpaid = _read("templates/expenses_unpaid.html")
+    t_home = _read("templates/home.html")
+    js_proj = _read("static/project-search.js")
+    js_sw = _read("static/sw.js")
+    db_py = _read("database.py")
+
+    # ── 이전 기능 (견적/프로젝트) ──
+    checks.append(("견적 수주 오류 안전화", "_unique_project_code" in rq and "프로젝트 생성 실패" in rq))
+    checks.append(("견적↔프로젝트 자동 동기화", "_sync_project_from_quote" in rq))
+    checks.append(("견적서 거래처 자동 매칭", "Vendor.name == q.vendor_name" in rq))
+    checks.append(("프로젝트 자동 상태전환 (준비중/진행중/완료)", "IMMINENT_DAYS" in rpj and "sync_auto_status_to_db" in rpj))
+
+    # ── 하청/외주 지급 전환 ──
+    checks.append(("메뉴: 하청/외주 지급으로 전환", "하청/외주 지급" in base_content))
+    checks.append(("DB: 하청 상세사양 필드 (spec_detail)", "spec_detail" in db_py))
+    checks.append(("DB: 부가세 필드 (vat_mode/supply/vat)", "vat_mode" in db_py and "supply_amount" in db_py))
+    checks.append(("지급 상태 토글 (미지급↔지급완료)", "toggle-pay" in rex))
+    checks.append(("거래처별 미지급 집계 (에러 수정)", "g[\"rows\"]" in rex and "for it in g.rows" in t_unpaid))
+    checks.append(("대시보드: 총 지출 + 미지급 표기", "총 지출" in t_home and "sub_unpaid_amount" in t_home))
+
+    # ── 발주 등록 UI 통일 ──
+    checks.append(("프로젝트 검색 위젯 파일 존재", len(js_proj) > 500 and "data-project-search" in js_proj))
+    checks.append(("프로젝트 검색 API", "api/projects/search" in rpj))
+    checks.append(("발주등록: 프로젝트 검색 위젯 적용", "data-project-search" in t_new))
+    checks.append(("발주등록: 거래처 검색 위젯 적용", "data-vendor-search" in t_new))
+    checks.append(("발주수정: 검색 위젯 적용", "data-project-search" in t_edit and "data-vendor-search" in t_edit))
+    checks.append(("부가세 입력 + 금액 콤마", "vat-mode" in t_new and "toLocaleString" in t_new))
+    checks.append(("구 비용처리 정리메뉴 제거됨", "purge-all" not in t_list and "구 비용처리" not in t_list))
+
+    # ── 캐시 문제 수정 ──
+    checks.append(("HTML 캐시 차단 (배포 즉시 반영)", "배포 후 옛 화면이 보이는 문제 방지" in _read("main.py")))
+    checks.append(("정적파일 캐시버스팅 (?v=)", "_asset_ver" in base_content))
+    checks.append(("서비스워커: HTML 캐시 안 함", "isHTML" in js_sw))
+
+    rows = ""
+    all_pass = True
+    for name, ok in checks:
+        icon = "✅" if ok else "❌"
+        color = "#15803D" if ok else "#DC2626"
+        if not ok:
+            all_pass = False
+        rows += f'<tr><td style="padding:10px 14px;">{name}</td><td style="padding:10px 14px; color:{color}; font-weight:700;">{icon} {"반영됨" if ok else "누락됨"}</td></tr>'
+
+    overall_color = "#15803D" if all_pass else "#DC2626"
+    overall_icon = "✅" if all_pass else "⚠️"
+    overall_text = "모든 최신 기능이 정상 배포되었습니다" if all_pass else "일부 파일이 배포에 누락되었습니다 — GitHub 저장소에 아래 파일 재업로드 필요"
+
+    html = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>배포 진단</title>
+<style>
+body{{font-family:-apple-system,'Pretendard',sans-serif;background:#F4F4F5;margin:0;padding:30px 20px;}}
+.wrap{{max-width:720px;margin:0 auto;}}
+h1{{font-size:22px;font-weight:800;margin:0 0 6px;color:#0A0E1A;}}
+.sub{{font-size:13px;color:#52525B;margin-bottom:20px;}}
+.overall{{padding:20px;border-radius:12px;background:white;border:2px solid {overall_color};margin-bottom:20px;text-align:center;}}
+.overall .icon{{font-size:32px;}}
+.overall .msg{{font-size:15px;font-weight:700;color:{overall_color};margin-top:8px;}}
+table{{width:100%;background:white;border-radius:10px;border-collapse:collapse;box-shadow:0 2px 8px rgba(0,0,0,0.05);}}
+th{{background:#0A0E1A;color:white;padding:12px 14px;text-align:left;font-size:13px;}}
+td{{border-bottom:1px solid #F4F4F5;font-size:13px;}}
+tr:last-child td{{border-bottom:none;}}
+.ver{{display:inline-block;padding:4px 12px;background:#0A0E1A;color:#C9A961;border-radius:999px;font-family:monospace;font-size:12px;font-weight:700;}}
+.help{{margin-top:20px;padding:16px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;font-size:12px;color:#78350F;line-height:1.7;}}
+.help b{{color:#92400E;}}
+.help code{{background:white;padding:2px 6px;border-radius:4px;font-size:11px;}}
+a.btn{{display:inline-block;margin-top:16px;background:#0A0E1A;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;}}
+</style></head><body><div class="wrap">
+<h1>🔍 배포 진단 페이지</h1>
+<div class="sub">현재 배포된 코드에 최신 기능이 포함되어 있는지 확인합니다.</div>
+<div style="margin-bottom:12px;">현재 배포 버전: <span class="ver">⚡ {ver}</span></div>
+<div class="overall">
+  <div class="icon">{overall_icon}</div>
+  <div class="msg">{overall_text}</div>
+</div>
+<table>
+  <tr><th style="width:70%;">기능</th><th>상태</th></tr>
+  {rows}
+</table>
+{"" if all_pass else '''<div class="help"><b>❌ 누락된 기능이 있으신가요?</b><br>
+① GitHub 저장소에 다음 3개 파일이 최신 상태로 올라가 있는지 확인:<br>
+&nbsp;&nbsp;• <code>app/routes_quote.py</code> (32,487 bytes 이상)<br>
+&nbsp;&nbsp;• <code>app/templates/base.html</code> (19,914 bytes 이상)<br>
+&nbsp;&nbsp;• <code>app/templates/mobile/quotes.html</code> (2,763 bytes 이상)<br><br>
+② Railway 대시보드 → Deployments 탭 → 최근 배포 상태가 <b>"Success"</b>인지 확인<br>
+③ 브라우저 <b>강력 새로고침</b> (Ctrl+Shift+R / ⌘+Shift+R)<br>
+④ 배지가 계속 이전 버전으로 표시된다면 GitHub push가 안 된 것 — 다시 push 필요</div>'''}
+<a href="/" class="btn">← 홈으로</a>
+</div></body></html>"""
+    return HTMLResponse(html)
+
+
 # ============================================================
 # 인증 헬퍼
 # ============================================================
@@ -164,7 +305,8 @@ def require_login(request: Request) -> User:
 @app.middleware("http")
 async def add_user_to_request(request: Request, call_next):
     # Healthcheck 경로는 미들웨어 부담 없이 즉시 통과 (Railway/Fly.io 안정성)
-    if request.url.path in ("/health", "/healthz"):
+    # /deploy-check 도 로그인 없이 배포 진단 가능
+    if request.url.path in ("/health", "/healthz", "/deploy-check"):
         return await call_next(request)
     try:
         user = current_user(request)
@@ -186,6 +328,15 @@ async def add_user_to_request(request: Request, call_next):
     except Exception:
         request.state.company = {}
     response = await call_next(request)
+    # ⭐ HTML 화면은 절대 캐시하지 않음 — 배포 후 옛 화면이 보이는 문제 방지
+    try:
+        ctype = response.headers.get("content-type", "")
+        if "text/html" in ctype:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+    except Exception:
+        pass
     return response
 
 
@@ -229,21 +380,50 @@ def home(request: Request):
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    # auto_status는 routes_project 모듈에 정의됨 (행사일 기준 자동 전환)
-    from routes_project import auto_status
+    # ⭐ 대시보드 진입 시 프로젝트 자동 상태 동기화 (준비중↔진행중↔완료)
+    # → 이걸로 "미수금 업데이트가 안 됨" 이슈 해결
+    from routes_project import auto_status, sync_all_project_statuses
     with Session(engine, expire_on_commit=False) as s:
+        try:
+            sync_all_project_statuses(s)
+        except Exception as ex:
+            print(f"[WARN] dashboard auto-status sync failed: {ex}")
+
         projects = s.exec(select(Project)).all()
         total_revenue = sum(p.revenue for p in projects)
         total_supply = sum((p.supply_amount or p.revenue) for p in projects)
         total_vat = sum((p.vat_amount or 0) for p in projects)
-        total_expense = sum(e.amount for e in s.exec(select(Expense)).all())
-        total_wage = sum(a.total_wage for a in s.exec(select(Attendance)).all())
+        # ⭐ 하청/외주 지급 집계 (구 '비용처리' → 성격 전환)
+        _all_exp = s.exec(select(Expense)).all()
+        total_expense = sum(e.amount for e in _all_exp)
+        # 지급 상태별 분리 — 인건비와 동일 관점
+        sub_unpaid_amount = sum(
+            e.amount for e in _all_exp
+            if (getattr(e, "pay_status", "미지급") or "미지급") == "미지급"
+        )
+        sub_unpaid_count = sum(
+            1 for e in _all_exp
+            if (getattr(e, "pay_status", "미지급") or "미지급") == "미지급"
+        )
+        sub_paid_amount = total_expense - sub_unpaid_amount
+
+        _all_att = s.exec(select(Attendance)).all()
+        total_wage = sum(a.total_wage for a in _all_att)
+        # 인건비 미지급
+        wage_unpaid_amount = sum(
+            a.total_wage for a in _all_att
+            if (getattr(a, "pay_status", "미지급") or "미지급") == "미지급"
+        )
+        wage_unpaid_count = sum(
+            1 for a in _all_att
+            if (getattr(a, "pay_status", "미지급") or "미지급") == "미지급"
+        )
 
         # 거래처 맵 (한 번에 조회하여 N+1 방지)
         vendors_map = {v.id: v.name for v in s.exec(select(Vendor)).all()}
 
         # ★ 미수금 정의: "행사일이 이미 지났고 + 아직 입금되지 않은" 프로젝트만
-        # → 행사 시작 전 프로젝트(준비중/진행중)는 아직 매출이 발생하지 않았으므로 미수금에서 제외
+        # → auto_status()로 계산된 최신 정산상태 기준 (DB 미수금 잔상 방지)
         today_d = date.today()
         unpaid_projects = []
         for p in projects:
@@ -253,10 +433,12 @@ def home(request: Request):
             # 2) 취소된 프로젝트 제외
             if p.status == "취소":
                 continue
-            # 3) 이미 입금완료된 건 제외
-            if p.paid_date or p.settlement_status == "입금완료":
+            # 3) ⭐ auto_status로 최종 정산상태 계산 (DB 잔상 무시)
+            _, auto_settle = auto_status(p)
+            # 4) paid_date 또는 auto_settle이 '입금완료'면 제외
+            if p.paid_date or auto_settle == "입금완료" or p.settlement_status == "입금완료":
                 continue
-            # 4) 위 조건을 모두 통과 → 진짜 미수금
+            # 5) 위 조건을 모두 통과 → 진짜 미수금
             unpaid_projects.append({
                 "id": p.id, "code": p.code, "name": p.name,
                 "vendor_name": vendors_map.get(p.vendor_id, "거래처 미지정") if p.vendor_id else "-",
@@ -276,11 +458,16 @@ def home(request: Request):
         # 최근 프로젝트 5개
         recent_projects = sorted(projects, key=lambda p: p.created_at, reverse=True)[:5]
 
-    return templates.TemplateResponse(request, "home.html", {"user": user,
+    response = templates.TemplateResponse(request, "home.html", {"user": user,
         "total_revenue": total_revenue,
         "total_supply": total_supply,
         "total_vat": total_vat,
         "total_expense": total_expense,
+        "sub_unpaid_amount": sub_unpaid_amount,
+        "sub_unpaid_count": sub_unpaid_count,
+        "sub_paid_amount": sub_paid_amount,
+        "wage_unpaid_amount": wage_unpaid_amount,
+        "wage_unpaid_count": wage_unpaid_count,
         "total_wage": total_wage,
         "net_profit": net_profit,
         "unpaid_amount": unpaid_amount,
@@ -290,6 +477,11 @@ def home(request: Request):
         "unpaid_projects": unpaid_projects,  # 전체 (5건 제한 제거)
         "today": date.today(),
     })
+    # ⭐ 브라우저 캐시 방지 — 뒤로가기 시 이전 미수금 화면 잔상 방지
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 # 다른 라우트들은 별도 파일에서 import

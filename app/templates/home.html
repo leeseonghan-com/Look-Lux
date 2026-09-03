@@ -45,8 +45,15 @@
   </div>
   {% if can_view %}
   <div class="kpi-card">
-    <div class="label">총 비용</div>
+    <div class="label">총 지출 <span class="text-xs" style="color: var(--ink-4); font-weight: 500;">(하청+인건비)</span></div>
     <div class="value value-sm num" style="color: var(--negative);">{{ (total_expense + total_wage)|money }}<span class="unit">원</span></div>
+    {% if (sub_unpaid_amount + wage_unpaid_amount) > 0 %}
+    <div class="text-xs mt-1" style="color: #B91C1C; font-weight: 600;">
+      💸 미지급 {{ (sub_unpaid_amount + wage_unpaid_amount)|money }}원
+    </div>
+    {% else %}
+    <div class="text-xs mt-1" style="color: var(--positive); font-weight: 600;">✓ 지급 완료</div>
+    {% endif %}
   </div>
   <div class="kpi-card">
     <div class="label">순이익 <span class="text-xs" style="color: var(--ink-4); font-weight: 500;">(공급가 기준)</span></div>
@@ -106,7 +113,12 @@
 
   <div class="card">
     <div class="flex items-center justify-between mb-5">
-      <h2 class="display" style="font-size: 16px;">💰 미수금 내역</h2>
+      <div>
+        <h2 class="display" style="font-size: 16px;">💰 미수금 내역</h2>
+        <div class="text-xs" style="color: var(--ink-4); margin-top: 2px;">
+          방금 입금 처리한 건이 안 보이면 <button type="button" onclick="location.reload(true)" style="background:none;border:none;padding:0;color:var(--link);font-weight:600;cursor:pointer;text-decoration:underline;">🔄 새로고침</button>
+        </div>
+      </div>
       {% if unpaid_count > 0 %}
       <div class="text-right">
         <span class="badge badge-dot badge-orange">{{ unpaid_count }}건</span>

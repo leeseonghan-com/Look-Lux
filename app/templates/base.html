@@ -1,3 +1,4 @@
+{% set _asset_ver = 'v2026.09.01-1500' %}
 <!doctype html>
 <html lang="ko">
 <head>
@@ -30,8 +31,9 @@ if ('serviceWorker' in navigator) {
 <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
 
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="/static/app.js"></script>
-<script src="/static/vendor-search.js"></script>
+<script src="/static/app.js?v={{ _asset_ver }}"></script>
+<script src="/static/vendor-search.js?v={{ _asset_ver }}"></script>
+<script src="/static/project-search.js?v={{ _asset_ver }}"></script>
 
 <style>
   :root {
@@ -432,7 +434,7 @@ if ('serviceWorker' in navigator) {
     <a href="/attendance" class="nav-link {% if path.startswith('/attendance') %}active{% endif %}"><span class="icon">⚐</span>근태 관리</a>
     {% endif %}
     {% if is_admin or perms.get('expenses') %}
-    <a href="/expenses" class="nav-link {% if path.startswith('/expense') %}active{% endif %}"><span class="icon">₩</span>비용처리</a>
+    <a href="/expenses" class="nav-link {% if path.startswith('/expense') %}active{% endif %}"><span class="icon">🏗</span>하청/외주 지급</a>
     {% endif %}
 
     {% if is_admin or perms.get('workers') or perms.get('vendors') %}
@@ -472,7 +474,7 @@ if ('serviceWorker' in navigator) {
     <a href="/projects" class="mobile-nav-item {% if path.startswith('/project') %}active{% endif %}"><span class="icon">▤</span>프로젝트</a>
     <a href="/quotes" class="mobile-nav-item {% if path.startswith('/quote') %}active{% endif %}"><span class="icon">✎</span>견적</a>
     <a href="/attendance" class="mobile-nav-item {% if path.startswith('/attendance') %}active{% endif %}"><span class="icon">⚐</span>근태</a>
-    <a href="/expenses" class="mobile-nav-item {% if path.startswith('/expense') %}active{% endif %}"><span class="icon">₩</span>비용</a>
+    <a href="/expenses" class="mobile-nav-item {% if path.startswith('/expense') %}active{% endif %}"><span class="icon">🏗</span>하청</a>
   </div>
 </nav>
 
@@ -484,18 +486,60 @@ if ('serviceWorker' in navigator) {
 <main>{% block content_nologin %}{% endblock %}</main>
 {% endif %}
 
-{# ────── 배포 버전 배지 (우측 하단, 화면에만 표시 · 인쇄 제외) ────── #}
-<div id="deploy-version-badge" title="배포 버전 — 브라우저 캐시가 남아있으면 이전 버전이 표시됩니다"
-     style="position:fixed; right:10px; bottom:10px; z-index:9990;
-            background:rgba(10,14,26,0.85); color:#C9A961;
-            padding:4px 10px; border-radius:999px;
-            font-size:10.5px; font-weight:600; letter-spacing:0.03em;
+{# ────── 배포 버전 배지 — 새 버전 배포 시 한 번만 표시 ────── #}
+{% set _current_version = 'v2026.09.01-1500' %}
+<div id="deploy-version-badge" title="배포 버전 — 클릭하면 이 버전 안내를 다시 표시하지 않습니다"
+     data-version="{{ _current_version }}"
+     style="display:none; position:fixed; right:10px; bottom:10px; z-index:9990;
+            background:rgba(10,14,26,0.9); color:#C9A961;
+            padding:6px 12px; border-radius:999px;
+            font-size:11px; font-weight:600; letter-spacing:0.03em;
             font-family:'Inter', monospace; cursor:pointer;
-            box-shadow:0 2px 8px rgba(0,0,0,0.15);"
-     onclick="this.style.display='none';">
-  ⚡ v2026.07.09-2100 · 사이드바메뉴복원
+            box-shadow:0 4px 12px rgba(0,0,0,0.2);
+            display:flex; align-items:center; gap:8px;">
+  <span>⚡ {{ _current_version }} · 캐시문제해결(배포즉시반영)</span>
+  <span style="font-size:14px; color:#999; padding-left:4px;">×</span>
 </div>
-<style>@media print { #deploy-version-badge { display:none !important; } }</style>
+<style>
+  @media print { #deploy-version-badge { display:none !important; } }
+</style>
+<script>
+(function() {
+  var badge = document.getElementById('deploy-version-badge');
+  if (!badge) return;
+  var currentVer = badge.dataset.version;
+  var LS_KEY = 'seenDeployVersion';
+  var lastSeen = null;
+  try { lastSeen = localStorage.getItem(LS_KEY); } catch (e) {}
+
+  // 이전에 이 버전을 이미 봤으면 표시하지 않음
+  if (lastSeen === currentVer) {
+    badge.style.display = 'none';
+    return;
+  }
+
+  // 새 버전이면 표시
+  badge.style.display = 'flex';
+
+  // 배지 클릭 → 숨기고 이 버전 봤다고 기록
+  badge.addEventListener('click', function() {
+    badge.style.display = 'none';
+    try { localStorage.setItem(LS_KEY, currentVer); } catch (e) {}
+  });
+
+  // 8초 후 자동으로 사라지고 봤다고 기록 (사용자가 눈치채기에 충분한 시간)
+  setTimeout(function() {
+    if (badge.style.display !== 'none') {
+      badge.style.transition = 'opacity 0.5s';
+      badge.style.opacity = '0';
+      setTimeout(function() {
+        badge.style.display = 'none';
+        try { localStorage.setItem(LS_KEY, currentVer); } catch (e) {}
+      }, 500);
+    }
+  }, 8000);
+})();
+</script>
 
 </body>
 </html>
