@@ -349,13 +349,66 @@ async def equipment_create(request: Request):
     return RedirectResponse(f"/equipment/{eqid}", status_code=303)
 
 
+@router.get("/equipment/labels/select", response_class=HTMLResponse)
+def labels_select(request: Request, eq: str = ""):
+    """⭐ QR 라벨 선택 화면 — 제품 → 개체를 골라서 인쇄
+    eq: 특정 제품(장비 마스터) ID로 미리 필터
+    """
+    user = _user(request)
+    try:
+        eq_id = int(eq) if eq and str(eq).strip().isdigit() else None
+    except (ValueError, TypeError):
+        eq_id = None
+
+    with Session(engine, expire_on_commit=False) as s:
+        equipments = s.exec(select(Equipment).order_by(Equipment.category, Equipment.name)).all()
+        groups = []
+        for e in equipments:
+            units = s.exec(
+                select(EquipmentUnit)
+                .where(EquipmentUnit.equipment_id == e.id)
+                .order_by(EquipmentUnit.asset_code)
+            ).all()
+            if not units:
+                continue
+            groups.append({
+                "eq_id": e.id,
+                "name": e.name or "",
+                "model": e.model or "",
+                "manufacturer": e.manufacturer or "",
+                "category": e.category or "기타",
+                "unit_count": len(units),
+                "units": [{
+                    "id": u.id,
+                    "asset_code": u.asset_code or "",
+                    "serial_number": u.serial_number or "",
+                    "status": u.status or "",
+                    "location": u.location or "",
+                } for u in units],
+            })
+    return templates.TemplateResponse(request, "equipment_labels_select.html", {
+        "user": user, "groups": groups, "preselect_eq": eq_id,
+    })
+
+
 @router.get("/equipment/labels", response_class=HTMLResponse)
-def labels_view_early(request: Request, ids: str = ""):
-    """QR 라벨 인쇄 페이지 — /equipment/{eqid} 보다 먼저 매칭되도록 위치"""
+def labels_view_early(request: Request, ids: str = "", eq: str = ""):
+    """QR 라벨 인쇄 페이지 — /equipment/{eqid} 보다 먼저 매칭되도록 위치
+    ids: 개체(EquipmentUnit) ID 목록 — 쉼표 구분
+    eq : 제품(Equipment) ID — 해당 제품의 모든 개체를 인쇄 (★ 오동작 수정용)
+    """
     _user(request)
     with Session(engine, expire_on_commit=False) as s:
-        if ids:
+        # ★ eq= 로 들어오면 해당 제품의 전체 개체를 조회 (제품ID를 개체ID로 오인하던 버그 수정)
+        if eq and str(eq).strip().isdigit():
+            units = s.exec(
+                select(EquipmentUnit)
+                .where(EquipmentUnit.equipment_id == int(eq))
+                .order_by(EquipmentUnit.asset_code)
+            ).all()
+        elif ids:
             id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+            # 선택한 순서를 유지하며 조회
             units = [s.get(EquipmentUnit, i) for i in id_list]
             units = [u for u in units if u]
         else:

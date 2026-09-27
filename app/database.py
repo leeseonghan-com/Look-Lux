@@ -62,7 +62,8 @@ class Project(SQLModel, table=True):
     code: str = Field(unique=True, index=True)  # P-2026-001
     name: str
     vendor_id: Optional[int] = Field(default=None, foreign_key="vendor.id")
-    event_date: Optional[date] = None
+    event_date: Optional[date] = None       # 행사 시작일
+    event_end_date: Optional[date] = None   # 행사 종료일 (하루 행사면 비움)
     location: str = ""
     revenue: int = 0  # 총 매출액 (공급가액 + 부가세) — 표시·집계용 단일 진실
     supply_amount: int = 0  # 공급가액 (부가세 별도 금액)
@@ -81,6 +82,41 @@ class Project(SQLModel, table=True):
     special_notes: str = ""                 # 프로젝트별 특이사항 (자유 입력, 여러 줄)
     memo: str = ""                          # 일반 메모
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ProjectStaff(SQLModel, table=True):
+    """프로젝트 투입 인력 배치 (한 사람이 여러 프로젝트에 배치 가능)"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    worker_id: Optional[int] = Field(default=None, foreign_key="worker.id", index=True)
+    person_name: str = ""          # 표시 이름 (근무자 미등록 인원도 입력 가능)
+    role: str = ""                 # (구) 담당 — 더 이상 사용 안 함
+    is_offer: bool = False         # 오퍼 인원 여부
+    start_date: date
+    end_date: date
+    memo: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CalendarEvent(SQLModel, table=True):
+    """프로젝트와 별개인 캘린더 일정 (미팅·답사·휴무·가견적 등)"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    start_date: date = Field(index=True)
+    end_date: date
+    kind: str = "일정"            # 일정 / 미팅 / 답사 / 가계약 / 휴무 / 기타
+    color: str = "#6366F1"
+    memo: str = ""
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id")  # 나중에 프로젝트로 전환 시
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+EVENT_KINDS = [("일정", "#6366F1"), ("미팅", "#0EA5E9"), ("답사", "#14B8A6"),
+               ("가계약", "#F59E0B"), ("휴무", "#EF4444"), ("기타", "#64748B")]
+
+
+STAFF_ROLES = ["음향", "조명", "영상", "무대", "특효", "운영", "기사", "진행", "기타"]
 
 
 # 하청/외주 역할 구분 옵션
@@ -232,6 +268,8 @@ class Quote(SQLModel, table=True):
     # 수주 확정 시 자동 생성된 프로젝트 ID (없으면 미연결)
     project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
     created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    updated_by: Optional[int] = Field(default=None, foreign_key="user.id")   # 최종 수정자
+    updated_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -440,6 +478,10 @@ def init_db():
             _add_column_if_missing(conn, "project", "tax_excluded_note", "tax_excluded_note VARCHAR DEFAULT '' NOT NULL")
             # ── 카테고리 필드 ──
             _add_column_if_missing(conn, "project", "categories", "categories VARCHAR DEFAULT '' NOT NULL")
+            _add_column_if_missing(conn, "project", "event_end_date", "event_end_date DATE")
+            _add_column_if_missing(conn, "projectstaff", "is_offer", "is_offer BOOLEAN DEFAULT 0 NOT NULL")
+            _add_column_if_missing(conn, "quote", "updated_by", "updated_by INTEGER")
+            _add_column_if_missing(conn, "quote", "updated_at", "updated_at TIMESTAMP")
             # ── 면세 → 현금거래(무증빙) 리네이밍 ──
             _safe_exec(conn, "UPDATE project SET vat_mode = 'cash' WHERE vat_mode = 'exempt'")
             # ── 견적서 → 프로젝트 연결 필드 ──

@@ -290,7 +290,7 @@ def item_hard_delete(request: Request, iid: int):
 
 # API: 견적서에서 품목명 자동완성용
 @router.get("/api/items/search")
-def items_search(q: str = "", category: str = ""):
+def items_search(request: Request, q: str = "", category: str = ""):
     """모든 품목 검색 — category 파라미터로 가격 우선순위만 결정.
     - category=렌탈 → rental_daily 우선
     - category=물품/납품 → consumer_price 우선
@@ -331,4 +331,12 @@ def items_search(q: str = "", category: str = ""):
                 "rental_daily": i.rental_daily or 0,
                 "usage": _classify(i),
             })
+        # ★ 로그인·금액 권한 확인 — 권한 없으면 가격을 보내지 않음
+        from permissions import has_permission
+        _u = getattr(request.state, "user", None)
+        if not _u:
+            return JSONResponse([], status_code=401)
+        if not has_permission(_u, "view_revenue"):
+            for r in result:
+                r["price"] = 0; r["consumer_price"] = 0; r["rental_daily"] = 0; r["price_kind"] = ""
         return JSONResponse(result)

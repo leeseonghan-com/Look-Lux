@@ -10,10 +10,11 @@
     </p>
   </div>
   <div class="flex items-center gap-2">
-    <a href="/expenses/unpaid" class="btn-secondary" style="{% if unpaid_count %}background:#FEF2F2; border-color:#FCA5A5; color:#B91C1C;{% endif %}">
+    {% if request.state.can_view_sub %}<a href="/expenses/unpaid" class="btn-secondary" style="{% if unpaid_count %}background:#FEF2F2; border-color:#FCA5A5; color:#B91C1C;{% endif %}">
       💸 거래처별 미지급{% if unpaid_count %} <span class="badge badge-red" style="margin-left:6px;">{{ unpaid_count }}</span>{% endif %}
-    </a>
-    <a href="/expenses/by-vendor" class="btn-secondary">📊 거래처별 집계</a>
+    </a>{% endif %}
+    {% if request.state.can_view_sub %}<a href="/expenses/by-vendor" class="btn-secondary">📊 거래처별 집계</a>{% endif %}
+    <a href="/export/expenses" class="btn-secondary" title="엑셀로 내보내기">📥 엑셀</a>
     <a href="/expenses/new" class="btn-primary">+ 발주 등록</a>
   </div>
 </div>
@@ -26,31 +27,32 @@
 </div>
 {% endif %}
 
+{% if request.state.can_view_sub %}
 <!-- 요약 카드 -->
 <div class="grid gap-3 mb-4" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
   <div class="card" style="padding:14px; background:#FEF2F2; border-color:#FCA5A5;">
     <div class="text-xs font-bold" style="color:#7F1D1D;">💸 미지급</div>
     <div class="num font-bold mt-1" style="font-size:22px; color:#B91C1C;">
-      {% if request.state.can_view_amounts %}{{ unpaid_total|money }}원{% else %}—{% endif %}
+      {{ unpaid_total|money_sub }}원
     </div>
     <div class="text-xs mt-1" style="color:#7F1D1D;">{{ unpaid_count }}건</div>
   </div>
   <div class="card" style="padding:14px; background:#ECFDF5; border-color:#6EE7B7;">
     <div class="text-xs font-bold" style="color:#065F46;">✓ 지급완료</div>
     <div class="num font-bold mt-1" style="font-size:22px; color:#047857;">
-      {% if request.state.can_view_amounts %}{{ paid_total|money }}원{% else %}—{% endif %}
+      {{ paid_total|money_sub }}원
     </div>
     <div class="text-xs mt-1" style="color:#065F46;">{{ paid_count }}건</div>
   </div>
   <div class="card" style="padding:14px;">
     <div class="text-xs font-bold text-slate-600">전체 발주액 (총액)</div>
     <div class="num font-bold mt-1" style="font-size:22px; color:var(--ink);">
-      {% if request.state.can_view_amounts %}{{ total|money }}원{% else %}—{% endif %}
+      {{ total|money_sub }}원
     </div>
     <div class="text-xs mt-1 text-slate-500">
       {{ rows|length }}건
-      {% if request.state.can_view_amounts and total_vat %}
-      · 공급가 {{ total_supply|money }} / VAT {{ total_vat|money }}
+      {% if request.state.can_view_sub and total_vat %}
+      · 공급가 {{ total_supply|money_sub }} / VAT {{ total_vat|money_sub }}
       {% endif %}
     </div>
   </div>
@@ -62,6 +64,7 @@
   </div>
   {% endif %}
 </div>
+{% endif %}
 
 <!-- 필터 -->
 <div class="card mb-4">
@@ -108,9 +111,9 @@
         <th>거래처</th>
         <th class="mobile-hide">프로젝트</th>
         <th>작업 내용</th>
-        <th class="text-right">지급액(총액)</th>
+        {% if request.state.can_view_sub %}<th class="text-right">지급액(총액)</th>{% endif %}
         <th class="text-center">지급예정</th>
-        <th class="text-center">지급 상태</th>
+        {% if request.state.can_view_sub %}<th class="text-center">지급 상태</th>{% endif %}
         <th class="text-center">계산서</th>
         <th class="text-center">관리</th>
       </tr>
@@ -133,16 +136,16 @@
           <div class="text-xs text-slate-500 mt-1" style="white-space:pre-line; max-width:280px;">{{ r.spec_detail }}</div>
           {% endif %}
         </td>
-        <td class="text-right num font-bold">
-          {% if request.state.can_view_amounts %}
-            {{ r.amount|money }}
+        {% if request.state.can_view_sub %}<td class="text-right num font-bold">
+          {% if true %}
+            {{ r.amount|money_sub }}
             {% if r.vat_amount %}
             <div class="text-xs" style="font-weight:400; color:var(--ink-4);">
-              공급가 {{ r.supply_amount|money }}<br>VAT {{ r.vat_amount|money }}
+              공급가 {{ r.supply_amount|money_sub }}<br>VAT {{ r.vat_amount|money_sub }}
             </div>
             {% endif %}
-          {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
-        </td>
+          {% endif %}
+        </td>{% endif %}
         <td class="text-center text-xs whitespace-nowrap">
           {% if r.pay_due_date %}
             {% if r.is_overdue %}
@@ -154,7 +157,8 @@
           <span class="text-slate-400">—</span>
           {% endif %}
         </td>
-        <td class="text-center">
+        {% if request.state.can_view_sub %}<td class="text-center">
+          {% if request.state.can_manage_sub %}
           <form method="post" action="/expenses/{{ r.id }}/toggle-pay" style="display:inline;">
             {% if r.pay_status == '미지급' %}
             <button type="submit" class="pay-badge pay-unpaid" title="클릭 → 지급완료">💸 미지급</button>
@@ -162,10 +166,13 @@
             <button type="submit" class="pay-badge pay-paid" title="클릭 → 미지급">✓ 지급완료</button>
             {% endif %}
           </form>
+          {% elif request.state.can_view_sub %}
+          <span class="pay-badge {% if r.pay_status == '미지급' %}pay-unpaid{% else %}pay-paid{% endif %}">{% if r.pay_status == '미지급' %}💸 미지급{% else %}✓ 지급완료{% endif %}</span>
+          {% endif %}
           {% if r.pay_date %}
           <div class="text-xs text-slate-400 mt-1">{{ r.pay_date }}</div>
           {% endif %}
-        </td>
+        </td>{% endif %}
         <td class="text-center">
           {% if r.has_tax_invoice %}
           <span title="세금계산서 발행됨" style="color:#047857;">📄</span>

@@ -37,13 +37,18 @@
       <label class="label">근무 일수 *</label>
       <input type="number" name="days" step="0.5" min="0.5" class="input num" value="{{ a.days }}" required>
     </div>
+    {% if request.state.can_view_wage %}
     <div>
       <label class="label">일당 (원) *</label>
       <input type="text" name="daily_wage" id="daily_wage" class="input num money-input" value="{{ a.daily_wage }}" required>
     </div>
+    {% else %}
+    <div><label class="label">일당</label><div class="input" style="background:#F8FAFC; color:#94A3B8;">🔒 급여 조회 권한 없음 (기존 금액 유지)</div></div>
+    {% endif %}
   </div>
 
   <!-- 오퍼비/추가금액 -->
+{% if request.state.can_view_wage %}
   <div class="card" style="background:#FAF5FF; border-color:#DDD6FE; padding: 14px;">
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
       <span style="font-size: 14px; font-weight: 700; color: #6D28D9;">💰 추가금액 / 오퍼비 (별도 책정)</span>
@@ -57,14 +62,17 @@
         <label class="label" style="color:#6D28D9;">사유 / 메모</label>
         <input name="bonus_memo" class="input" value="{{ a.bonus_memo or '' }}" placeholder="예: 오퍼비, 야간수당">
       </div>
+{% endif %}
     </div>
   </div>
 
+{% if request.state.can_view_wage %}
   <div class="card bg-slate-50">
     <div class="flex justify-between items-center">
       <span class="text-sm font-semibold text-slate-600">총 지급액 <span class="text-xs text-slate-400">(일당×일수 + 추가금액)</span></span>
       <span class="text-2xl font-bold text-slate-800 num" id="total-display">0원</span>
     </div>
+{% endif %}
     <div id="breakdown" class="text-xs mt-2" style="color:#6B7280;"></div>
   </div>
 
@@ -81,6 +89,7 @@
 
 <script>
 function calcTotal() {
+  if (!document.getElementById('daily_wage') || !document.getElementById('total-display')) return;
   const days = parseFloat(document.querySelector('input[name=days]').value) || 0;
   const wage = parseMoney(document.getElementById('daily_wage').value);
   const bonus = parseMoney(document.getElementById('bonus_amount').value);
@@ -94,8 +103,8 @@ function calcTotal() {
 }
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelector('input[name=days]').addEventListener('input', calcTotal);
-  document.getElementById('daily_wage').addEventListener('input', calcTotal);
-  document.getElementById('bonus_amount').addEventListener('input', calcTotal);
+  if (document.getElementById('daily_wage')) document.getElementById('daily_wage').addEventListener('input', calcTotal);
+  if (document.getElementById('bonus_amount')) document.getElementById('bonus_amount').addEventListener('input', calcTotal);
   calcTotal();
 });
 </script>

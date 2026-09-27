@@ -63,7 +63,8 @@
 <div class="card mb-4">
   <div class="mb-3 flex items-center justify-between flex-wrap gap-2">
     <h2 class="text-lg font-bold">⏰ 오늘 출퇴근 ({{ today }})</h2>
-    <a href="/workers?type=정직원" class="btn-secondary" style="font-size: 13px;">+ 정직원 등록</a>
+    {% if is_admin %}<a href="/workers?type=정직원" class="btn-secondary" style="font-size: 13px;">+ 정직원 등록</a>
+    {% else %}<span class="text-xs" style="color: var(--ink-4);">본인 출퇴근만 등록·조회할 수 있습니다.</span>{% endif %}
   </div>
 
   {% if workers_today %}
@@ -121,8 +122,15 @@
   </div>
   {% else %}
   <div class="text-center py-8" style="color: var(--ink-4);">
-    <div class="text-sm">등록된 정직원이 없습니다.</div>
+    {% if is_admin %}
+    <div class="text-sm">재직 중인 정직원이 없습니다.</div>
     <a href="/workers?type=정직원" class="inline-block mt-3 text-sm font-bold" style="color: var(--link);">+ 정직원 등록 →</a>
+    {% elif no_link %}
+    <div class="text-sm font-bold">내 계정에 연결된 정직원 정보가 없습니다.</div>
+    <div class="text-xs mt-1">관리자에게 [직원 관리 → 수정 → 연결할 근무자] 설정을 요청하세요.</div>
+    {% else %}
+    <div class="text-sm">퇴사 처리된 계정은 출퇴근을 등록할 수 없습니다.</div>
+    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -186,9 +194,9 @@
   <div>
     <p class="text-sm" style="color: var(--ink-4);">
       총 {{ rows|length }}건
-      {% if request.state.can_view_amounts %}
-      · 합계 <span class="font-bold num" style="color: var(--ink);">{{ total_amount|money }}원</span>
-      · <span style="color: var(--warning);">미지급 {{ unpaid_amount|money }}원</span>
+      {% if request.state.can_view_wage %}
+      · 합계 <span class="font-bold num" style="color: var(--ink);">{{ total_amount|money_wage }}원</span>
+      · <span style="color: var(--warning);">미지급 {{ unpaid_amount|money_wage }}원</span>
       {% endif %}
     </p>
   </div>
@@ -219,7 +227,7 @@
         <th>이름</th>
         <th class="mobile-hide">프로젝트</th>
         <th class="text-right">근무일</th>
-        {% if request.state.can_view_amounts %}
+        {% if request.state.can_view_wage %}
         <th class="text-right">일당</th>
         <th class="text-right mobile-hide">추가금액</th>
         <th class="text-right">합계</th>
@@ -235,15 +243,15 @@
         <td class="font-semibold">{{ r.worker_name }}</td>
         <td class="mobile-hide text-xs" style="color: var(--ink-4);">{{ r.project_name }}</td>
         <td class="text-right text-xs">{{ r.days }}일</td>
-        {% if request.state.can_view_amounts %}
-        <td class="text-right num text-xs">{{ r.daily_wage|money }}</td>
+        {% if request.state.can_view_wage %}
+        <td class="text-right num text-xs">{{ r.daily_wage|money_wage }}</td>
         <td class="text-right num text-xs mobile-hide" style="color:#7C3AED;">
           {% if r.bonus_amount %}
-          +{{ r.bonus_amount|money }}
+          +{{ r.bonus_amount|money_wage }}
           {% if r.bonus_memo %}<div style="font-size:10px; color:#9CA3AF; font-weight:500;">{{ r.bonus_memo }}</div>{% endif %}
           {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
         </td>
-        <td class="text-right num font-bold">{{ r.total_wage|money }}</td>
+        <td class="text-right num font-bold">{{ r.total_wage|money_wage }}</td>
         {% endif %}
         <td>
           {% if r.pay_status == '지급완료' %}
@@ -255,7 +263,8 @@
         <td class="text-center text-xs whitespace-nowrap">
           <a href="/attendance/{{ r.id }}/edit" style="color: var(--gold-2); font-weight: 600;">수정</a>
           <span style="color: var(--line); margin: 0 4px;">·</span>
-          {% if r.pay_status == '미지급' %}
+          {% if not request.state.can_manage_wage %}
+          {% elif r.pay_status == '미지급' %}
           <form method="post" action="/attendance/{{ r.id }}/pay" style="display:inline;"
                 onsubmit="return confirm('{{ r.worker_name }}님에게 지급 완료 처리하시겠습니까?');">
             <button type="submit" style="background: none; border: none; color: #059669; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;">✓ 지급처리</button>
@@ -275,7 +284,7 @@
       </tr>
       {% endfor %}
       {% if not rows %}
-      <tr><td colspan="{% if request.state.can_view_amounts %}9{% else %}6{% endif %}" class="text-center py-6" style="color: var(--ink-4);">등록된 알바 근무 기록이 없습니다.</td></tr>
+      <tr><td colspan="{% if request.state.can_view_wage %}9{% else %}6{% endif %}" class="text-center py-6" style="color: var(--ink-4);">등록된 알바 근무 기록이 없습니다.</td></tr>
       {% endif %}
     </tbody>
   </table>

@@ -207,12 +207,14 @@ def mobile_attendance(request: Request, tab: str = "fulltime"):
     with Session(engine, expire_on_commit=False) as s:
         from database import WorkerCheckin
         # 정직원 오늘 출퇴근 현황
-        fulltime_workers = s.exec(
-            select(Worker).where(
-                Worker.is_active == True,
-                Worker.employee_type == "정직원"
-            ).order_by(Worker.name)
-        ).all()
+        from permissions import is_admin as _is_admin, is_employed, my_worker
+        if _is_admin(user):
+            fulltime_workers = [w for w in s.exec(
+                select(Worker).where(Worker.employee_type == "정직원").order_by(Worker.name)
+            ).all() if is_employed(w)]
+        else:
+            _me = my_worker(s, user)
+            fulltime_workers = [_me] if (_me and is_employed(_me)) else []
         workers_today = []
         for w in fulltime_workers:
             ci = s.exec(
@@ -265,11 +267,13 @@ def mobile_attendance(request: Request, tab: str = "fulltime"):
 @router.post("/attendance/fulltime/checkin")
 def mobile_ft_checkin(request: Request, worker_id: int = Form(...)):
     """모바일 정직원 출근"""
-    _user(request)
+    user = _user(request)
     from database import WorkerCheckin
     today = date.today()
     now = datetime.now()
     with Session(engine, expire_on_commit=False) as s:
+        from routes_attendance import check_worker_access
+        check_worker_access(s, user, worker_id)
         existing = s.exec(
             select(WorkerCheckin).where(
                 WorkerCheckin.worker_id == worker_id,
@@ -289,11 +293,13 @@ def mobile_ft_checkin(request: Request, worker_id: int = Form(...)):
 @router.post("/attendance/fulltime/checkout")
 def mobile_ft_checkout(request: Request, worker_id: int = Form(...)):
     """모바일 정직원 퇴근"""
-    _user(request)
+    user = _user(request)
     from database import WorkerCheckin
     today = date.today()
     now = datetime.now()
     with Session(engine, expire_on_commit=False) as s:
+        from routes_attendance import check_worker_access
+        check_worker_access(s, user, worker_id)
         existing = s.exec(
             select(WorkerCheckin).where(
                 WorkerCheckin.worker_id == worker_id,
@@ -545,15 +551,27 @@ def mobile_quotes(request: Request):
     from permissions import has_permission
     if not has_permission(user, "quotes"):
         raise HTTPException(403, "견적서 권한이 없습니다.")
-    from database import Quote
+    from database import Quote, Project
     with Session(engine, expire_on_commit=False) as s:
         quotes = s.exec(select(Quote).order_by(Quote.quote_date.desc())).all()
-        rows = [{
-            "id": q.id, "quote_number": q.quote_number,
-            "quote_date": q.quote_date, "quote_type": q.quote_type,
-            "vendor_name": q.vendor_name, "project_name": q.project_name,
-            "total": q.total, "status": q.status,
-        } for q in quotes]
+        # ⭐ 프로젝트명 보강: 견적서에 비어 있으면 연결된 프로젝트 이름을 사용
+        proj_map = {p.id: p.name for p in s.exec(select(Project)).all()}
+        _names = {u.id: (u.name or u.username) for u in s.exec(select(User)).all()}
+        rows = []
+        for q in quotes:
+            pname = (q.project_name or "").strip()
+            if not pname and getattr(q, "project_id", None):
+                pname = (proj_map.get(q.project_id) or "").strip()
+            if not pname:
+                # 최후 수단: 견적번호로라도 구분되게
+                pname = f"{q.quote_number} ({q.vendor_name or '거래처 미지정'})"
+            rows.append({
+                "id": q.id, "quote_number": q.quote_number,
+                "quote_date": q.quote_date, "quote_type": q.quote_type,
+                "vendor_name": q.vendor_name, "project_name": pname,
+                "total": q.total, "status": q.status,
+                "author_name": _names.get(q.created_by, ""),
+            })
     return templates.TemplateResponse(request, "mobile/quotes.html", {
         "user": user, "quotes": rows,
     })
@@ -691,6 +709,13 @@ def mobile_project_new(request: Request):
     })
 
 
+def _m_end(form):
+    """모바일 폼 종료일 — 시작일 이후일 때만 저장"""
+    st = _m_parse_date(form.get("event_date", ""))
+    en = _m_parse_date(form.get("event_end_date", ""))
+    return en if (st and en and en > st) else None
+
+
 def _m_parse_date(s):
     if not s or not str(s).strip():
         return None
@@ -756,6 +781,7 @@ async def mobile_project_create(request: Request):
             name=(form.get("name", "") or "").strip(),
             vendor_id=v_id,
             event_date=_m_parse_date(form.get("event_date", "")),
+            event_end_date=_m_end(form),
             location=(form.get("location", "") or "").strip(),
             revenue=total, supply_amount=supply, vat_amount=vat, vat_mode=vat_mode,
             memo=form.get("memo", "") or "", status="진행중",
@@ -783,6 +809,7 @@ def mobile_project_edit(request: Request, pid: int):
         pd = {
             "id": p.id, "code": p.code, "name": p.name,
             "vendor_id": p.vendor_id, "event_date": p.event_date,
+            "event_end_date": p.event_end_date,
             "location": p.location, "revenue": p.revenue,
             "supply_amount": p.supply_amount or p.revenue,
             "vat_mode": p.vat_mode or "supply",
@@ -840,6 +867,7 @@ async def mobile_project_update(request: Request, pid: int):
         p.name = (form.get("name", "") or "").strip()
         p.vendor_id = v_id
         p.event_date = _m_parse_date(form.get("event_date", ""))
+        p.event_end_date = _m_end(form)
         p.location = (form.get("location", "") or "").strip()
         p.revenue = total; p.supply_amount = supply; p.vat_amount = vat; p.vat_mode = vat_mode
         p.memo = form.get("memo", "") or ""

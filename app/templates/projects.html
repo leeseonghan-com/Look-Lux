@@ -9,7 +9,9 @@
           onsubmit="return confirm('행사일을 기준으로 모든 프로젝트의 진행/정산 상태를 자동 갱신합니다.\n\n• 행사일 이전 → 진행중\n• 행사일 이후 → 완료 + 미수금(입금된 건은 유지)\n\n계속하시겠습니까?');">
       <button type="submit" class="btn-secondary" title="행사일 기준으로 진행/정산 상태를 일괄 갱신">🔄 자동 상태 갱신</button>
     </form>
+    <a href="/project-calendar" class="btn-secondary">🗓️ 캘린더</a>
     <a href="/projects/by-vendor" class="btn-secondary">🏢 거래처별 집계</a>
+    <a href="/export/projects" class="btn-secondary" title="엑셀로 내보내기">📥 엑셀</a>
     <a href="/projects/new" class="btn-primary">+ 새 프로젝트</a>
   </div>
 </div>
@@ -107,7 +109,7 @@
 </div>
 
 <!-- 필터 결과 집계 -->
-{% if selected_cats and request.state.can_view_amounts %}
+{% if selected_cats and request.state.can_view_revenue %}
 <div class="card mb-4" style="background: linear-gradient(135deg, #0A0E1A 0%, #1E293B 100%); color: white; padding: 18px 22px;">
   <div class="flex items-center justify-between flex-wrap gap-4">
     <div>
@@ -129,10 +131,12 @@
         <div style="font-size: 11px; color: rgba(255,255,255,0.5);">총매출(VAT포함)</div>
         <div style="font-size: 22px; font-weight: 800; line-height: 1; color: #C9A961;">{{ filtered_revenue|money }}<span style="font-size: 12px; opacity: 0.5;">원</span></div>
       </div>
+{% if request.state.can_view_profit %}
       <div>
         <div style="font-size: 11px; color: rgba(255,255,255,0.5);">순이익</div>
         <div style="font-size: 22px; font-weight: 800; line-height: 1; color: {% if filtered_profit >= 0 %}#34D399{% else %}#F87171{% endif %};">{{ filtered_profit|money }}<span style="font-size: 12px; opacity: 0.5;">원</span></div>
       </div>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -146,8 +150,10 @@
     <span style="font-size: 12px; opacity: 0.8;">선택한 프로젝트를:</span>
     <select id="bulk-unified" style="padding: 7px 12px; border-radius: 6px; border: none; background: white; color: #18181B; font-size: 13px; font-weight: 600;">
       <option value="">— 상태 변경 —</option>
+      {% if request.state.can_manage_settle %}
       <option value="입금완료">✓ 입금완료로 변경</option>
       <option value="미수금">⚠ 미수금으로 되돌리기</option>
+      {% endif %}
       <option value="진행중">🔵 진행중으로 변경</option>
       <option value="준비중">⚪ 준비중으로 변경</option>
       <option value="취소">✕ 취소로 변경</option>
@@ -166,8 +172,8 @@
         <th style="width: 36px;"><input type="checkbox" id="check-all" onchange="toggleAll(this)"></th>
         <th>코드</th><th>프로젝트명</th><th class="mobile-hide">항목</th>
         <th class="mobile-hide">거래처</th>
-        <th class="mobile-hide">행사일</th><th class="text-right">매출</th>
-        <th class="text-right mobile-hide">비용</th><th class="text-right">순이익</th>
+        <th class="mobile-hide">행사일</th>{% if request.state.can_view_revenue %}<th class="text-right">매출</th>{% endif %}
+        {% if request.state.can_view_sub and request.state.can_view_wage %}<th class="text-right mobile-hide">비용</th>{% endif %}{% if request.state.can_view_profit %}<th class="text-right">순이익</th>{% endif %}
         <th>상태</th>
       </tr>
     </thead>
@@ -188,12 +194,16 @@
           {% endfor %}
         </td>
         <td class="mobile-hide text-xs cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{{ r.vendor_name }}</td>
-        <td class="mobile-hide text-xs cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{{ r.event_date or '-' }}</td>
-        <td class="text-right num cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{% if request.state.can_view_amounts %}{{ r.revenue|money }}{% else %}<span style="color: var(--ink-5);">—</span>{% endif %}</td>
-        <td class="text-right mobile-hide num text-red-600 cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{% if request.state.can_view_amounts %}{{ (r.expense + r.wage)|money }}{% else %}<span style="color: var(--ink-5);">—</span>{% endif %}</td>
-        <td class="text-right num font-bold cursor-pointer {% if r.profit >= 0 %}text-emerald-600{% else %}text-red-600{% endif %}" onclick="location.href='/projects/{{ r.id }}'">{% if request.state.can_view_amounts %}{{ r.profit|money }}{% else %}<span style="color: var(--ink-5);">—</span>{% endif %}</td>
+        <td class="mobile-hide text-xs cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{{ r.event_period or r.event_date or '-' }}</td>
+        {% if request.state.can_view_revenue %}<td class="text-right num cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{{ r.revenue|money }}</td>{% endif %}
+        {% if request.state.can_view_sub and request.state.can_view_wage %}<td class="text-right mobile-hide num text-red-600 cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">{{ (r.expense + r.wage)|money_sub }}</td>{% endif %}
+        {% if request.state.can_view_profit %}<td class="text-right num font-bold cursor-pointer {% if r.profit >= 0 %}text-emerald-600{% else %}text-red-600{% endif %}" onclick="location.href='/projects/{{ r.id }}'">{{ r.profit|money_profit }}</td>{% endif %}
         <td class="cursor-pointer" onclick="location.href='/projects/{{ r.id }}'">
+          {% if r.unified.key in ('미수금','입금완료') and not request.state.can_view_settle %}
+          <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#E5E7EB; color:#374151; font-size:11px; font-weight:700; white-space:nowrap;">완료</span>
+          {% else %}
           <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:{{ r.unified.bg }}; color:{{ r.unified.color }}; font-size:11px; font-weight:700; white-space:nowrap;">{{ r.unified.label }}</span>
+          {% endif %}
           {% if r.is_auto_changed %}<span title="행사일 기준 자동 전환 (DB 미저장)" style="display:inline-block; margin-left:3px; font-size:10px;">✨</span>{% endif %}
         </td>
       </tr>

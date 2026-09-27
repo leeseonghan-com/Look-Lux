@@ -48,7 +48,7 @@
   </form>
 </div>
 
-{% if request.state.can_view_amounts %}
+{% if request.state.can_view_revenue %}
 <div class="m-card" style="padding: 14px;">
   <div class="m-card-title">
     💰 매출 분해 {% if p.vat_mode in ('cash', 'exempt') %}<span style="margin-left: 4px; padding: 1px 5px; background: #FEF3C7; color: #92400E; font-size: 9px; border-radius: 3px; font-weight: 700;">💵 현금</span>{% else %}(부가세 10%){% endif %}
@@ -70,17 +70,17 @@
 </div>
 {% endif %}
 
-{% if request.state.can_view_amounts %}
+{% if request.state.can_view_sub or request.state.can_view_wage %}
 <div class="kpi-grid">
   <div class="kpi">
     <div class="label">총 비용</div>
-    <div class="value">{{ '{:,}'.format(total_expense + total_wage) }}</div>
+    <div class="value">{% if request.state.can_view_sub and request.state.can_view_wage %}{{ '{:,}'.format(total_expense + total_wage) }}{% else %}—{% endif %}</div>
     <div class="sub">원 ({{ expenses|length }}건 + 인건비)</div>
   </div>
   <div class="kpi">
     <div class="label">순이익 (공급가-비용)</div>
     {% set net = (p.supply_amount or p.revenue or 0) - total_expense - total_wage %}
-    <div class="value" style="color: {% if net >= 0 %}#047857{% else %}#DC2626{% endif %};">{{ '{:,}'.format(net) }}</div>
+    <div class="value" style="color: {% if net >= 0 %}#047857{% else %}#DC2626{% endif %};">{% if request.state.can_view_profit %}{{ '{:,}'.format(net) }}{% else %}—{% endif %}</div>
     <div class="sub">원</div>
   </div>
 </div>
@@ -113,10 +113,8 @@
       <div class="list-item-title">{{ e.category }}</div>
       <div class="list-item-sub">{{ e.description or '—' }} · {{ e.expense_date }}</div>
     </div>
-    {% if request.state.can_view_amounts %}
+    {% if request.state.can_view_sub %}
     <div style="font-weight: 800; font-size: 15px;">{{ '{:,}'.format(e.amount) }}</div>
-    {% else %}
-    <div style="color:#94A3B8;">—</div>
     {% endif %}
   </a>
   {% endfor %}

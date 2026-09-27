@@ -1,6 +1,6 @@
 // 정산관리 시스템 - 서비스 워커
 // 오프라인 시 기본 페이지 캐시 + 정적 자원 캐싱
-const CACHE_NAME = 'jeongsan-v20260901-1500';
+const CACHE_NAME = 'jeongsan-v20260925-1300';
 const STATIC_ASSETS = [
   '/m/',
   '/m/offline',

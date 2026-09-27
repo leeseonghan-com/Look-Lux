@@ -316,3 +316,52 @@ document.addEventListener('mousedown', (e) => {
     if (!d.contains(e.target)) d.remove();
   });
 });
+
+/* ════════════════════════════════════════════════════════════
+   ★ 저장 후 "작업하던 화면"으로 돌아가기 (전체 공통)
+   - 수정/등록 화면에 들어올 때 직전 화면 주소를 기억
+   - 저장(POST) 시 폼에 return_to 를 실어 보냄 → 서버가 그 화면으로 이동
+   - 캘린더·인력배치·목록 필터·검색 상태까지 주소 그대로 복원
+   ════════════════════════════════════════════════════════════ */
+(function () {
+  function isFormPage(path) {
+    return /\/(edit|new)(\/|$|\?)/.test(path) || /\/new$/.test(path) || /\/to-project$/.test(path);
+  }
+  function sameOrigin(u) {
+    try { var x = new URL(u, location.href); return x.origin === location.origin ? x : null; } catch (e) { return null; }
+  }
+  try {
+    var path = location.pathname;
+    var key = 'return_to::' + path;
+    // 상세 화면(/projects/12 등)은 '작업 화면'이 아님 → 캘린더·목록·현황 화면만 기억
+    var isDetail = /\/\d+\/?$/.test(path);
+    if (!isFormPage(path) && !isDetail && path !== '/login') {
+      sessionStorage.setItem('last_work', path + location.search + location.hash);
+    }
+    if (isFormPage(path)) {
+      var ref = document.referrer ? sameOrigin(document.referrer) : null;
+      if (ref && ref.pathname !== path && !isFormPage(ref.pathname) && ref.pathname !== '/login') {
+        var refDetail = /\/\d+\/?$/.test(ref.pathname);
+        // 상세를 거쳐 들어왔으면 그 전 작업 화면(캘린더·목록)으로, 아니면 직전 화면으로
+        var target = refDetail ? (sessionStorage.getItem('last_work') || (ref.pathname + ref.search)) : (ref.pathname + ref.search + ref.hash);
+        sessionStorage.setItem(key, target);
+      }
+      var back = sessionStorage.getItem(key);
+      if (back) {
+        document.addEventListener('DOMContentLoaded', function () {
+          document.querySelectorAll('form[method="post"], form[method="POST"]').forEach(function (f) {
+            var act = f.getAttribute('action') || location.pathname + location.search;
+            var low = act.toLowerCase();
+            if (low.indexOf('/delete') >= 0 || low.indexOf('/logout') >= 0 || low.indexOf('_rt=') >= 0 || act === '#') return;
+            f.setAttribute('action', act + (act.indexOf('?') >= 0 ? '&' : '?') + '_rt=' + encodeURIComponent(back));
+          });
+          // "취소 / 목록으로" 버튼도 작업하던 화면으로
+          document.querySelectorAll('a.btn-secondary, a[data-back]').forEach(function (a) {
+            var t = (a.textContent || '').trim();
+            if (/^(취소|← 목록으로|목록으로)$/.test(t)) a.setAttribute('href', back);
+          });
+        });
+      }
+    }
+  } catch (e) {}
+})();

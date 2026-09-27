@@ -63,8 +63,13 @@
     </div>
 
     <div class="m-field">
-      <label class="m-label">행사일</label>
-      <input name="event_date" type="date" class="m-input" value="{{ p.event_date if p else '' }}">
+      <label class="m-label">행사 기간 <span style="font-size:11px; color:#9CA3AF; font-weight:500;">(하루면 종료일 비움)</span></label>
+      <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:6px; align-items:center;">
+        <input name="event_date" type="date" class="m-input" value="{{ p.event_date if p and p.event_date else '' }}"
+               onchange="var e=this.form.event_end_date; e.min=this.value; if(e.value && e.value<this.value) e.value='';">
+        <span style="color:#9CA3AF; font-weight:700;">~</span>
+        <input name="event_end_date" type="date" class="m-input" value="{{ p.event_end_date if p and p.event_end_date else '' }}">
+      </div>
     </div>
 
     <div class="m-field">
@@ -117,7 +122,7 @@
     .m-cat-chip:active .m-cat-chip-inner { transform: scale(0.95); }
   </style>
 
-  {% if request.state.can_view_amounts %}
+  {% if request.state.can_view_revenue %}
   <div class="m-card">
     <div class="m-field">
       <label class="m-label">매출 입력 방식</label>

@@ -278,7 +278,9 @@ def expenses_unpaid(request: Request):
 @router.post("/expenses/{eid}/toggle-pay")
 def expense_toggle_pay(request: Request, eid: int):
     """미지급 ↔ 지급완료 토글"""
-    _user(request)
+    from permissions import has_permission
+    if not has_permission(_user(request), "manage_sub_pay"):
+        raise HTTPException(403, "외주 지급완료 처리 권한이 없습니다.")
     with Session(engine, expire_on_commit=False) as s:
         e = s.get(Expense, eid)
         if not e:
@@ -299,7 +301,9 @@ def expense_toggle_pay(request: Request, eid: int):
 @router.post("/expenses/bulk-pay")
 def expenses_bulk_pay(request: Request, expense_ids: str = Form(...), action: str = Form("pay")):
     """선택 항목 일괄 지급완료 / 미지급 처리"""
-    _user(request)
+    from permissions import has_permission
+    if not has_permission(_user(request), "manage_sub_pay"):
+        raise HTTPException(403, "외주 지급완료 처리 권한이 없습니다.")
     try:
         ids = [int(x) for x in expense_ids.split(",") if x.strip()]
     except ValueError:

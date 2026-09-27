@@ -62,55 +62,93 @@
           </select>
         {% endif %}
       </div>
+      <div class="md:col-span-2">
+        <label class="label">🔗 연결할 근무자 <span style="font-size:11px; color:var(--ink-4); font-weight:500;">(정직원 출퇴근·내 정보 조회에 사용)</span></label>
+        {% set _cur = (link_workers|selectattr('id','equalto', e.worker_id)|first) if (e and e.worker_id) else None %}
+        <input type="hidden" name="worker_id" id="wl-id" value="{{ e.worker_id if e and e.worker_id else '' }}">
+        <div style="position:relative;">
+          <input type="text" id="wl-q" class="input" autocomplete="off" placeholder="🔍 근무자 이름 검색 (비우면 연결 안 함)"
+                 value="{{ _cur.name if _cur else '' }}">
+          <button type="button" id="wl-clear" title="연결 해제" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); border:0; background:none; color:#94A3B8; font-size:16px; cursor:pointer; {% if not _cur %}display:none;{% endif %}">✕</button>
+          <div id="wl-list" style="display:none; position:absolute; left:0; right:0; top:100%; z-index:30; margin-top:4px; background:#fff; background-image:linear-gradient(#fff,#fff); border:1px solid var(--line); border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.12); max-height:260px; overflow-y:auto;"></div>
+        </div>
+        <div id="wl-picked" class="text-xs mt-1" style="color:#047857; font-weight:700;">{% if _cur %}✓ 연결됨: {{ _cur.name }} · {{ _cur.type }}{% if _cur.status != '재직' %} ({{ _cur.status }}){% endif %}{% endif %}</div>
+        <script>
+        (function(){
+          var W = {{ link_workers|tojson }};
+          var q=document.getElementById('wl-q'), id=document.getElementById('wl-id'), list=document.getElementById('wl-list'),
+              picked=document.getElementById('wl-picked'), clr=document.getElementById('wl-clear');
+          function esc(s){return String(s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+          function render(){
+            var v=(q.value||'').trim();
+            var rows=W.filter(function(w){ return !v || w.name.indexOf(v)>=0; }).slice(0,50);
+            list.innerHTML = rows.length ? rows.map(function(w){
+              return '<div data-id="'+w.id+'" style="padding:9px 12px; cursor:pointer; border-bottom:1px solid #F1F5F9; display:flex; justify-content:space-between; gap:8px;">'
+                + '<b>'+esc(w.name)+'</b><span style="font-size:11px; color:#64748B;">'+esc(w.type)+(w.status!=='재직'?' · <span style="color:#DC2626;">'+esc(w.status)+'</span>':'')+'</span></div>';
+            }).join('') : '<div style="padding:10px 12px; color:#94A3B8; font-size:13px;">일치하는 근무자가 없습니다</div>';
+            list.style.display='block';
+          }
+          function choose(w){
+            id.value = w ? w.id : ''; q.value = w ? w.name : '';
+            picked.textContent = w ? ('✓ 연결됨: '+w.name+' · '+w.type+(w.status!=='재직'?' ('+w.status+')':'')) : '';
+            clr.style.display = w ? '' : 'none'; list.style.display='none';
+          }
+          var composing=false;
+          q.addEventListener('compositionstart',function(){composing=true;});
+          q.addEventListener('compositionend',function(){composing=false; render();});
+          q.addEventListener('input',function(){ if(!q.value.trim()){ id.value=''; picked.textContent=''; clr.style.display='none'; } render(); });
+          q.addEventListener('focus',render);
+          q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); if(composing) return;
+            var v=q.value.trim(); var m=W.filter(function(w){return w.name.indexOf(v)>=0;}); if(m.length===1) choose(m[0]); } });
+          list.addEventListener('mousedown',function(e){ var r=e.target.closest('[data-id]'); if(!r) return; e.preventDefault();
+            choose(W.filter(function(w){return String(w.id)===r.dataset.id;})[0]); });
+          clr.addEventListener('click',function(){ choose(null); q.focus(); });
+          document.addEventListener('click',function(e){ if(!e.target.closest('#wl-list') && e.target!==q) list.style.display='none'; });
+        })();
+        </script>
+        <div class="text-xs mt-1" style="color: var(--ink-4);">직원 계정은 여기서 연결한 근무자 본인의 출퇴근만 등록·조회할 수 있습니다.</div>
+      </div>
     </div>
   </div>
 
-  <!-- 권한 설정 -->
+  <!-- 권한 설정 (그룹별) -->
   <div class="card" id="perm-card">
-    <h2 class="text-lg font-bold mb-2">🔐 권한 설정</h2>
-    <p class="text-xs mb-4" style="color: var(--ink-4);">
-      직원이 접근할 수 있는 메뉴와 금액 조회 권한을 설정합니다. <b>관리자</b>는 모든 권한이 자동 부여됩니다.
-    </p>
-
-    {# 현재 저장된 권한 상태 미리보기 (수정 화면일 때만) #}
-    {% if e %}
-    <div class="mb-3 text-xs" style="background: #F0F9FF; border:1px solid #BAE6FD; color:#075985; padding:8px 12px; border-radius:6px;">
-      💾 현재 저장된 권한: <b id="saved-count">{{ perms.values()|select|list|length }}</b>개 활성화됨
-      <span style="color:#0C4A6E; margin-left:6px;">(이 체크박스 상태가 실제 저장값입니다)</span>
-    </div>
-    {% endif %}
-
-    <div class="mb-3">
-      <button type="button" onclick="toggleAllPerms(true)" class="text-xs font-semibold" style="background:#DBEAFE; color:#1E40AF; padding: 4px 12px; border-radius: 4px; border: none; cursor: pointer; margin-right: 6px;">전체 선택</button>
-      <button type="button" onclick="toggleAllPerms(false)" class="text-xs font-semibold" style="background:#F3F4F6; color:#6B7280; padding: 4px 12px; border-radius: 4px; border: none; cursor: pointer;">전체 해제</button>
+    <div class="flex items-start justify-between flex-wrap gap-3 mb-3">
+      <div>
+        <h2 class="text-lg font-bold mb-1">🔐 권한 설정</h2>
+        <p class="text-xs" style="color: var(--ink-4);"><b>관리자</b>는 모든 권한이 자동으로 적용됩니다. 아래는 <b>직원</b> 계정에만 적용됩니다.</p>
+      </div>
+      <div class="flex gap-2 flex-wrap items-center">
+        <span class="text-xs font-bold" style="color: var(--ink-4);">빠른 설정</span>
+        {% for pk, pv in presets.items() %}
+        <button type="button" onclick="applyPreset('{{ pk }}')" class="text-xs font-bold" style="padding:6px 12px; border-radius:999px; border:1px solid #C7D2FE; background:#EEF2FF; color:#3730A3; cursor:pointer;">{{ pv[0] }}</button>
+        {% endfor %}
+        <button type="button" onclick="toggleAllPerms(true)" class="text-xs font-bold" style="padding:6px 12px; border-radius:999px; border:1px solid #BFDBFE; background:#fff; color:#1E40AF; cursor:pointer;">전체</button>
+        <button type="button" onclick="toggleAllPerms(false)" class="text-xs font-bold" style="padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:#fff; color:#6B7280; cursor:pointer;">해제</button>
+      </div>
     </div>
 
-    <div class="grid md:grid-cols-2 gap-3" id="perm-grid">
-      {% for key, label in permission_keys.items() %}
-      {% set is_checked = perms.get(key, False) %}
-      <label class="perm-row flex items-start gap-2 cursor-pointer"
-             data-key="{{ key }}"
-             style="padding: 10px 14px; background: {% if is_checked %}#EFF6FF{% else %}#F8FAFC{% endif %}; border: 1px solid {% if is_checked %}#BFDBFE{% else %}var(--line){% endif %}; border-radius: 8px; transition: background .15s, border-color .15s;">
-        <input type="checkbox" name="perm_{{ key }}" value="on" {% if is_checked %}checked{% endif %} class="perm-check" style="margin-top: 2px;">
-        <div>
-          <div class="text-sm font-semibold" style="color: var(--ink);">{{ label }}</div>
-          <div class="text-xs" style="color: var(--ink-4);">
-            {% if key == 'view_amounts' %}
-            매출액, 이익, 단가표 가격 등 조회 (체크 안 하면 금액 자리에 "—" 표시)
-            {% elif key == 'projects_edit' %}
-            프로젝트 정보 수정 및 삭제 권한 (projects 권한 필요)
-            {% elif key == 'view_expenses' %}
-            비용 금액 조회 (expenses 권한 필요)
-            {% elif key == 'view_wages' %}
-            근무자 일당/시급 조회
-            {% else %}
-            {{ label }}
-            {% endif %}
-          </div>
+    <div class="space-y-4" id="perm-grid">
+      {% for gname, items in perm_groups %}
+      <div style="border:1px solid var(--line); border-radius:12px; overflow:hidden;">
+        <div style="padding:10px 14px; background:#F8FAFC; border-bottom:1px solid var(--line); font-weight:800; font-size:14px;">{{ gname }}</div>
+        <div class="grid md:grid-cols-2 gap-2" style="padding:10px;">
+          {% for key, label, desc in items %}
+          {% set is_checked = emp_perms.get(key, False) %}
+          <label class="perm-row flex items-start gap-2 cursor-pointer" data-key="{{ key }}"
+                 style="padding: 10px 12px; background: {% if is_checked %}#EFF6FF{% else %}#fff{% endif %}; border: 1px solid {% if is_checked %}#BFDBFE{% else %}var(--line){% endif %}; border-radius: 8px;">
+            <input type="checkbox" name="perm_{{ key }}" value="on" {% if is_checked %}checked{% endif %} class="perm-check" data-key="{{ key }}" style="margin-top: 3px; width:16px; height:16px;">
+            <div>
+              <div class="text-sm font-bold" style="color: var(--ink);">{{ label }}</div>
+              <div class="text-xs" style="color: var(--ink-4);">{{ desc }}</div>
+            </div>
+          </label>
+          {% endfor %}
         </div>
-      </label>
+      </div>
       {% endfor %}
     </div>
+    <p class="text-xs mt-3" style="color: var(--ink-4);">💡 <b>순이익</b>은 매출·외주 지급·알바 급여 보기 권한이 모두 있을 때만 표시됩니다. "처리" 권한을 켜면 해당 "보기" 권한도 자동으로 켜집니다.</p>
   </div>
 
   <div class="flex justify-end gap-3">
@@ -120,48 +158,20 @@
 </form>
 
 <script>
-function toggleAllPerms(checked) {
-  document.querySelectorAll('.perm-check').forEach(c => {
-    c.checked = checked;
+var PRESETS = {{ presets_json|safe }};
+var DEPENDS = {"manage_settlement":"view_settlement","manage_sub_pay":"view_sub_pay","manage_wage_pay":"view_wage_pay","projects_edit":"projects"};
+function syncRowStyle(c){ var row=c.closest('.perm-row'); if(!row) return;
+  row.style.background = c.checked ? '#EFF6FF' : '#fff'; row.style.borderColor = c.checked ? '#BFDBFE' : 'var(--line)'; }
+function setKey(k, v){ var c=document.querySelector('.perm-check[data-key="'+k+'"]'); if(c){ c.checked=v; syncRowStyle(c);} }
+function toggleAllPerms(v){ document.querySelectorAll('.perm-check').forEach(function(c){ c.checked=v; syncRowStyle(c); }); }
+function applyPreset(k){ var keys=PRESETS[k]||[]; document.querySelectorAll('.perm-check').forEach(function(c){ c.checked = keys.indexOf(c.dataset.key)>=0; syncRowStyle(c); }); }
+document.querySelectorAll('.perm-check').forEach(function(c){
+  c.addEventListener('change', function(){
+    if (c.checked && DEPENDS[c.dataset.key]) setKey(DEPENDS[c.dataset.key], true);
+    if (!c.checked) { for (var m in DEPENDS) if (DEPENDS[m]===c.dataset.key) setKey(m, false); }
     syncRowStyle(c);
   });
-}
-
-// 체크 상태에 따라 행 배경/테두리 색 동기화
-function syncRowStyle(checkbox) {
-  const row = checkbox.closest('.perm-row');
-  if (!row) return;
-  if (checkbox.checked) {
-    row.style.background = '#EFF6FF';
-    row.style.borderColor = '#BFDBFE';
-  } else {
-    row.style.background = '#F8FAFC';
-    row.style.borderColor = 'var(--line)';
-  }
-}
-
-// 체크박스 변경 시 시각적 동기화
-document.querySelectorAll('.perm-check').forEach(c => {
-  c.addEventListener('change', () => syncRowStyle(c));
 });
-
-// 역할이 admin이면 권한 카드 비활성화 (시각적으로만 — 실제 백엔드는 admin이면 권한 무시)
-const roleSelect = document.getElementById('role-select');
-const permCard = document.getElementById('perm-card');
-function updatePermCardState() {
-  const role = roleSelect ? roleSelect.value : 'staff';
-  if (role === 'admin') {
-    permCard.style.opacity = '0.4';
-    permCard.style.pointerEvents = 'none';
-  } else {
-    permCard.style.opacity = '1';
-    permCard.style.pointerEvents = 'auto';
-  }
-}
-if (roleSelect) {
-  roleSelect.addEventListener('change', updatePermCardState);
-  updatePermCardState();
-}
 </script>
 
 {% endblock %}

@@ -82,6 +82,10 @@ def _generate_project_code() -> str:
     return f"P-{year}-{count:03d}"
 
 
+def _user_names(session) -> dict:
+    return {u.id: (u.name or u.username) for u in session.exec(select(User)).all()}
+
+
 def _user(request: Request):
     """기본 사용자 — quotes 권한 체크 포함"""
     uid = request.session.get("user_id")
@@ -110,6 +114,9 @@ def _quote_to_dict(q):
         "valid_until": q.valid_until, "payment_terms": q.payment_terms,
         "delivery_terms": q.delivery_terms, "notes": q.notes,
         "project_id": getattr(q, "project_id", None),
+        "created_by": getattr(q, "created_by", None),
+        "updated_by": getattr(q, "updated_by", None),
+        "updated_at": getattr(q, "updated_at", None),
     }
 
 
@@ -180,7 +187,9 @@ def quote_list(request: Request, q: str = ""):
                 qq.quote_number, qq.vendor_name, qq.project_name, qq.notes,
                 qq.vendor_contact, qq.quote_type, qq.status,
             ])]
+        _names = _user_names(s)
         quotes = [{
+            "author_name": _names.get(qq.created_by, ""),
             "id": qq.id, "quote_number": qq.quote_number, "quote_date": qq.quote_date,
             "quote_type": qq.quote_type,
             "vendor_name": qq.vendor_name, "project_name": qq.project_name,
@@ -250,6 +259,30 @@ async def quote_create(request: Request):
     if vat_mode not in ("supply", "total", "cash"):
         vat_mode = "supply"
     discount = _safe_int_q(form.get("discount", "0"), 0)
+    from permissions import has_permission as _hpq
+    _can_rev = _hpq(_user(request), "view_revenue")
+    if not _can_rev:
+        # ★ 금액 권한 없는 직원: 화면에 가격이 없으므로 저장된 기존 가격을 그대로 사용
+        with Session(engine, expire_on_commit=False) as _s0:
+            _old_q = _s0.get(Quote, qid)
+            _olds = _s0.exec(select(QuoteItem).where(QuoteItem.quote_id == qid).order_by(QuoteItem.seq)).all()
+        _by_name = {}
+        for _o in _olds:
+            _by_name.setdefault((_o.name or "").strip(), []).append(_o)
+        for _it in items:
+            _cands = _by_name.get((_it.get("name") or "").strip()) or []
+            _o = _cands.pop(0) if _cands else None
+            _up = (_o.unit_price if _o else 0) or 0
+            _it["unit_price"] = _up
+            _it["cost_price"] = (getattr(_o, "cost_price", 0) if _o else 0) or 0
+            try:
+                _qq = int(float(str(_it.get("quantity", 1) or 1).replace(",", "")))
+            except (ValueError, TypeError):
+                _qq = 1
+            _days = (_old_q.rental_days or 1) if (_old_q and _old_q.quote_type == "렌탈") else 1
+            _it["amount"] = _qq * _up * _days
+        discount = (_old_q.discount if _old_q else 0) or 0
+        vat_mode = (_old_q.vat_mode if _old_q else vat_mode) or vat_mode
     amounts = _calc_quote_amounts(items, discount, vat_mode)
 
     # 날짜 안전 파싱
@@ -363,6 +396,9 @@ def quote_view(request: Request, qid: int):
             raise HTTPException(404)
         items_raw = s.exec(select(QuoteItem).where(QuoteItem.quote_id == qid).order_by(QuoteItem.seq)).all()
         q_dict = _quote_to_dict(q)
+        _nm = _user_names(s)
+        q_dict["author_name"] = _nm.get(q.created_by, "")
+        q_dict["editor_name"] = _nm.get(getattr(q, "updated_by", None), "")
         items_list = _items_to_list(items_raw)
 
     # ── 납품 견적서 마진 계산 (템플릿에서 Jinja set-in-loop이 outer scope 갱신 못하므로 서버에서 미리) ──
@@ -546,6 +582,11 @@ async def quote_update(request: Request, qid: int):
         q.payment_terms = form.get("payment_terms") or ""
         q.delivery_terms = form.get("delivery_terms") or ""
         q.notes = form.get("notes") or ""
+        try:
+            q.updated_by = _user(request).id
+            q.updated_at = datetime.now()
+        except Exception:
+            pass
         s.add(q)
 
         # 기존 품목 삭제 후 재생성
@@ -636,6 +677,10 @@ def _sync_project_from_quote(p, q, items):
 @router.get("/quotes/{qid}/print", response_class=HTMLResponse)
 def quote_print(request: Request, qid: int):
     """인쇄용 깨끗한 견적서"""
+    _u = _user(request)
+    from permissions import has_permission as _hpq
+    if not _hpq(_u, "view_revenue"):
+        raise HTTPException(403, "견적서 출력은 매출 금액 조회 권한이 필요합니다.")
     with Session(engine, expire_on_commit=False) as s:
         q = s.get(Quote, qid)
         if not q:
@@ -646,6 +691,88 @@ def quote_print(request: Request, qid: int):
     return templates.TemplateResponse(request, "quote_print.html", {
         "q": q_dict, "items": items_list,
     })
+
+
+# ════════════════════════════════════════════════════════════════════
+# 견적서 PDF 다운로드 (서버 생성)
+#
+# [왜 PDF 방식인가]
+# 삼성인터넷·크롬의 '강제 다크모드'는 CSS 우선순위가 아니라 화면을 그리는
+# 단계에서 색을 반전시키는 기능이다. 따라서 background:#FFF !important,
+# color-scheme, 배경이미지 기법 등 어떤 CSS로도 완전히 막을 수 없다.
+# → 서버가 PDF를 만들어 내려주면 브라우저는 '파일'을 받을 뿐이므로
+#   다크모드가 개입할 여지가 아예 없다. 흰 배경 + 테마 컬러가 100% 보장된다.
+# 부수 효과: 저장 파일명을 서버가 지정할 수 있다 (견적번호_프로젝트명).
+# ════════════════════════════════════════════════════════════════════
+
+def _safe_filename(text: str) -> str:
+    """파일명에 쓸 수 없는 문자 제거 (Windows/macOS/Android 공통 금지문자)"""
+    import re
+    text = (text or "").strip()
+    text = re.sub(r'[\\/:*?"<>|\r\n\t]', "", text)   # 금지문자 제거
+    text = re.sub(r"\s+", " ", text).strip()            # 연속 공백 정리
+    return text[:80]                                     # 과도한 길이 방지
+
+
+def _quote_pdf_filename(q_dict: dict) -> str:
+    """저장 파일명 = 견적번호 + 프로젝트명 (없으면 거래처명으로 대체)"""
+    no = _safe_filename(q_dict.get("quote_number") or "")
+    name = _safe_filename(q_dict.get("project_name") or "")
+    if not name:
+        name = _safe_filename(q_dict.get("vendor_name") or "")
+    parts = [p for p in (no, name) if p]
+    base = "_".join(parts) if parts else "견적서"
+    return f"{base}.pdf"
+
+
+@router.get("/quotes/{qid}/pdf")
+def quote_pdf(request: Request, qid: int, inline: int = 0):
+    """견적서를 서버에서 PDF로 생성해 다운로드.
+    inline=1 이면 브라우저 내장 뷰어로 열기(모바일 미리보기용)."""
+    _u = _user(request)
+    from permissions import has_permission as _hpq
+    if not _hpq(_u, "view_revenue"):
+        raise HTTPException(403, "견적서 출력은 매출 금액 조회 권한이 필요합니다.")
+    with Session(engine, expire_on_commit=False) as s:
+        q = s.get(Quote, qid)
+        if not q:
+            raise HTTPException(404)
+        items_raw = s.exec(
+            select(QuoteItem).where(QuoteItem.quote_id == qid).order_by(QuoteItem.seq)
+        ).all()
+        q_dict = _quote_to_dict(q)
+        items_list = _items_to_list(items_raw)
+
+    # 인쇄용 템플릿을 그대로 렌더 → 화면 인쇄본과 100% 동일한 결과
+    html_str = templates.get_template("quote_print.html").render({
+        "request": request,
+        "q": q_dict,
+        "items": items_list,
+    })
+
+    filename = _quote_pdf_filename(q_dict)
+
+    try:
+        from weasyprint import HTML as _WeasyHTML
+    except Exception:
+        # PDF 엔진 미설치 환경 → 인쇄 화면으로 대체 (기능 중단 방지)
+        return RedirectResponse(f"/quotes/{qid}/print", status_code=303)
+
+    base_url = str(request.base_url)
+    pdf_bytes = _WeasyHTML(string=html_str, base_url=base_url).write_pdf()
+
+    from urllib.parse import quote as _urlquote
+    disp = "inline" if inline else "attachment"
+    # 한글 파일명 → RFC 5987 (filename* ) 로 전달해야 안드로이드/iOS에서 안 깨짐
+    cd = f"{disp}; filename*=UTF-8''{_urlquote(filename)}"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": cd,
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        },
+    )
 
 
 @router.post("/quotes/{qid}/status")

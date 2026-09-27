@@ -7,7 +7,7 @@
   <div class="flex items-start justify-between mt-2 flex-wrap gap-3">
     <div>
       <h1 class="page-title">{{ p.name }}</h1>
-      <p class="page-sub">{{ p.code }} · {{ vendor.name if vendor else '거래처 미지정' }} · {{ p.event_date or '일정 미정' }}</p>
+      <p class="page-sub">{{ p.code }} · {{ vendor.name if vendor else '거래처 미지정' }} · {{ p.event_period or '일정 미정' }}</p>
       {% if p.categories %}
       <div class="flex gap-2 mt-2 flex-wrap">
         {% for c in p.categories %}
@@ -18,9 +18,13 @@
     </div>
     <div class="flex gap-2 flex-wrap items-center">
       {# 통합 상태 뱃지 #}
+      {% if p.unified.key in ('미수금','입금완료') and not request.state.can_view_settle %}
+      <span style="display:inline-flex; align-items:center; padding:8px 16px; border-radius:999px; background:#E5E7EB; color:#374151; font-size:13px; font-weight:700;">완료</span>
+      {% else %}
       <span style="display:inline-flex; align-items:center; padding:8px 16px; border-radius:999px; background:{{ p.unified.bg }}; color:{{ p.unified.color }}; font-size:13px; font-weight:700;">{{ p.unified.label }}</span>
+      {% endif %}
       <a href="/projects/{{ p.id }}/edit" class="btn-secondary">✏️ 수정</a>
-      {% if p.settlement_status != '입금완료' %}
+      {% if p.settlement_status != '입금완료' and request.state.can_manage_settle %}
       <form method="post" action="/projects/{{ p.id }}/settle" style="display:inline;">
         <button class="btn-primary" style="background: #15803D; border-color: #15803D;">✓ 입금완료 처리</button>
       </form>
@@ -58,32 +62,44 @@
       <a href="/quotes/{{ linked_quote.id }}" class="font-bold" style="text-decoration: underline;">
         {{ linked_quote.quote_number }}
       </a>
-      <span>· {{ linked_quote.quote_date }} · {{ linked_quote.total|money }}원</span>
+      <span>· {{ linked_quote.quote_date }}{% if request.state.can_view_revenue %} · {{ linked_quote.total|money }}원{% endif %}</span>
     </div>
   </div>
   {% endif %}
 </div>
 
-<!-- KPI -->
+<!-- KPI (권한 있는 항목만) -->
+{% set rs = request.state %}
+{% if rs.can_view_revenue or rs.can_view_sub or rs.can_view_wage %}
 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+  {% if rs.can_view_revenue %}
   <div class="kpi-card">
     <div class="label">총 매출 (VAT 포함)</div>
     <div class="value value-sm num">{{ p.revenue|money }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
+  {% if rs.can_view_sub %}
   <div class="kpi-card">
-    <div class="label">비용</div>
-    <div class="value value-sm num" style="color: var(--negative);">{{ total_expense|money }}<span class="unit">원</span></div>
+    <div class="label">외주 지급</div>
+    <div class="value value-sm num" style="color: var(--negative);">{{ total_expense|money_sub }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
+  {% if rs.can_view_wage %}
   <div class="kpi-card">
-    <div class="label">인건비</div>
-    <div class="value value-sm num" style="color: #B45309;">{{ total_wage|money }}<span class="unit">원</span></div>
+    <div class="label">알바 급여</div>
+    <div class="value value-sm num" style="color: #B45309;">{{ total_wage|money_wage }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
+  {% if rs.can_view_profit %}
   <div class="kpi-card">
     <div class="label">순이익</div>
-    <div class="value value-sm num" style="color: {% if profit >= 0 %}var(--positive){% else %}var(--negative){% endif %};">{{ profit|money }}<span class="unit">원</span></div>
+    <div class="value value-sm num" style="color: {% if profit >= 0 %}var(--positive){% else %}var(--negative){% endif %};">{{ profit|money_profit }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
 </div>
+{% endif %}
 
+{% if request.state.can_view_revenue %}
 <!-- 매출 분해: 공급가 + 부가세 -->
 <div class="card mb-5" style="padding: 14px 18px;">
   <div class="flex items-center justify-between flex-wrap gap-3">
@@ -116,13 +132,16 @@
   </div>
 </div>
 
+{% endif %}
+
 <!-- 결제 정보 + 특이사항 -->
 <div class="grid md:grid-cols-2 gap-4 mb-5">
 
+  {% if request.state.can_view_settle %}
   <div class="card">
     <h2 class="text-base font-bold mb-4 flex items-center justify-between" style="color: var(--ink);">
       💳 결제 정보
-      <span class="badge badge-dot {% if p.settlement_status == '입금완료' %}badge-green{% else %}badge-orange{% endif %}">{{ p.settlement_status }}</span>
+      {% if request.state.can_view_settle %}<span class="badge badge-dot {% if p.settlement_status == '입금완료' %}badge-green{% else %}badge-orange{% endif %}">{{ p.settlement_status }}</span>{% endif %}
     </h2>
 
     <div class="space-y-2 text-sm">
@@ -169,6 +188,7 @@
     </div>
   </div>
 
+  {% endif %}
   <div class="card">
     <h2 class="text-base font-bold mb-4" style="color: var(--ink);">📝 특이사항</h2>
     {% if p.special_notes %}
@@ -189,14 +209,60 @@
   </div>
 </div>
 
+
+<!-- ─────────── 투입 인력 ─────────── -->
+<div class="card mb-5" id="staff">
+  <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+    <h2 class="text-base font-bold flex items-center gap-2" style="color: var(--ink);">
+      👷 투입 인력 <span class="text-sm font-normal" style="color: var(--ink-4);">{{ staff_rows|length }}명</span>
+    </h2>
+    <div class="flex gap-2">
+      <a href="/staffing?view=month&group=project&d={{ staff_default_start }}" class="btn-secondary" style="font-size:12px; padding:5px 12px;">🗓️ 달력으로 보기</a>
+      <button type="button" class="btn-secondary" style="font-size:12px; padding:5px 12px; background:#E0E7FF; border-color:#C7D2FE; color:#3730A3; font-weight:700;"
+              onclick="openStaffPicker({{ p.id }})">✎ 인력 배치</button>
+    </div>
+  </div>
+
+  {% if not staff_rows %}
+  <button type="button" onclick="openStaffPicker({{ p.id }})" style="width:100%; padding:22px; border:2px dashed #C7D2FE; border-radius:12px; background:#F5F7FF; color:#4F46E5; font-weight:800; font-size:15px; cursor:pointer;">＋ 눌러서 인원 배치하기</button>
+  {% endif %}
+
+  {% if staff_rows %}
+  <div class="overflow-x-auto">
+    <table class="dt w-full text-sm">
+      <thead><tr><th>이름</th><th>오퍼</th><th>투입 기간</th><th class="text-right">일수</th><th>중복 배치</th><th></th></tr></thead>
+      <tbody>
+      {% for r in staff_rows %}
+      <tr>
+        <td class="font-semibold">{{ r.name }}</td>
+        <td>{% if r.offer %}<span style="background:#7C3AED; color:#fff; border-radius:6px; padding:2px 8px; font-size:11px; font-weight:700;">★ 오퍼</span>{% else %}<span style="color:#CBD5E1;">-</span>{% endif %}</td>
+        <td class="num">{{ r.start.strftime('%m/%d') }}{% if r.end != r.start %} ~ {{ r.end.strftime('%m/%d') }}{% endif %}</td>
+        <td class="text-right num">{{ r.days }}일</td>
+        <td style="font-size:12px;">
+          {% if r.conflicts %}<span style="color:#DC2626; font-weight:700;">⚠ {{ r.conflicts|join(', ') }}</span>{% else %}<span style="color:#94A3B8;">-</span>{% endif %}
+        </td>
+        <td class="text-right">
+          <form method="post" action="/staff/{{ r.id }}/delete" style="display:inline;" onsubmit="return confirm('{{ r.name }} 배치를 삭제할까요?');">
+            <button class="text-xs" style="color:#DC2626; font-weight:700; background:none; border:none; cursor:pointer;">삭제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
 <!-- 비용 + 알바 -->
 <div class="grid md:grid-cols-2 gap-4">
+  {% if request.state.is_admin or request.state.perms.get('expenses') %}
   <!-- ─────────── 비용처리 ─────────── -->
   <div class="card">
     <div class="flex items-center justify-between mb-3">
       <h2 class="text-base font-bold flex items-center gap-2" style="color: var(--ink);">
-        💰 비용처리
-        <span class="text-sm font-normal" style="color: var(--ink-4);">{{ expenses|length }}건{% if request.state.can_view_amounts %} · {{ total_expense|money }}원{% endif %}</span>
+        🏗 외주 지급
+        <span class="text-sm font-normal" style="color: var(--ink-4);">{{ expenses|length }}건{% if request.state.can_view_sub %} · {{ total_expense|money_sub }}원{% endif %}</span>
       </h2>
       <a href="/expenses/new?project_id={{ p.id }}" class="btn-secondary"
          style="font-size: 12px; padding: 5px 12px; background: #DBEAFE; border-color: #BFDBFE; color: #1E40AF; font-weight: 700;">
@@ -215,7 +281,7 @@
           {% endif %}
         </div>
         <div class="flex items-center gap-2">
-          <div class="font-bold num">{{ e.amount|money }}원</div>
+          {% if request.state.can_view_sub %}<div class="font-bold num">{{ e.amount|money_sub }}원</div>{% endif %}
           <a href="/expenses/{{ e.id }}/edit" class="text-xs" style="color: var(--gold-2); font-weight: 600;" title="수정">✏️</a>
         </div>
       </div>
@@ -230,12 +296,14 @@
     </div>
   </div>
 
+  {% endif %}
+  {% if request.state.is_admin or request.state.perms.get('attendance') %}
   <!-- ─────────── 알바근태 ─────────── -->
   <div class="card">
     <div class="flex items-center justify-between mb-3">
       <h2 class="text-base font-bold flex items-center gap-2" style="color: var(--ink);">
         👥 알바근태
-        <span class="text-sm font-normal" style="color: var(--ink-4);">{{ attendances|length }}건{% if request.state.can_view_amounts %} · {{ total_wage|money }}원{% endif %}</span>
+        <span class="text-sm font-normal" style="color: var(--ink-4);">{{ attendances|length }}건{% if request.state.can_view_wage %} · {{ total_wage|money_wage }}원{% endif %}</span>
       </h2>
       <a href="/attendance/new?project_id={{ p.id }}" class="btn-secondary"
          style="font-size: 12px; padding: 5px 12px; background: #FEF3C7; border-color: #FDE68A; color: #92400E; font-weight: 700;">
@@ -249,16 +317,18 @@
           <div class="font-semibold">{{ a.worker_name }} <span class="text-xs font-normal" style="color: var(--ink-4);">· {{ a.days }}일</span></div>
           <div class="text-xs" style="color: var(--ink-4);">
             {{ a.date }}
-            {% if a.bonus_amount and request.state.can_view_amounts %}
-            <span style="color: #7C3AED; font-weight: 700;">+ {{ a.bonus_amount|money }}원{% if a.bonus_memo %} ({{ a.bonus_memo }}){% endif %}</span>
+            {% if a.bonus_amount and request.state.can_view_wage %}
+            <span style="color: #7C3AED; font-weight: 700;">+ {{ a.bonus_amount|money_wage }}원{% if a.bonus_memo %} ({{ a.bonus_memo }}){% endif %}</span>
             {% endif %}
           </div>
         </div>
         <div class="text-right flex items-center gap-2">
+          {% if request.state.can_view_wage %}
           <div>
-            <div class="font-bold num">{{ a.total_wage|money }}원</div>
+            <div class="font-bold num">{{ a.total_wage|money_wage }}원</div>
             <div class="text-xs {% if a.pay_status == '지급완료' %}badge-green{% else %}badge-red{% endif %} inline-block px-1.5 py-0.5 rounded mt-0.5">{{ a.pay_status }}</div>
           </div>
+          {% endif %}
           <a href="/attendance/{{ a.id }}/edit" class="text-xs" style="color: var(--gold-2); font-weight: 600;" title="수정">✏️</a>
         </div>
       </div>
@@ -272,6 +342,7 @@
       {% endif %}
     </div>
   </div>
+  {% endif %}
 </div>
 
 {% endblock %}

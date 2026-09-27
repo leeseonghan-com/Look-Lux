@@ -25,11 +25,11 @@
       </div>
       {# 거래처 · 날짜 (부가정보) #}
       <div class="list-item-sub" style="font-size: 12px; color: #6B7280;">
-        🏢 {{ q.vendor_name or '(거래처 미입력)' }} · 📅 {{ q.quote_date }}
+        🏢 {{ q.vendor_name or '(거래처 미입력)' }} · 📅 {{ q.quote_date }}{% if q.author_name %} · ✍ {{ q.author_name }}{% endif %}
       </div>
     </div>
     <div style="display: flex; flex-direction: column; align-items: end; gap: 4px;">
-      {% if request.state.can_view_amounts %}
+      {% if request.state.can_view_revenue %}
       <div style="font-weight: 800; font-size: 14px; color: #18181B;">{{ '{:,}'.format(q.total) }}원</div>
       {% endif %}
       {% if q.status == '수주' %}<span class="badge badge-green">수주</span>
@@ -38,6 +38,21 @@
       {% else %}<span class="badge badge-gray">{{ q.status }}</span>{% endif %}
     </div>
   </a>
+  {% if request.state.can_view_revenue %}
+  {# 📄 PDF 저장 — 휴대폰 다크모드 무관하게 흰 배경 보장, 파일명=견적번호_프로젝트명 #}
+  <div style="display:flex; gap:8px; padding:0 4px 12px; margin-top:-6px;">
+    <a href="/quotes/{{ q.id }}/pdf"
+       style="flex:1; text-align:center; padding:9px 0; background-color:#0A0E1A;
+              background-image:linear-gradient(to bottom,#0A0E1A 0%,#0A0E1A 100%);
+              color:#FFFFFF; border-radius:9px; font-size:13px; font-weight:700;
+              text-decoration:none;">📄 PDF 저장</a>
+    <a href="/quotes/{{ q.id }}/pdf?inline=1" target="_blank"
+       style="flex:1; text-align:center; padding:9px 0; background-color:#FFFFFF;
+              background-image:linear-gradient(to bottom,#FFFFFF 0%,#FFFFFF 100%);
+              color:#18181B; border:1.5px solid #E4E4E7; border-radius:9px;
+              font-size:13px; font-weight:700; text-decoration:none;">👁 미리보기</a>
+  </div>
+  {% endif %}
   {% endfor %}
 </div>
 {% else %}

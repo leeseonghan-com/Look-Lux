@@ -14,7 +14,8 @@
   </div>
   <div class="flex gap-2 flex-wrap">
     <a href="/quotes/{{ q.id }}/edit" class="btn-secondary">✏️ 수정</a>
-    <a href="/quotes/{{ q.id }}/print" target="_blank" class="btn-secondary">🖨️ 인쇄 / PDF</a>
+    {% if request.state.can_view_revenue %}<a href="/quotes/{{ q.id }}/pdf" class="btn-secondary" title="파일명: 견적번호_프로젝트명.pdf — 휴대폰 다크모드에서도 흰 배경으로 저장됩니다">📄 PDF 저장</a>
+    <a href="/quotes/{{ q.id }}/print" target="_blank" class="btn-secondary">🖨️ 인쇄</a>{% endif %}
     <form method="post" action="/quotes/{{ q.id }}/delete" onsubmit="return confirm('삭제하시겠습니까?')" class="inline">
       <button class="btn-danger">삭제</button>
     </form>
@@ -23,6 +24,8 @@
 
 <div class="card mb-4">
   <div class="flex items-center gap-3 mb-3 flex-wrap">
+    {% if q.author_name %}<span class="text-sm" style="padding:3px 10px; border-radius:999px; background:#EEF2FF; color:#3730A3; font-weight:700;">✍ 작성자 {{ q.author_name }}</span>{% endif %}
+    {% if q.editor_name and q.editor_name != q.author_name %}<span class="text-xs" style="color:#64748B;">최종 수정 {{ q.editor_name }}{% if q.updated_at %} · {{ q.updated_at.strftime('%m/%d %H:%M') }}{% endif %}</span>{% endif %}
     <span class="text-sm text-slate-500">현재 상태:</span>
     <span class="badge {% if q.status == '수주' %}badge-green{% elif q.status == '실주' %}badge-red{% elif q.status == '견적' %}badge-orange{% else %}badge-gray{% endif %}">{{ q.status }}</span>
     {% if q.project_id %}
@@ -93,23 +96,26 @@ function confirmStatusChange(form) {
 
   <table class="dt mb-4">
     <thead>
-      <tr><th>#</th><th>품명</th><th>규격</th><th class="text-right">수량</th><th>단위</th><th class="text-right">{% if q.quote_type == '렌탈' %}1일 단가{% else %}단가{% endif %}</th><th class="text-right">금액</th></tr>
+      <tr><th>#</th><th>품명</th><th>규격</th><th class="text-right">수량</th><th>단위</th>{% if request.state.can_view_revenue %}<th class="text-right">{% if q.quote_type == '렌탈' %}1일 단가{% else %}단가{% endif %}</th><th class="text-right">금액</th>{% endif %}</tr>
     </thead>
     <tbody>
       {% for it in items %}
       <tr>
-        <td>{{ it.seq }}</td>
+        <td>{{ loop.index }}</td>
         <td class="font-semibold">{{ it.name }}</td>
         <td class="text-xs">{{ it.spec }}</td>
         <td class="text-right num">{{ it.quantity|int }}</td>
         <td class="text-center">{{ it.unit }}</td>
+        {% if request.state.can_view_revenue %}
         <td class="text-right num">{{ it.unit_price|money_raw }}원</td>
         <td class="text-right num font-bold">{{ it.amount|money_raw }}원</td>
+        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
   </table>
 
+  {% if request.state.can_view_revenue %}
   <div class="max-w-sm ml-auto space-y-1.5 text-sm">
     <div class="flex justify-between"><span>공급가액 합계</span><span class="num font-bold">{{ q.subtotal|money_raw }}원</span></div>
     <div class="flex justify-between text-red-600"><span>할인금액</span><span class="num font-bold">-{{ q.discount|money_raw }}원</span></div>
@@ -117,9 +123,10 @@ function confirmStatusChange(form) {
     <div class="flex justify-between"><span>부가세 10%</span><span class="num font-bold">{{ q.vat|money_raw }}원</span></div>
     <div class="flex justify-between text-lg border-t-2 border-slate-800 pt-2"><span class="font-bold">총 합계금액</span><span class="num font-bold text-slate-800">{{ q.total|money_raw }}원</span></div>
   </div>
+  {% endif %}
 
   {# ───── 납품 견적 — 원가/마진 분석 카드 (관리자용, 인쇄 미포함) ───── #}
-  {% if margin_info and request.state.can_view_amounts %}
+  {% if margin_info and request.state.can_view_revenue %}
     {% if margin_info.has_data %}
     <div class="mt-5 pt-4 border-t-2 border-dashed" style="border-color:#F59E0B;">
       <div class="text-xs mb-3" style="color:#B45309; font-weight:700;">💼 원가·마진 분석 (관리자 전용 — 인쇄본에 포함 안 됨)</div>
@@ -147,7 +154,7 @@ function confirmStatusChange(form) {
           <tbody>
             {% for ln in margin_info.lines %}
             <tr>
-              <td>{{ ln.seq }}</td>
+              <td>{{ loop.index }}</td>
               <td>{{ ln.name }}</td>
               <td class="text-right num">{{ ln.line_cost|money_raw }}</td>
               <td class="text-right num">{{ ln.amount|money_raw }}</td>

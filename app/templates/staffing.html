@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}인력 배치 현황{% endblock %}
+{% block content %}
+{% set ndays = days|length %}
+{% set cellw = 34 if view == 'month' else 110 %}
+
+<style>
+  .sf-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  .sf-grid { display: grid; grid-template-columns: 170px repeat({{ ndays }}, minmax({{ cellw }}px, 1fr)); min-width: {{ 170 + ndays * cellw }}px; }
+  .sf-head { position: sticky; top: 0; z-index: 3; background: #F8FAFC; border-bottom: 1px solid var(--line); font-size: 11px; text-align: center; padding: 6px 0; color: #475569; }
+  .sf-head.we { color: #DC2626; background: #FEF2F2; }
+  .sf-head.td { background: #0A0E1A; color: #fff; }
+  .sf-name { position: sticky; left: 0; z-index: 2; background: #fff; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line-2, #F1F5F9); padding: 8px 10px; font-size: 13px; font-weight: 700; color: #0F172A; }
+  .sf-name small { display: block; font-size: 11px; font-weight: 500; color: #64748B; }
+  .sf-row { display: contents; }
+  .sf-lane { grid-column: 2 / -1; display: grid; grid-template-columns: repeat({{ ndays }}, minmax({{ cellw }}px, 1fr)); border-bottom: 1px solid var(--line-2, #F1F5F9); position: relative; min-height: 34px; align-items: center; }
+  .sf-bg { grid-row: 1; height: 100%; border-right: 1px dashed #F1F5F9; }
+  .sf-bg.we { background: #FFF7F7; }
+  .sf-bg.td { background: #FFFBEB; }
+  .sf-bar { grid-row: 1; margin: 4px 2px; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; cursor: pointer; text-decoration: none; }
+  .sf-bar.cf { outline: 2px solid #DC2626; outline-offset: -2px; }
+  .sf-ev { grid-row: 1; height: 6px; border-radius: 3px; margin: 0 2px; align-self: start; margin-top: 3px; }
+  .sf-count { font-size: 11px; text-align: center; padding: 5px 0; color: #0F172A; font-weight: 700; border-top: 1px solid var(--line); background: #F8FAFC; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg a { padding: 7px 14px; font-size: 13px; font-weight: 700; color: #475569; text-decoration: none; background: #fff; }
+  .seg a.on { background: #0A0E1A; color: #fff; }
+</style>
+
+<div class="mb-5 flex items-end justify-between flex-wrap gap-3">
+  <div>
+    <h1 class="page-title">👷 인력 배치 현황</h1>
+    <p class="page-sub">프로젝트를 눌러 바로 인원을 배치하세요. 한 사람이 같은 날 여러 프로젝트에 배치되면 <b style="color:#DC2626;">빨간 테두리</b>로 표시됩니다.</p>
+  </div>
+  <div class="flex gap-2 flex-wrap items-center">
+    <div class="seg">
+      <a href="?view=month&group={{ group }}&d={{ base }}" class="{% if view=='month' %}on{% endif %}">월간</a>
+      <a href="?view=week&group={{ group }}&d={{ base }}" class="{% if view=='week' %}on{% endif %}">주간</a>
+    </div>
+    <div class="seg">
+      <a href="?view={{ view }}&group=person&d={{ base }}" class="{% if group=='person' %}on{% endif %}">인원별</a>
+      <a href="?view={{ view }}&group=project&d={{ base }}" class="{% if group=='project' %}on{% endif %}">프로젝트별</a>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4" style="padding: 12px 16px;">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div class="flex items-center gap-2">
+      <a href="?view={{ view }}&group={{ group }}&d={{ prev_d }}" class="btn-secondary" style="padding:6px 12px;">◀</a>
+      <div style="font-size:18px; font-weight:800; min-width:220px; text-align:center;">{{ title }}</div>
+      <a href="?view={{ view }}&group={{ group }}&d={{ next_d }}" class="btn-secondary" style="padding:6px 12px;">▶</a>
+      <a href="?view={{ view }}&group={{ group }}&d={{ today }}" class="btn-secondary" style="padding:6px 12px;">오늘</a>
+    </div>
+    <div class="flex gap-4 text-sm">
+      <span>투입 인원 <b>{{ n_people }}</b>명</span>
+      <span>프로젝트 <b>{{ legend|length }}</b>건</span>
+      {% if total_conflicts %}<span style="color:#DC2626; font-weight:700;">⚠ 중복 배치 {{ total_conflicts }}건(인·일)</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4" style="padding: 12px 16px; background:#EEF2FF; border-color:#C7D2FE;">
+  <div class="flex items-center gap-2 flex-wrap">
+    <span style="font-weight:800; color:#3730A3;">➕ 인력 배치</span>
+    <select id="pick-proj" class="input" style="flex:1; min-width:240px; max-width:520px;">
+      <option value="">프로젝트를 선택하세요</option>
+      {% for pp in pick_projects %}<option value="{{ pp.id }}">{{ pp.period }} · {{ pp.name }}</option>{% endfor %}
+    </select>
+    <button type="button" class="btn-primary" style="background:#4F46E5; border-color:#4F46E5;"
+            onclick="var v=document.getElementById('pick-proj').value; if(!v){alert('프로젝트를 먼저 선택하세요');return;} openStaffPicker(v);">배치하기</button>
+    <span class="text-xs" style="color:#4338CA;">또는 아래 달력의 프로젝트 이름·막대를 눌러도 바로 배치할 수 있어요.</span>
+  </div>
+</div>
+
+{% if groups %}
+<div class="sf-wrap">
+  <div class="sf-grid">
+    <div class="sf-head" style="position:sticky; left:0; z-index:4; text-align:left; padding-left:10px;">{% if group=='person' %}인원{% else %}프로젝트{% endif %}</div>
+    {% for x in days %}
+    <div class="sf-head {% if x.today %}td{% elif x.weekend %}we{% endif %}">
+      {% if view == 'week' %}{{ x.date.month }}/{{ x.day }} ({{ x.wd }}){% else %}{{ x.day }}<br><span style="font-size:10px;">{{ x.wd }}</span>{% endif %}
+    </div>
+    {% endfor %}
+
+    {% for g in groups %}
+      {% set nl = g.lanes|length if g.lanes|length > 0 else 1 %}
+      <div class="sf-name" style="grid-row: span {{ nl }};">
+        {% if g.project_id %}<a href="javascript:void(0)" onclick="openStaffPicker({{ g.project_id }})" title="눌러서 인력 배치" style="color:inherit; text-decoration:none;"><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:{{ g.color[1] }}; margin-right:5px;"></span>{{ g.name }}</a>
+        {% else %}{{ g.name }}{% endif %}
+        {% if g.conflict %}<span title="중복 배치 있음" style="color:#DC2626;">⚠</span>{% endif %}
+        <small>{{ g.sub }}{% if g.project_id %} · <a href="javascript:void(0)" onclick="openStaffPicker({{ g.project_id }})" style="color:#4F46E5; font-weight:700;">✎ 배치</a>{% endif %}</small>
+      </div>
+      {% if g.lanes %}
+        {% for lane in g.lanes %}
+        <div class="sf-lane">
+          {% for x in days %}<div class="sf-bg {% if x.today %}td{% elif x.weekend %}we{% endif %}" style="grid-column: {{ loop.index }};"></div>{% endfor %}
+          {% if loop.first and g.event %}<div class="sf-ev" title="행사 기간" style="grid-column: {{ g.event.col }} / span {{ g.event.span }}; background: {{ g.event.fg }}; opacity:.35;"></div>{% endif %}
+          {% for b in lane %}
+          <a class="sf-bar {% if b.conflict %}cf{% endif %}" href="javascript:void(0)" onclick="openStaffPicker({{ b.project_id }})" title="{{ b.tip }} (눌러서 수정)"
+             style="grid-column: {{ b.col }} / span {{ b.span }}; background: {{ b.bg }}; color: {{ b.fg }};">{% if b.conflict %}⚠ {% endif %}{% if b.offer %}<span style="background:#7C3AED; color:#fff; border-radius:4px; padding:0 4px; margin-right:3px; font-size:10px;">오퍼</span>{% endif %}{{ b.label }}</a>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="sf-lane">
+          {% for x in days %}<div class="sf-bg {% if x.today %}td{% elif x.weekend %}we{% endif %}" style="grid-column: {{ loop.index }};"></div>{% endfor %}
+          {% if g.event %}<div class="sf-ev" title="행사 기간" style="grid-column: {{ g.event.col }} / span {{ g.event.span }}; background: {{ g.event.fg }}; opacity:.35;"></div>{% endif %}
+          <a href="javascript:void(0)" onclick="openStaffPicker({{ g.project_id }})" style="grid-row:1; font-weight:700; color:#4F46E5 !important; grid-column: {{ g.event.col if g.event else 1 }} / span {{ [g.event.span if g.event else 3, 3]|max }}; font-size:12px; color:#94A3B8; padding-left:6px; z-index:1;">+ 인력 배치하기</a>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    <div class="sf-count" style="position:sticky; left:0; z-index:2; text-align:left; padding-left:10px;">일별 인원</div>
+    {% for c in day_counts %}<div class="sf-count" style="{% if c == 0 %}color:#CBD5E1;{% endif %}">{{ c }}</div>{% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="card text-center" style="padding:50px 20px; color: var(--ink-4);">
+  <div style="font-size:40px;">🗓️</div>
+  <div class="mt-2 font-bold">이 기간에 배치된 인력이 없습니다.</div>
+  <div class="text-sm mt-1">위 <b>➕ 인력 배치</b>에서 프로젝트를 고르면 바로 배치할 수 있습니다.</div>
+</div>
+{% endif %}
+
+{% if legend %}
+<div class="card mt-4" style="padding: 12px 16px;">
+  <div class="text-xs font-bold mb-2" style="color: var(--ink-4);">이 기간 프로젝트</div>
+  <div class="flex flex-wrap gap-2">
+    {% for l in legend %}
+    <a href="javascript:void(0)" onclick="openStaffPicker({{ l.id }})" style="display:inline-flex; gap:6px; align-items:center; padding:5px 10px; border-radius:8px; background:{{ l.bg }}; color:{{ l.fg }}; font-size:12px; font-weight:700; text-decoration:none;">{{ l.name }} <span style="font-weight:500; opacity:.8;">{{ l.period }}</span></a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

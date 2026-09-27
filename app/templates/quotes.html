@@ -6,18 +6,17 @@
   <h1 class="text-2xl font-bold text-slate-800">📝 견적서</h1>
   <div class="flex gap-2">
     <a href="/quotes/new?type=납품" class="btn-secondary">+ 📦 납품 견적</a>
+    <a href="/export/quotes" class="btn-secondary" title="엑셀로 내보내기">📥 엑셀</a>
     <a href="/quotes/new?type=렌탈" class="btn-primary">+ 🎬 렌탈 견적</a>
   </div>
 </div>
 
-{% set can_view = request.state.can_view_amounts %}
+{% set can_view = request.state.can_view_revenue %}
 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
   <div class="card"><div class="text-xs text-slate-500">전체</div><div class="text-2xl font-bold mt-1 num">{{ total_count }}건</div></div>
   <div class="card"><div class="text-xs text-slate-500">수주</div><div class="text-2xl font-bold mt-1 text-emerald-600 num">{{ won_count }}건</div></div>
   {% if can_view %}
   <div class="card"><div class="text-xs text-slate-500">수주 금액</div><div class="text-lg font-bold mt-1 num">{{ won_amount|money }}원</div></div>
-  {% else %}
-  <div class="card" style="background:#F3F4F6;"><div class="text-xs text-slate-500">수주 금액</div><div class="text-lg font-bold mt-1" style="color:var(--ink-5);">권한 없음</div></div>
   {% endif %}
   <div class="card"><div class="text-xs text-slate-500">수주율</div><div class="text-2xl font-bold mt-1 text-slate-800 num">{{ "%.1f"|format(win_rate) }}%</div></div>
 </div>
@@ -38,7 +37,7 @@
     <thead>
       <tr>
         <th>견적번호</th><th>유형</th><th>날짜</th><th>거래처</th>
-        <th class="mobile-hide">프로젝트</th><th class="text-right">총액</th>
+        <th class="mobile-hide">프로젝트</th><th class="mobile-hide">작성자</th>{% if can_view %}<th class="text-right">총액</th>{% endif %}
         <th>상태</th>
       </tr>
     </thead>
@@ -54,7 +53,8 @@
         <td class="text-xs">{{ q.quote_date }}</td>
         <td>{{ q.vendor_name }}</td>
         <td class="mobile-hide text-xs">{{ q.project_name }}</td>
-        <td class="text-right num font-bold">{% if can_view %}{{ q.total|money }}원{% else %}<span style="color:var(--ink-5);">—</span>{% endif %}</td>
+        <td class="mobile-hide text-xs">{% if q.author_name %}<span style="display:inline-block; padding:2px 8px; border-radius:999px; background:#F1F5F9; color:#334155; font-weight:700;">✍ {{ q.author_name }}</span>{% else %}<span style="color:#CBD5E1;">-</span>{% endif %}</td>
+        {% if can_view %}<td class="text-right num font-bold">{{ q.total|money }}원</td>{% endif %}
         <td onclick="event.stopPropagation();">
           <select class="quote-status-inline
             {% if q.status == '수주' %}status-green{% elif q.status == '실주' %}status-red{% elif q.status == '견적' %}status-orange{% else %}status-gray{% endif %}"

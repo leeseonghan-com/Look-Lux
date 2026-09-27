@@ -152,7 +152,10 @@
 .m-vat-opt:has(input:checked) { background: #0A0E1A; border-color: #0A0E1A; color: white; }
 /* ⭐ 카드형 견적서 품목 UI — 세로 스크롤 */
 .q-item {
-  padding: 16px; background: white; border: 1.5px solid #E5E7EB;
+  /* ★ 강제 다크모드 방어: 흰색을 '배경 이미지'로 지정 (단축 background 뒤에 와야 함) */
+  padding: 16px; background-color: #FFFFFF;
+  background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%);
+  border: 1.5px solid #E5E7EB;
   border-radius: 14px; margin-bottom: 14px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.03);
 }
@@ -185,6 +188,7 @@
 }
 .q-item .q-amount-label { font-size: 12px; font-weight: 700; color: #166534; }
 .q-item .q-amount-value { font-size: 20px; font-weight: 900; color: #14532D; }
+.q-item-header button[disabled] { opacity: 0.35; cursor: not-allowed; }
 .q-item .q-delete-btn {
   background: #FEE2E2; color: #991B1B; border: none;
   padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 700;
@@ -199,6 +203,17 @@ function addItem() {
   const id = itemSeq++;
   items.push({id, name:'', spec:'', quantity:1, unit:'EA', unit_price:0, amount:0});
   renderItems();
+}
+function moveItem(id, dir) {
+  const i = items.findIndex(x => x.id === id);
+  if (i < 0) return;
+  const j = i + dir;
+  if (j < 0 || j >= items.length) return;
+  const tmp = items[i];
+  items[i] = items[j];
+  items[j] = tmp;
+  renderItems();
+  calcAll();
 }
 function removeItem(id) {
   items = items.filter(it => it.id !== id);
@@ -228,7 +243,13 @@ function renderItems() {
     <div class="q-item">
       <div class="q-item-header">
         <span class="q-item-number">품목 #${idx+1}</span>
-        <button type="button" onclick="removeItem(${it.id})" class="q-delete-btn">🗑 삭제</button>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button type="button" onclick="moveItem(${it.id}, -1)" title="위로 이동"
+                  style="display:inline-block; width:40px; height:34px; margin:0; padding:0; background:#EEF2F7; color:#1F2937; border:1px solid #94A3B8; border-radius:6px; font-size:16px; font-weight:700; line-height:32px; text-align:center; cursor:pointer; box-sizing:border-box;" ${idx === 0 ? 'disabled' : ''}>&#9650;</button>
+          <button type="button" onclick="moveItem(${it.id}, 1)" title="아래로 이동"
+                  style="display:inline-block; width:40px; height:34px; margin:0; padding:0; background:#EEF2F7; color:#1F2937; border:1px solid #94A3B8; border-radius:6px; font-size:16px; font-weight:700; line-height:32px; text-align:center; cursor:pointer; box-sizing:border-box;" ${idx === items.length - 1 ? 'disabled' : ''}>&#9660;</button>
+          <button type="button" onclick="removeItem(${it.id})" class="q-delete-btn">🗑 삭제</button>
+        </div>
       </div>
       <label class="q-field-label">품명 *</label>
       <input class="q-name-input" placeholder="예: LED 무빙라이트 230W" value="${it.name}" oninput="updateItem(${it.id}, 'name', this.value)">

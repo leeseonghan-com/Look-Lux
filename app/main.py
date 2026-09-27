@@ -226,6 +226,22 @@ def deploy_check():
     checks.append(("정적파일 캐시버스팅 (?v=)", "_asset_ver" in base_content))
     checks.append(("서비스워커: HTML 캐시 안 함", "isHTML" in js_sw))
 
+    # ── v1600: QR라벨 / 내보내기 / 인쇄 ──
+    t_qsel = _read("templates/equipment_labels_select.html")
+    t_qnew = _read("templates/quote_new.html")
+    t_mbase = _read("templates/mobile/base.html")
+    t_pdet = _read("templates/product_detail.html")
+    req = _read("routes_equipment.py")
+    rexp = _read("routes_export.py")
+    checks.append(("QR라벨: 선택 인쇄 화면", len(t_qsel) > 500 and "unit-check" in t_qsel))
+    checks.append(("QR라벨: 제품ID 오동작 수정 (eq 파라미터)", "EquipmentUnit.equipment_id == int(eq)" in req))
+    checks.append(("QR라벨: 제품상세 링크 수정", "labels/select?eq=" in t_pdet))
+    checks.append(("견적: 순서 ▲▼ 버튼 표시 수정", "row-move-btn" in t_qnew))
+    checks.append(("인쇄: PC 다크모드 흰배경 강제", "prefers-color-scheme" in base_content))
+    checks.append(("인쇄: 모바일 다크모드 흰배경 강제", "prefers-color-scheme" in t_mbase))
+    checks.append(("내보내기: 엑셀 모듈 (7종)", len(rexp) > 1000 and "export/projects" in rexp))
+    checks.append(("내보내기: 라우터 등록", "export_router" in _read("main.py")))
+
     rows = ""
     all_pass = True
     for name, ok in checks:
@@ -287,9 +303,63 @@ a.btn{{display:inline-block;margin-top:16px;background:#0A0E1A;color:white;paddi
 # ============================================================
 # 인증 헬퍼
 # ============================================================
+# ── 자동 로그아웃 / 자동 로그인 설정 ──
+IDLE_TIMEOUT_SEC = int(os.environ.get("IDLE_TIMEOUT_MIN", "60")) * 60   # 60분 무동작 시 로그아웃
+REMEMBER_DAYS = 30                                                       # '자동 로그인' 유지 기간
+REMEMBER_COOKIE = "remember_token"
+
+
+def _remember_serializer():
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(_SECRET_FOR_REMEMBER(), salt="remember-login")
+
+
+def _SECRET_FOR_REMEMBER():
+    return os.environ.get("SECRET_KEY") or "change-this-secret-in-production-1234567890"
+
+
+def _make_remember_token(user) -> str:
+    # 비밀번호가 바뀌면 기존 토큰 무효화되도록 해시 일부 포함
+    return _remember_serializer().dumps({"uid": user.id, "ph": (user.password_hash or "")[-12:]})
+
+
+def _user_from_remember(request: Request) -> Optional[User]:
+    tok = request.cookies.get(REMEMBER_COOKIE)
+    if not tok:
+        return None
+    try:
+        data = _remember_serializer().loads(tok, max_age=REMEMBER_DAYS * 86400)
+    except Exception:
+        return None
+    with Session(engine, expire_on_commit=False) as s:
+        u = s.get(User, data.get("uid"))
+        if not u or not getattr(u, "is_active", True):
+            return None
+        if (u.password_hash or "")[-12:] != data.get("ph"):
+            return None
+        return u
+
+
 def current_user(request: Request) -> Optional[User]:
+    import time
     uid = request.session.get("user_id")
+    now = int(time.time())
+    if uid:
+        last = request.session.get("last_seen", now)
+        # 자동 로그인이 아닌 세션은 무동작 시간 초과 시 로그아웃
+        if not request.session.get("remember") and now - int(last) > IDLE_TIMEOUT_SEC:
+            request.session.clear()
+            uid = None
+        else:
+            request.session["last_seen"] = now
     if not uid:
+        # '자동 로그인' 쿠키가 있으면 세션 복원
+        u = _user_from_remember(request)
+        if u:
+            request.session["user_id"] = u.id
+            request.session["remember"] = True
+            request.session["last_seen"] = now
+            return u
         return None
     with Session(engine, expire_on_commit=False) as s:
         return s.get(User, uid)
@@ -312,22 +382,41 @@ async def add_user_to_request(request: Request, call_next):
         user = current_user(request)
         request.state.user = user
         # 권한 정보 함께 전달 (템플릿에서 perms.xxx 로 접근)
-        from permissions import get_permissions, is_admin, can_view_amounts
+        from permissions import get_permissions, is_admin, money_flags
         request.state.perms = get_permissions(user)
         request.state.is_admin = is_admin(user)
-        request.state.can_view_amounts = can_view_amounts(user)
+        for _k, _v in money_flags(user).items():
+            setattr(request.state, _k, _v)
     except Exception:
         request.state.user = None
         request.state.perms = {}
         request.state.is_admin = False
-        request.state.can_view_amounts = False
+        for _k in ("can_view_amounts", "can_view_revenue", "can_view_settle", "can_manage_settle",
+                   "can_view_sub", "can_manage_sub", "can_view_wage", "can_manage_wage", "can_view_profit"):
+            setattr(request.state, _k, False)
     # 회사 설정을 전역에서 사용 가능하게
     try:
         from database import get_company_settings
         request.state.company = get_company_settings()
     except Exception:
         request.state.company = {}
+    # ★ 저장 후 작업하던 화면으로 돌아가기
+    #   (본문을 미리 읽으면 라우트에서 폼이 비어버리므로, 주소의 ?_rt= 값만 사용)
+    _return_to = None
+    if request.method == "POST":
+        _rt = (request.query_params.get("_rt") or "").strip()
+        if _rt.startswith("/") and not _rt.startswith("//") and not _rt.startswith("/login"):
+            _return_to = _rt
     response = await call_next(request)
+    if _return_to and response.status_code in (302, 303):
+        _loc = response.headers.get("location", "")
+        # 로그인 이동·삭제 후 이동·에러는 건드리지 않음
+        if _loc and "/login" not in _loc and "delete" not in request.url.path:
+            sep = "&" if "?" in _return_to else "?"
+            _flag = "saved=1"
+            # 이미 저장 알림 파라미터가 있으면 중복 방지
+            new_loc = _return_to if "saved=1" in _return_to else f"{_return_to.split('#')[0]}{sep}{_flag}" + (("#" + _return_to.split("#", 1)[1]) if "#" in _return_to else "")
+            response.headers["location"] = new_loc
     # ⭐ HTML 화면은 절대 캐시하지 않음 — 배포 후 옛 화면이 보이는 문제 방지
     try:
         ctype = response.headers.get("content-type", "")
@@ -342,33 +431,68 @@ async def add_user_to_request(request: Request, call_next):
 
 # SessionMiddleware는 가장 나중에 add — 그래야 가장 바깥에서 실행되어 session 주입이 먼저 됨
 _SECRET = os.environ.get("SECRET_KEY") or "change-this-secret-in-production-1234567890"
-app.add_middleware(SessionMiddleware, secret_key=_SECRET)
+# ⭐ max_age=None → '브라우저 세션 쿠키'. 브라우저/앱을 완전히 닫으면 쿠키가 사라져 자동 로그아웃.
+app.add_middleware(SessionMiddleware, secret_key=_SECRET, max_age=None, same_site="lax")
 
 
 # ============================================================
 # 로그인 / 로그아웃
 # ============================================================
+def _safe_next(nxt: str) -> str:
+    nxt = (nxt or "").strip()
+    return nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
+
+
 @app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+def login_page(request: Request, next: str = "", expired: int = 0):
+    if current_user(request):
+        return RedirectResponse(_safe_next(next), status_code=303)
+    return templates.TemplateResponse(request, "login.html", {
+        "error": None, "next": _safe_next(next) if next else "",
+        "info": "일정 시간 사용하지 않아 자동 로그아웃되었습니다." if expired else None,
+    })
 
 
 @app.post("/login")
-def login(request: Request, username: str = Form(...), password: str = Form(...)):
+def login(request: Request, username: str = Form(...), password: str = Form(...),
+          remember: str = Form(""), next: str = Form("")):
+    import time
+    username = (username or "").strip()
     with Session(engine, expire_on_commit=False) as s:
         user = s.exec(select(User).where(User.username == username)).first()
         if not user or not verify_password(password, user.password_hash):
             return templates.TemplateResponse(
-                request, "login.html", {"error": "아이디 또는 비밀번호가 잘못되었습니다."}
+                request, "login.html",
+                {"error": "아이디 또는 비밀번호가 잘못되었습니다.", "next": _safe_next(next) if next else "",
+                 "info": None, "last_username": username},
             )
+        request.session.clear()
         request.session["user_id"] = user.id
-    return RedirectResponse("/", status_code=303)
+        request.session["last_seen"] = int(time.time())
+        request.session["remember"] = bool(remember)
+    resp = RedirectResponse(_safe_next(next), status_code=303)
+    if remember:
+        resp.set_cookie(REMEMBER_COOKIE, _make_remember_token(user),
+                        max_age=REMEMBER_DAYS * 86400, httponly=True, samesite="lax",
+                        secure=request.url.scheme == "https")
+    else:
+        resp.delete_cookie(REMEMBER_COOKIE)
+    return resp
 
 
 @app.get("/logout")
 def logout(request: Request):
     request.session.clear()
-    return RedirectResponse("/login", status_code=303)
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(REMEMBER_COOKIE)   # 명시적 로그아웃 = 자동 로그인도 해제
+    return resp
+
+
+@app.get("/api/session-ping")
+def session_ping(request: Request):
+    """화면이 다시 보일 때 세션 유효성 확인 (앱 복귀 시 자동 로그아웃 판정용)"""
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"ok": bool(current_user(request))})
 
 
 # ============================================================
@@ -497,7 +621,9 @@ from routes_settings import router as settings_router
 from routes_equipment import router as equipment_router  # 기존 보유장비 (QR 라벨 등)
 from routes_mobile import router as mobile_router
 from routes_backup import router as backup_router
+from routes_export import router as export_router
 from routes_employee import router as employee_router
+from routes_staff import router as staff_router
 
 # 통합 물품 등록 라우터를 가장 먼저 등록 (우선순위 — 호환 리다이렉트 우선 적용)
 app.include_router(product_router)
@@ -513,6 +639,8 @@ app.include_router(settings_router)
 app.include_router(equipment_router)
 app.include_router(mobile_router)
 app.include_router(backup_router)
+app.include_router(export_router)
+app.include_router(staff_router)
 
 
 # PWA: service worker는 루트 scope에서 작동하도록 별도 핸들러

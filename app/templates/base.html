@@ -1,10 +1,13 @@
-{% set _asset_ver = 'v2026.09.01-1500' %}
+{% set _asset_ver = 'v2026.09.25-1300' %}
 <!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0A0E1A">
+<!-- 🌞 다크모드 강제 해제 — 모바일 인쇄 시 배경 검정 방지 -->
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
 <meta name="description" content="광고/이벤트 정산·견적·장비 관리 시스템">
 <!-- PWA + TWA 호환 (모든 페이지에서 manifest 인식) -->
 <link rel="manifest" href="/static/manifest.json">
@@ -34,8 +37,75 @@ if ('serviceWorker' in navigator) {
 <script src="/static/app.js?v={{ _asset_ver }}"></script>
 <script src="/static/vendor-search.js?v={{ _asset_ver }}"></script>
 <script src="/static/project-search.js?v={{ _asset_ver }}"></script>
+<script src="/static/staff-picker.js?v={{ _asset_ver }}"></script>
 
 <style>
+  /* ============================================================
+     🌞 다크모드 무시 + 인쇄 시 흰 배경 강제
+     (모바일 다크모드에서 인쇄하면 배경이 검정으로 나오는 문제 방지)
+     ============================================================ */
+  :root {
+    color-scheme: light;
+  }
+  /* ══════════════════════════════════════════════════════════════
+     ★★★ 강제 다크모드 차단 — "배경 이미지" 기법 (v4)
+     강제 다크모드는 paint 단계에서 색을 반전시키므로
+     background-color 만으로는 못 막는다. 배경이미지는 반전 제외 대상.
+     :where() 우선순위 0 → 기존 UI 색상은 그대로 유지.
+     ══════════════════════════════════════════════════════════════ */
+  html, body {
+    color-scheme: light;
+    background: #FFFFFF;
+    background-color: #FFFFFF;
+    background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%);
+  }
+  :where(table, thead, tbody, tr, td, th) {
+    background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%);
+    background-color: #FFFFFF;
+  }
+  /* OS가 다크모드여도 화면 색을 바꾸지 않음 */
+  @media (prefers-color-scheme: dark) {
+    :root, html, body {
+      color-scheme: light !important;
+      background: #FFFFFF !important;
+      background-color: #FFFFFF !important;
+      filter: none !important;
+    }
+  }
+  /* 인쇄: 항상 흰 배경 + 색상 그대로 출력 */
+  @media print {
+    :root, html, body {
+      color-scheme: light !important;
+      background: #FFFFFF !important;
+      background-color: #FFFFFF !important;
+      background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%) !important;
+      forced-color-adjust: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    /* ★ 인쇄 흰 배경을 '이미지'로 → 강제 다크모드에서도 반전 불가 */
+    :where(div, p, span, table, thead, tbody, tr, td, th, section, main, ul, ol, li) {
+      background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%);
+      background-color: #FFFFFF;
+    }
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      forced-color-adjust: none !important;
+    }
+    /* 화면 전용 요소는 인쇄에서 제외 */
+    .sidebar, .mobile-nav, .topbar, #deploy-version-badge,
+    .no-print, .btn-primary, .btn-secondary {
+      display: none !important;
+    }
+    .main, .content, main {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+  }
+
   :root {
     /* ===== 컨설팅 + 테슬라 톤 ===== */
     --bg: #FAFAFA;             /* 페이지 배경 — 거의 화이트, 미세하게 그레이 */
@@ -419,7 +489,9 @@ if ('serviceWorker' in navigator) {
 
     <div class="nav-section">업무</div>
     {% if is_admin or perms.get('projects') %}
-    <a href="/projects" class="nav-link {% if path.startswith('/project') %}active{% endif %}"><span class="icon">▤</span>프로젝트</a>
+    <a href="/projects" class="nav-link {% if path.startswith('/project') and not path.startswith('/project-calendar') %}active{% endif %}"><span class="icon">▤</span>프로젝트</a>
+    <a href="/project-calendar" class="nav-link {% if path.startswith('/project-calendar') %}active{% endif %}"><span class="icon">🗓️</span>프로젝트 캘린더</a>
+    <a href="/staffing" class="nav-link {% if path.startswith('/staffing') %}active{% endif %}"><span class="icon">👷</span>인력 배치 현황</a>
     {% endif %}
     {% if is_admin or perms.get('quotes') %}
     <a href="/quotes" class="nav-link {% if path.startswith('/quote') %}active{% endif %}"><span class="icon">✎</span>견적서</a>
@@ -487,7 +559,7 @@ if ('serviceWorker' in navigator) {
 {% endif %}
 
 {# ────── 배포 버전 배지 — 새 버전 배포 시 한 번만 표시 ────── #}
-{% set _current_version = 'v2026.09.01-1500' %}
+{% set _current_version = 'v2026.09.25-1300' %}
 <div id="deploy-version-badge" title="배포 버전 — 클릭하면 이 버전 안내를 다시 표시하지 않습니다"
      data-version="{{ _current_version }}"
      style="display:none; position:fixed; right:10px; bottom:10px; z-index:9990;
@@ -497,7 +569,7 @@ if ('serviceWorker' in navigator) {
             font-family:'Inter', monospace; cursor:pointer;
             box-shadow:0 4px 12px rgba(0,0,0,0.2);
             display:flex; align-items:center; gap:8px;">
-  <span>⚡ {{ _current_version }} · 캐시문제해결(배포즉시반영)</span>
+  <span>⚡ {{ _current_version }} · 작업화면복귀+별도일정+금액완전차단</span>
   <span style="font-size:14px; color:#999; padding-left:4px;">×</span>
 </div>
 <style>
@@ -541,5 +613,37 @@ if ('serviceWorker' in navigator) {
 })();
 </script>
 
+
+{# ⭐ 자동 로그아웃: 앱/브라우저에서 나갔다가 5분 이상 지나 돌아오면 재로그인 (자동 로그인 사용자는 제외) #}
+{% if request.state.user and not request.session.get('remember') %}
+<script>
+(function(){
+  var AWAY_MS = 5 * 60 * 1000;
+  var KEY = 'app_hidden_at';
+  function goLogin(){ location.replace('/logout'); }
+  document.addEventListener('visibilitychange', function(){
+    try {
+      if (document.visibilityState === 'hidden') {
+        localStorage.setItem(KEY, String(Date.now()));
+      } else {
+        var t = parseInt(localStorage.getItem(KEY) || '0', 10);
+        localStorage.removeItem(KEY);
+        if (t && Date.now() - t > AWAY_MS) { goLogin(); return; }
+        fetch('/api/session-ping', {credentials:'same-origin', cache:'no-store'})
+          .then(function(r){ return r.json(); })
+          .then(function(d){ if (!d.ok) location.replace('/login?expired=1&next=' + encodeURIComponent(location.pathname)); })
+          .catch(function(){});
+      }
+    } catch(e) {}
+  });
+  // 앱을 완전히 종료 후 다시 연 경우 (페이지 새로 로드)
+  try {
+    var t0 = parseInt(localStorage.getItem(KEY) || '0', 10);
+    localStorage.removeItem(KEY);
+    if (t0 && Date.now() - t0 > AWAY_MS) goLogin();
+  } catch(e) {}
+})();
+</script>
+{% endif %}
 </body>
 </html>

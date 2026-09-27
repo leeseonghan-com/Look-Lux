@@ -31,7 +31,7 @@
     <div style="color: #71717A;">보관위치</div><div>{{ unit.location or '—' }}</div>
     <div style="color: #71717A;">구입처</div><div>{{ unit.purchase_vendor or '—' }}</div>
     <div style="color: #71717A;">구입일</div><div>{{ unit.purchase_date or '—' }}</div>
-    {% if request.state.can_view_amounts %}
+    {% if request.state.can_view_revenue %}
     <div style="color: #71717A;">구입금액</div><div>{{ '{:,}'.format(unit.purchase_price) }}원</div>
     {% if unit.rental_price_daily %}
     <div style="color: #71717A;">1일 렌탈가</div><div>{{ '{:,}'.format(unit.rental_price_daily) }}원</div>
@@ -75,7 +75,7 @@
   <div class="list-item">
     <div class="list-item-inner">
       <div class="list-item-title">{{ m.log_type }} · {{ m.log_date }}</div>
-      <div class="list-item-sub">{{ m.description or m.title or '—' }}{% if m.cost and request.state.can_view_amounts %} · {{ '{:,}'.format(m.cost) }}원{% endif %}</div>
+      <div class="list-item-sub">{{ m.description or m.title or '—' }}{% if m.cost and request.state.can_view_revenue %} · {{ '{:,}'.format(m.cost) }}원{% endif %}</div>
     </div>
   </div>
   {% endfor %}

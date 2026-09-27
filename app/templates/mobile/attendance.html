@@ -96,8 +96,8 @@
 {% else %}
 <div style="text-align: center; padding: 60px 20px; color: #71717A;">
   <div style="font-size: 48px; margin-bottom: 12px;">💼</div>
-  <div style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">등록된 정직원이 없습니다</div>
-  <div style="font-size: 13px; color: #94A3B8;">PC에서 [근무자] 메뉴를 통해 정직원을 등록하세요.</div>
+  <div style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">출퇴근을 등록할 직원이 없습니다</div>
+  <div style="font-size: 13px; color: #94A3B8;">관리자: 재직 중인 정직원을 등록하세요.<br>직원: 관리자에게 내 계정과 근무자 연결을 요청하세요.</div>
 </div>
 {% endif %}
 
@@ -114,7 +114,7 @@
       <select name="worker_id" class="m-input" required>
         <option value="">선택하세요</option>
         {% for w in alba_workers %}
-        <option value="{{ w.id }}" data-wage="{{ w.default_daily_wage }}">{{ w.name }}{% if request.state.can_view_amounts %} ({{ '{:,}'.format(w.default_daily_wage) }}원/일){% endif %}</option>
+        <option value="{{ w.id }}" data-wage="{{ w.default_daily_wage }}">{{ w.name }}{% if request.state.can_view_wage %} ({{ '{:,}'.format(w.default_daily_wage) }}원/일){% endif %}</option>
         {% endfor %}
       </select>
     </div>
@@ -171,7 +171,7 @@
       <div style="font-weight: 700; font-size: 14px;">{{ r.worker_name }}</div>
       <div style="font-size: 12px; color: #71717A; margin-top: 2px;">{{ r.project_name }} · {{ r.days }}일</div>
     </div>
-    {% if request.state.can_view_amounts %}
+    {% if request.state.can_view_wage %}
     <div style="font-weight: 800; font-size: 15px;">{{ '{:,}'.format(r.total_wage) }}원</div>
     {% endif %}
   </div>

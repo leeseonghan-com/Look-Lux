@@ -41,12 +41,13 @@
   </div>
 </div>
 
+{% if request.state.can_view_revenue %}
 <!-- 💰 KPI (견적 관점 3개만) -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
   <div class="kpi-card" style="border-left:3px solid #2563EB;">
     <div class="label">📦 납품 단가</div>
     <div class="value value-sm num">
-      {% if request.state.can_view_amounts %}
+      {% if request.state.can_view_revenue %}
         {{ p.consumer_price|money if p.consumer_price > 0 else '—' }}<span class="unit">원</span>
       {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
     </div>
@@ -54,7 +55,7 @@
   <div class="kpi-card" style="border-left:3px solid #9A3412;">
     <div class="label">🎬 렌탈 1일 단가</div>
     <div class="value value-sm num" style="color: #9A3412;">
-      {% if request.state.can_view_amounts %}
+      {% if request.state.can_view_revenue %}
         {{ p.rental_daily|money if p.rental_daily > 0 else '—' }}<span class="unit">원</span>
       {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
     </div>
@@ -62,12 +63,13 @@
   <div class="kpi-card" style="border-left:3px solid #9A3412;">
     <div class="label">🎬 렌탈 보증금</div>
     <div class="value value-sm num" style="color: #9A3412;">
-      {% if request.state.can_view_amounts %}
+      {% if request.state.can_view_revenue %}
         {{ p.rental_deposit|money if p.rental_deposit > 0 else '—' }}<span class="unit">원</span>
       {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
     </div>
   </div>
 </div>
+{% endif %}
 
 <!-- 📝 견적 품목 정보 수정 -->
 <div class="card mb-5">

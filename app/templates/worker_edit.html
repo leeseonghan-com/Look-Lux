@@ -3,10 +3,12 @@
 
 <div class="mb-4">
   <a href="/workers" class="text-sm text-slate-500">← 근무자 목록</a>
-  <h1 class="text-2xl font-bold text-slate-800 mt-2">✏️ 근무자 수정: {{ w.name }}</h1>
+  <h1 class="text-2xl font-bold text-slate-800 mt-2">{% if readonly %}👤 내 정보: {{ w.name }}{% else %}✏️ 근무자 수정: {{ w.name }}{% endif %}</h1>
+  {% if readonly %}<p class="text-sm mt-1" style="color:var(--ink-4);">🔒 조회 전용입니다. 정보 변경은 관리자에게 요청하세요.</p>{% endif %}
 </div>
 
-<form method="post" action="/workers/{{ w.id }}/edit" enctype="multipart/form-data" class="card space-y-4 max-w-3xl">
+<form method="post" action="{% if readonly %}#{% else %}/workers/{{ w.id }}/edit{% endif %}" enctype="multipart/form-data" class="card space-y-4 max-w-3xl" id="worker-form">
+{% if readonly %}<fieldset disabled style="border:0; padding:0; margin:0; min-width:0;">{% endif %}
 
   <!-- 사진 영역 -->
   <div class="flex items-start gap-4 pb-4" style="border-bottom: 1px solid var(--line);">
@@ -101,10 +103,14 @@
 
   <div><label class="label">메모</label><input name="memo" class="input" value="{{ w.memo }}"></div>
 
+{% if readonly %}</fieldset>
+  <div class="flex gap-2 pt-2"><a href="/workers" class="btn-secondary">← 목록으로</a></div>
+{% else %}
   <div class="flex gap-2 pt-2">
     <button class="btn-primary flex-1">저장</button>
     <a href="/workers" class="btn-secondary">취소</a>
   </div>
+{% endif %}
 </form>
 
 <script>

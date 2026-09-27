@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0A0E1A">
+<!-- 🌞 다크모드 강제 해제 — 모바일 인쇄 시 배경 검정 방지 -->
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="정산관리">
@@ -12,6 +15,62 @@
 <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
 <title>{% block title %}정산관리{% endblock %}</title>
 <style>
+  /* 🌞 다크모드 무시 + 인쇄 흰 배경 강제 */
+  :root { color-scheme: light; }
+  html, body {
+    color-scheme: light;
+    background: #FFFFFF;
+    background-color: #FFFFFF;
+  }
+  /* ══════════════════════════════════════════════════════════════
+     ★★★ 강제 다크모드 완전 차단 — "배경 이미지" 기법 (v4)
+     삼성인터넷/크롬의 강제 다크모드는 paint 단계에서 색을 반전시켜
+     background-color: #FFF !important 로는 절대 막을 수 없다.
+     단, '배경 이미지가 있는 요소'는 반전 대상에서 제외된다.
+     → 흰색을 그라디언트(=이미지)로 깔아 근본 차단.
+     :where() 우선순위 0 → 앱 UI 색상은 그대로 유지.
+     ══════════════════════════════════════════════════════════════ */
+  html, body {
+    background-image: linear-gradient(to bottom, #F4F4F5 0%, #F4F4F5 100%) !important;
+  }
+  :where(div, p, span, td, th, tr, table, tbody, thead, section, main, ul, ol, li) {
+    background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%);
+    background-color: #FFFFFF;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root, html, body {
+      color-scheme: light !important;
+      background: #FFFFFF !important;
+      background-color: #FFFFFF !important;
+      filter: none !important;
+    }
+  }
+  @media print {
+    :root, html, body {
+      color-scheme: light !important;
+      background: #FFFFFF !important;
+      background-color: #FFFFFF !important;
+      background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%) !important;
+      forced-color-adjust: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    /* ★ 인쇄 시 흰 배경을 '이미지'로 → 강제 다크모드 반전 불가 */
+    :where(div, p, span, td, th, tr, table, tbody, thead, section, main, ul, ol, li) {
+      background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%);
+      background-color: #FFFFFF;
+    }
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      forced-color-adjust: none !important;
+    }
+    .m-header, .m-tabbar, .m-fab, .no-print,
+    #deploy-version-badge { display: none !important; }
+    .m-content { padding: 0 !important; margin: 0 !important; }
+  }
+
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; height: 100%; font-family: 'Pretendard', -apple-system, system-ui, sans-serif; background: #F4F4F5; color: #18181B; -webkit-font-smoothing: antialiased; }
   body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
@@ -156,6 +215,46 @@
     body { max-width: 480px; margin: 0 auto; background: white; box-shadow: 0 0 40px rgba(0,0,0,0.08); min-height: 100vh; }
     .m-tabbar { max-width: 480px; left: 50%; transform: translateX(-50%); }
   }
+
+  /* ══════════════════════════════════════════════════════════════
+     ★ 강제 다크모드 최종 방어 — 흰색/밝은 컴포넌트를 '배경 이미지'로 재지정
+     아래 규칙들은 위의 `background: white` 단축 속성(=배경이미지 삭제) 뒤에
+     오도록 스타일 블록 끝에 배치한다. 그래야 배경이미지가 살아남는다.
+     ══════════════════════════════════════════════════════════════ */
+  .card, .kpi, .list-item, .m-header, .tabbar, .tab,
+  .btn-secondary, .m-btn, .q-item, .m-card, .m-section,
+  input, select, textarea {
+    background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%) !important;
+    background-color: #FFFFFF !important;
+  }
+  /* 어두운 강조 컴포넌트는 원래 색을 이미지로 고정 (반전 방지) */
+  .kpi.accent, .btn-primary, .m-btn-primary, .tab.scan-tab, .m-header {
+    background-image: linear-gradient(to bottom, #0A0E1A 0%, #0A0E1A 100%) !important;
+    background-color: #0A0E1A !important;
+    color: #FFFFFF !important;
+  }
+  .tab.scan-tab.active {
+    background-image: linear-gradient(to bottom, #C9A961 0%, #C9A961 100%) !important;
+    background-color: #C9A961 !important;
+  }
+  /* 상태 배지 색상 고정 */
+  .badge-blue   { background-image: linear-gradient(to bottom, #DBEAFE 0%, #DBEAFE 100%) !important; }
+  .badge-green  { background-image: linear-gradient(to bottom, #D1FAE5 0%, #D1FAE5 100%) !important; }
+  .badge-yellow { background-image: linear-gradient(to bottom, #FEF3C7 0%, #FEF3C7 100%) !important; }
+  .badge-red    { background-image: linear-gradient(to bottom, #FEE2E2 0%, #FEE2E2 100%) !important; }
+  .badge-gray   { background-image: linear-gradient(to bottom, #F4F4F5 0%, #F4F4F5 100%) !important; }
+  .q-delete-btn { background-image: linear-gradient(to bottom, #FEE2E2 0%, #FEE2E2 100%) !important; }
+  /* ★ body 배경도 이미지로 재지정 (앞선 단축 background 가 지운 것을 복구) */
+  html, body {
+    background-color: #F4F4F5 !important;
+    background-image: linear-gradient(to bottom, #F4F4F5 0%, #F4F4F5 100%) !important;
+  }
+  @media (min-width: 481px) {
+    body {
+      background-color: #FFFFFF !important;
+      background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%) !important;
+    }
+  }
 </style>
 {% block head_extra %}{% endblock %}
 </head>
@@ -215,5 +314,37 @@ if ('serviceWorker' in navigator) {
 </script>
 
 {% block scripts %}{% endblock %}
+
+{# ⭐ 자동 로그아웃: 앱/브라우저에서 나갔다가 5분 이상 지나 돌아오면 재로그인 (자동 로그인 사용자는 제외) #}
+{% if request.state.user and not request.session.get('remember') %}
+<script>
+(function(){
+  var AWAY_MS = 5 * 60 * 1000;
+  var KEY = 'app_hidden_at';
+  function goLogin(){ location.replace('/logout'); }
+  document.addEventListener('visibilitychange', function(){
+    try {
+      if (document.visibilityState === 'hidden') {
+        localStorage.setItem(KEY, String(Date.now()));
+      } else {
+        var t = parseInt(localStorage.getItem(KEY) || '0', 10);
+        localStorage.removeItem(KEY);
+        if (t && Date.now() - t > AWAY_MS) { goLogin(); return; }
+        fetch('/api/session-ping', {credentials:'same-origin', cache:'no-store'})
+          .then(function(r){ return r.json(); })
+          .then(function(d){ if (!d.ok) location.replace('/login?expired=1&next=' + encodeURIComponent(location.pathname)); })
+          .catch(function(){});
+      }
+    } catch(e) {}
+  });
+  // 앱을 완전히 종료 후 다시 연 경우 (페이지 새로 로드)
+  try {
+    var t0 = parseInt(localStorage.getItem(KEY) || '0', 10);
+    localStorage.removeItem(KEY);
+    if (t0 && Date.now() - t0 > AWAY_MS) goLogin();
+  } catch(e) {}
+})();
+</script>
+{% endif %}
 </body>
 </html>

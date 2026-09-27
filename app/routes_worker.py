@@ -35,6 +35,20 @@ def _user(request: Request):
     return user
 
 
+def _require_admin(request: Request):
+    """근무자 등록·수정·삭제 — 관리자 전용 (직원 개인정보 보호)"""
+    user = _user(request)
+    from permissions import is_admin
+    if not is_admin(user):
+        raise HTTPException(403, "근무자 정보 수정은 관리자만 가능합니다.")
+    return user
+
+
+def _is_admin(user) -> bool:
+    from permissions import is_admin
+    return is_admin(user)
+
+
 def _save_photo(upload: UploadFile) -> str:
     """업로드된 사진을 저장하고 파일명을 반환. 실패 시 빈 문자열."""
     if not upload or not upload.filename:
@@ -98,7 +112,9 @@ def worker_list(request: Request, q: str = "", type: str = "", status: str = "")
         if status_filter:
             workers = [w for w in workers if (getattr(w, "employment_status", "재직") or "재직") == status_filter]
         # 키워드 검색
-        if search_q:
+        if search_q and not _is_admin(user):
+            workers = [w for w in workers if search_q in (w.name or "").lower()]
+        elif search_q:
             workers = [w for w in workers if any(search_q in (str(x) or "").lower() for x in [
                 w.name, w.phone, w.bank, w.account, w.memo,
                 getattr(w, "resident_no", ""), getattr(w, "employee_type", ""),
@@ -116,7 +132,23 @@ def worker_list(request: Request, q: str = "", type: str = "", status: str = "")
             "resign_date": getattr(w, "resign_date", None),
             "employment_status": getattr(w, "employment_status", "재직") or "재직",
         } for w in workers]
+        admin = _is_admin(user)
+        my_id = None
+        if not admin:
+            from permissions import my_worker
+            me = my_worker(s, user)
+            my_id = me.id if me else None
+            # ★ 직원 계정: 다른 사람의 개인정보·급여는 서버에서부터 제거 (화면 숨김만으로는 부족)
+            for r in rows:
+                if r["id"] != my_id:
+                    for k in ("phone", "bank", "account", "resident_no", "photo_filename", "memo"):
+                        r[k] = ""
+                    r["monthly_salary"] = 0
+                    r["default_daily_wage"] = 0
+                    r["hire_date"] = None
+                    r["resign_date"] = None
     return templates.TemplateResponse(request, "workers.html", {
+        "is_admin_view": admin, "my_worker_id": my_id,
         "user": user, "workers": rows, "search_q": search_q,
         "type_filter": type_filter, "status_filter": status_filter,
     })
@@ -124,7 +156,7 @@ def worker_list(request: Request, q: str = "", type: str = "", status: str = "")
 
 @router.post("/workers/new")
 async def worker_create(request: Request):
-    _user(request)
+    _require_admin(request)
     form = await request.form()
 
     name = (form.get("name", "") or "").strip()
@@ -191,6 +223,13 @@ def worker_edit(request: Request, wid: int):
         w = s.get(Worker, wid)
         if not w:
             raise HTTPException(404)
+        readonly = False
+        if not _is_admin(user):
+            from permissions import my_worker
+            me = my_worker(s, user)
+            if not me or me.id != w.id:
+                raise HTTPException(403, "다른 직원의 정보는 조회할 수 없습니다.")
+            readonly = True   # 본인 정보: 조회만 가능
         wd = {
             "id": w.id, "name": w.name, "phone": w.phone, "bank": w.bank,
             "account": w.account, "default_daily_wage": w.default_daily_wage,
@@ -204,12 +243,12 @@ def worker_edit(request: Request, wid: int):
             "employment_status": getattr(w, "employment_status", "재직") or "재직",
             "position": getattr(w, "position", "") or "",
         }
-    return templates.TemplateResponse(request, "worker_edit.html", {"user": user, "w": wd})
+    return templates.TemplateResponse(request, "worker_edit.html", {"user": user, "w": wd, "readonly": readonly})
 
 
 @router.post("/workers/{wid}/edit")
 async def worker_update(request: Request, wid: int):
-    _user(request)
+    _require_admin(request)
     form = await request.form()
 
     etype = (form.get("employee_type", "알바") or "알바").strip()
@@ -285,7 +324,7 @@ async def worker_update(request: Request, wid: int):
 
 @router.post("/workers/{wid}/toggle")
 def worker_toggle(request: Request, wid: int):
-    _user(request)
+    _require_admin(request)
     with Session(engine, expire_on_commit=False) as s:
         w = s.get(Worker, wid)
         if w:
@@ -297,7 +336,7 @@ def worker_toggle(request: Request, wid: int):
 
 @router.post("/workers/{wid}/delete")
 def worker_delete(request: Request, wid: int):
-    _user(request)
+    _require_admin(request)
     with Session(engine, expire_on_commit=False) as s:
         w = s.get(Worker, wid)
         if w:
@@ -314,8 +353,14 @@ def worker_delete(request: Request, wid: int):
 
 @router.get("/worker-photo/{filename}")
 def serve_worker_photo(request: Request, filename: str):
-    """근무자 사진 파일 서빙 (로그인 필요)"""
-    _user(request)
+    """근무자 사진 파일 서빙 — 관리자 또는 본인 사진만"""
+    user = _user(request)
+    if not _is_admin(user):
+        from permissions import my_worker
+        with Session(engine, expire_on_commit=False) as s:
+            me = my_worker(s, user)
+            if not me or (me.photo_filename or "") != filename:
+                raise HTTPException(403, "다른 직원의 사진은 볼 수 없습니다.")
     # 경로 traversal 방지
     if "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(400, "잘못된 파일명")

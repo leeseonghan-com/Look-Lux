@@ -6,6 +6,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     tesseract-ocr \
     tesseract-ocr-kor \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 ENV TZ=Asia/Seoul
 

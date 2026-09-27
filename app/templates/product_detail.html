@@ -36,7 +36,7 @@
     </div>
     <div class="flex gap-2 flex-wrap">
       {% if p.equipment_id %}
-      <a href="/equipment/labels?ids={{ p.equipment_id }}" target="_blank" class="btn-secondary" title="QR 라벨 인쇄">🏷️ QR 라벨</a>
+      <a href="/equipment/labels/select?eq={{ p.equipment_id }}" target="_blank" class="btn-secondary" title="QR 라벨 선택 인쇄">🏷️ QR 라벨</a>
       {% endif %}
       <form method="post" action="/products/{{ p.id }}/delete" style="display:inline;"
             onsubmit="return confirm('이 물품을 삭제하시겠습니까?');">
@@ -48,6 +48,7 @@
 
 <!-- KPI -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+  {% if request.state.can_view_revenue %}
   <div class="kpi-card">
     <div class="label">납품 단가</div>
     <div class="value value-sm num">{{ p.consumer_price|money if p.consumer_price > 0 else '—' }}<span class="unit">원</span></div>
@@ -56,6 +57,7 @@
     <div class="label">렌탈/일</div>
     <div class="value value-sm num" style="color: #9A3412;">{{ p.rental_daily|money if p.rental_daily > 0 else '—' }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
   <div class="kpi-card">
     <div class="label">보유 / 전체</div>
     {% if p.equipment_id %}

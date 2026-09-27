@@ -10,12 +10,16 @@
 {% set t = c.quote_theme_data %}
 {% set scale = (c.quote_font_scale or 100) / 100.0 %}
 <!doctype html>
-<html lang="ko">
+<html lang="ko" style="background-color:#FFFFFF !important; background-image:linear-gradient(to bottom,#FFFFFF 0%,#FFFFFF 100%) !important; background-repeat:repeat !important; color-scheme:light; forced-color-adjust:none !important; filter:none !important;">
 <head>
 <meta charset="utf-8">
-<title>견적서 {{ q.quote_number }}</title>
+{# 📄 저장 파일명 = 견적번호_프로젝트명
+   브라우저의 '인쇄 → PDF로 저장' 기본 파일명은 <title> 을 사용한다.
+   따라서 title 을 그대로 파일명 형식으로 맞춘다. #}
+{%- set _pname = (q.project_name or q.vendor_name or '') | replace('/', '') | replace('\\', '') | trim -%}
+<title>{{ q.quote_number }}{% if _pname %}_{{ _pname }}{% endif %}</title>
 {# 🌞 모바일/데스크톱 다크모드 무시 — 흰색 배경 강제 (iOS/Android 인쇄 시 검정 배경 방지) #}
-<meta name="color-scheme" content="light only">
+<meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <meta name="theme-color" content="#FFFFFF">
 <style>
@@ -30,11 +34,11 @@
 
   /* ⭐ 다크모드 완전 무시 — 브라우저가 자동 반전하지 못하게 */
   :root {
-    color-scheme: light only;
+    color-scheme: light;
     forced-color-adjust: none;
   }
   html {
-    color-scheme: light only;
+    color-scheme: light;
     background: #FFFFFF !important;
     background-color: #FFFFFF !important;
   }
@@ -48,7 +52,7 @@
   html, body {
     background: #FFFFFF !important;
     background-color: #FFFFFF !important;
-    color-scheme: light only;
+    color-scheme: light;
     margin: 0;
     padding: 0;
     color: {{ t.primary }};
@@ -57,15 +61,90 @@
     line-height: 1.5;
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     ★★★ 강제 다크모드 완전 차단 — "배경 이미지" 기법 (v4 · 근본 해결)
+
+     [왜 지금까지 안 됐나]
+     삼성인터넷·크롬의 '강제 다크모드'는 CSS 우선순위 경쟁이 아니라
+     브라우저가 그리는 순간(paint) 색을 강제 반전시키는 기능이다.
+     따라서 background-color: #FFF !important 를 몇 번 써도 반전된다.
+
+     [유일한 탈출구]
+     강제 다크모드 엔진은 "배경 이미지가 있는 요소"는 반전하지 않는다.
+     → 흰색을 단색(background-color)이 아니라
+       흰색 그라디언트(= 배경 이미지)로 깔면 절대 검게 변하지 않는다.
+     테마 컬러도 같은 방식으로 깔아 색상까지 그대로 보존한다.
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* 문서 최하단 흰 종이 레이어 — 어떤 경우에도 검정이 될 수 없음 */
+  html, body, .quote-doc {
+    background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%) !important;
+    background-color: #FFFFFF !important;
+    background-repeat: repeat !important;
+  }
+
+  /* 표·셀·블록의 흰 배경도 이미지로 (우선순위 0 → 테마색 규칙이 항상 우선) */
+  :where(div, p, span, td, th, tr, table, tbody, thead, tfoot,
+         section, header, footer, main, ul, ol, li, dl, dt, dd) {
+    background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%);
+    background-color: #FFFFFF;
+  }
+  :where(body, div, p, span, td, th, li, strong, b, em, small, label) {
+    color: {{ t.primary }};
+  }
+
+  /* ★ 테마 컬러 영역도 배경이미지로 재지정 → 강제 다크모드에서도 색 유지 */
+  .party-table th,
+  .items-table th,
+  .summary-row.total .lbl,
+  .summary-row.total .val {
+    background-image: linear-gradient(to bottom, {{ t.header_bg }} 0%, {{ t.header_bg }} 100%) !important;
+  }
+  .summary-row.total .lbl,
+  .summary-row.total .val {
+    background-image: linear-gradient(to bottom, {{ t.total_bg }} 0%, {{ t.total_bg }} 100%) !important;
+  }
+  .party-table td.label,
+  .summary-row .lbl,
+  .conditions td.k {
+    background-image: linear-gradient(to bottom, {{ t.label_bg }} 0%, {{ t.label_bg }} 100%) !important;
+  }
+  .summary-row.discount .lbl,
+  .summary-row.discount .val {
+    background-image: linear-gradient(to bottom, {{ t.discount_bg }} 0%, {{ t.discount_bg }} 100%) !important;
+  }
+
   /* 다크모드 미디어 쿼리에서도 강제 흰색 유지 */
   @media (prefers-color-scheme: dark) {
-    html, body, .quote-doc {
+    :root, html, body, .quote-doc {
       background: #FFFFFF !important;
       background-color: #FFFFFF !important;
       color: {{ t.primary }} !important;
+      color-scheme: light !important;
+      forced-color-adjust: none !important;
+      filter: none !important;
+      -webkit-filter: none !important;
     }
-    * {
-      background-color: inherit;
+    /* ★ background-color: inherit 는 검정 배경을 전파시켜 절대 쓰지 않음 */
+    /* ★ 자식 요소 배경/글자색은 덮어쓰지 않음 — 테마 컬러 보존 */
+    *, *::before, *::after {
+      forced-color-adjust: none !important;
+      filter: none !important;
+      -webkit-filter: none !important;
+    }
+    /* 배경이 지정되지 않은 영역만 흰색으로 (테마 색 지정된 곳은 그대로) */
+    .quote-doc {
+      background-color: #FFFFFF !important;
+    }
+    /* ★ :where() = 우선순위 0 → 테마 색 규칙이 항상 이김.
+       색이 명시되지 않은 요소에만 흰 배경/검은 글자를 깔아
+       모바일 강제 다크모드의 재색칠 대상을 없앤다. */
+    :where(div, p, span, td, th, tr, table, tbody, thead, tfoot,
+           section, header, footer, main, ul, ol, li, dl, dt, dd) {
+      background-color: #FFFFFF;
+    }
+    :where(body, div, p, span, td, th, li, strong, b, em, small, label) {
+      color: {{ t.primary }};
     }
   }
 
@@ -364,10 +443,33 @@ img {
   @media print {
     /* 🌞 인쇄 시 다크모드 완전 무시 (모바일 iOS/Android 검정 배경 방지) */
     :root, html, body {
-      color-scheme: light only !important;
+      color-scheme: light !important;
       background: #FFFFFF !important;
       background-color: #FFFFFF !important;
       forced-color-adjust: none !important;
+      filter: none !important;
+      -webkit-filter: none !important;
+    }
+    /* ★ 강제 반전만 차단 — 테마 색상은 그대로 인쇄 (절대 덮어쓰지 않음) */
+    *, *::before, *::after {
+      forced-color-adjust: none !important;
+      filter: none !important;
+      -webkit-filter: none !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    /* ★ 인쇄 시에도 '배경 이미지' 흰색 → 강제 다크모드 반전 불가 */
+    html, body, .quote-doc {
+      background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%) !important;
+      background-color: #FFFFFF !important;
+    }
+    :where(div, p, span, td, th, tr, table, tbody, thead, tfoot,
+           section, header, footer, main, ul, ol, li, dl, dt, dd) {
+      background-image: linear-gradient(to bottom, #FFFFFF 0%, #FFFFFF 100%);
+      background-color: #FFFFFF;
+    }
+    :where(body, div, p, span, td, th, li, strong, b, em, small, label) {
+      color: {{ t.primary }};
     }
     html, body {
       margin: 0 !important;
@@ -487,16 +589,20 @@ img {
   }
 </style>
 </head>
-<body>
+<body style="background-color:#FFFFFF !important; background-image:linear-gradient(to bottom,#FFFFFF 0%,#FFFFFF 100%) !important; background-repeat:repeat !important; color-scheme:light; forced-color-adjust:none !important; filter:none !important; -webkit-filter:none !important; margin:0; padding:0;">
 
 <div class="print-helper">
-  <button class="print-btn" onclick="doPrint()">🖨️ 인쇄 / PDF 저장</button>
+  <a class="print-btn" href="/quotes/{{ q.id }}/pdf" style="text-decoration:none; display:inline-block;">📄 PDF 저장</a>
+  <button class="print-btn" onclick="doPrint()">🖨️ 인쇄</button>
   <div class="print-hint">
     💡 <b>Safari 사용 시</b>:<br>
     ① 인쇄 다이얼로그 → <b>"세부사항 보기"</b><br>
     ② <b>"배경 그래픽 인쇄"</b> ✓ 체크<br>
     ③ <b>크기 조정 → 자동</b> 선택<br>
     <span style="color:#92400E; font-size:10px;">(Chrome도 유사 — "더 보기" → "배경 그래픽" ✓)</span>
+    <div style="margin-top:8px; padding-top:8px; border-top:1px solid #FCD34D; color:#92400E; font-size:10px;">
+      📱 <b>휴대폰에서 배경이 검게 나오면</b><br>위 <b>📄 PDF 저장</b>을 사용하세요.<br>다크모드와 무관하게 흰 배경으로 저장됩니다.
+    </div>
   </div>
 </div>
 
@@ -593,7 +699,7 @@ img {
     <tbody>
       {% for it in items %}
       <tr>
-        <td class="c">{{ it.seq }}</td>
+        <td class="c">{{ loop.index }}</td>
         <td>{{ it.name }}</td>
         {% if c.show_spec %}<td>{{ it.spec }}</td>{% endif %}
         <td class="num">{{ it.quantity|int }}</td>

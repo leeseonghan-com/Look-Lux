@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}QR 라벨 선택 인쇄{% endblock %}
+{% block content %}
+
+<div class="mb-4">
+  <a href="/equipment" class="text-sm text-slate-500">← 장비 목록</a>
+  <h1 class="text-2xl font-bold text-slate-800 mt-2">🏷️ QR 라벨 선택 인쇄</h1>
+  <p class="text-sm text-slate-500 mt-1">
+    인쇄할 제품과 개체를 골라서 라벨을 출력합니다. 제품 제목을 누르면 그 제품의 개체가 모두 선택됩니다.
+  </p>
+</div>
+
+{% if not groups %}
+<div class="card text-center py-12">
+  <div style="font-size:42px;">📦</div>
+  <div class="font-bold text-slate-700 mt-2" style="font-size:17px;">등록된 장비 개체가 없습니다</div>
+  <div class="text-sm text-slate-500 mt-1">장비를 등록하고 개체를 추가하면 여기에 표시됩니다.</div>
+  <a href="/equipment" class="inline-block mt-3 btn-primary" style="padding:8px 16px;">장비 관리로 이동</a>
+</div>
+{% else %}
+
+<!-- 상단 고정 바 -->
+<div id="label-bar" class="card mb-4" style="position:sticky; top:0; z-index:40;
+     background:#0A0E1A; color:white; border-color:#0A0E1A;">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+    <div>
+      <div style="font-size:13px; opacity:0.75;">선택한 개체</div>
+      <div style="font-size:24px; font-weight:900;">
+        <span id="sel-count">0</span><span style="font-size:15px; opacity:0.8;"> 개</span>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" id="btn-all" class="btn-secondary" style="padding:9px 14px; font-size:13px;">전체 선택</button>
+      <button type="button" id="btn-none" class="btn-secondary" style="padding:9px 14px; font-size:13px;">선택 해제</button>
+      <button type="button" id="btn-print" class="btn-primary"
+              style="padding:9px 18px; font-size:14px; font-weight:800; background:#C9A961; color:#0A0E1A;">
+        🖨 선택 라벨 인쇄
+      </button>
+    </div>
+  </div>
+  <div id="sel-warn" style="display:none; margin-top:8px; font-size:12px; color:#FCA5A5;">
+    ⚠ 개체를 1개 이상 선택해주세요.
+  </div>
+</div>
+
+<!-- 검색 -->
+<div class="card mb-3">
+  <label class="label">🔍 제품 검색 (제품명·모델·제조사·관리코드)</label>
+  <input type="text" id="grp-filter" class="input" placeholder="예: 무빙, Sharpy, EQ-2026"
+         autocomplete="off" style="font-size:15px;">
+  <p class="text-xs text-slate-500 mt-1" id="grp-count"></p>
+</div>
+
+<!-- 제품별 개체 목록 -->
+{% for g in groups %}
+<div class="card mb-3 grp-card"
+     data-search="{{ g.name|lower }} {{ g.model|lower }} {{ g.manufacturer|lower }} {{ g.category|lower }} {{ g.units|map(attribute='asset_code')|join(' ')|lower }}"
+     {% if preselect_eq and preselect_eq == g.eq_id %}data-preselect="1"{% endif %}>
+
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;
+       padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--line); flex-wrap:wrap;">
+    <div style="flex:1; min-width:200px;">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" class="grp-check" data-eq="{{ g.eq_id }}"
+               style="width:18px; height:18px; cursor:pointer;">
+        <span>
+          <span style="font-weight:800; font-size:16px;">{{ g.name }}</span>
+          <span class="badge badge-blue" style="margin-left:6px;">{{ g.category }}</span>
+        </span>
+      </label>
+      <div class="text-xs text-slate-500" style="margin-top:3px; margin-left:26px;">
+        {% if g.manufacturer %}{{ g.manufacturer }}{% endif %}{% if g.model %} · {{ g.model }}{% endif %}
+        · 개체 {{ g.unit_count }}대
+      </div>
+    </div>
+    <div class="text-xs text-slate-500">
+      선택 <b class="grp-sel" style="color:var(--ink);">0</b> / {{ g.unit_count }}
+    </div>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="dt" style="font-size:13px;">
+      <thead>
+        <tr>
+          <th style="width:44px;"></th>
+          <th>관리코드</th>
+          <th>시리얼</th>
+          <th>상태</th>
+          <th>보관 위치</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in g.units %}
+        <tr>
+          <td class="text-center">
+            <input type="checkbox" class="unit-check" value="{{ u.id }}" data-eq="{{ g.eq_id }}"
+                   style="width:17px; height:17px; cursor:pointer;">
+          </td>
+          <td style="font-weight:700; font-family:monospace;">{{ u.asset_code }}</td>
+          <td class="text-xs">{{ u.serial_number or '—' }}</td>
+          <td>
+            {% if u.status == '보유중' %}
+            <span class="badge badge-green">{{ u.status }}</span>
+            {% elif u.status == '대여중' %}
+            <span class="badge badge-orange">{{ u.status }}</span>
+            {% elif u.status == '수리중' %}
+            <span class="badge badge-red">{{ u.status }}</span>
+            {% else %}
+            <span class="badge badge-gray">{{ u.status or '—' }}</span>
+            {% endif %}
+          </td>
+          <td class="text-xs">{{ u.location or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+{% endif %}
+
+<script>
+(function () {
+  function all(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+
+  var countEl = document.getElementById('sel-count');
+  var warnEl = document.getElementById('sel-warn');
+
+  function refresh() {
+    try {
+      var checked = all('.unit-check').filter(function (c) { return c.checked; });
+      if (countEl) countEl.textContent = checked.length;
+      if (warnEl && checked.length > 0) warnEl.style.display = 'none';
+
+      // 제품별 선택 수 + 제품 체크박스 상태 갱신
+      all('.grp-card').forEach(function (card) {
+        var units = all('.unit-check', card).length ? all('.unit-check', card) :
+                    Array.prototype.slice.call(card.querySelectorAll('.unit-check'));
+        var sel = units.filter(function (c) { return c.checked; });
+        var selEl = card.querySelector('.grp-sel');
+        if (selEl) selEl.textContent = sel.length;
+        var grp = card.querySelector('.grp-check');
+        if (grp) {
+          grp.checked = (units.length > 0 && sel.length === units.length);
+          grp.indeterminate = (sel.length > 0 && sel.length < units.length);
+        }
+      });
+    } catch (e) { console.error('refresh', e); }
+  }
+
+  // 개체 체크
+  all('.unit-check').forEach(function (c) {
+    c.addEventListener('change', refresh);
+  });
+
+  // 제품 단위 전체 선택
+  all('.grp-check').forEach(function (g) {
+    g.addEventListener('change', function () {
+      var card = g.closest('.grp-card');
+      if (!card) return;
+      Array.prototype.slice.call(card.querySelectorAll('.unit-check')).forEach(function (c) {
+        c.checked = g.checked;
+      });
+      refresh();
+    });
+  });
+
+  // 전체 선택 / 해제
+  var btnAll = document.getElementById('btn-all');
+  var btnNone = document.getElementById('btn-none');
+  if (btnAll) btnAll.addEventListener('click', function () {
+    all('.unit-check').forEach(function (c) {
+      var card = c.closest('.grp-card');
+      if (!card || card.style.display !== 'none') c.checked = true;
+    });
+    refresh();
+  });
+  if (btnNone) btnNone.addEventListener('click', function () {
+    all('.unit-check').forEach(function (c) { c.checked = false; });
+    refresh();
+  });
+
+  // 인쇄
+  var btnPrint = document.getElementById('btn-print');
+  if (btnPrint) btnPrint.addEventListener('click', function () {
+    var ids = all('.unit-check').filter(function (c) { return c.checked; })
+                .map(function (c) { return c.value; });
+    if (ids.length === 0) {
+      if (warnEl) warnEl.style.display = 'block';
+      return;
+    }
+    window.open('/equipment/labels?ids=' + ids.join(','), '_blank');
+  });
+
+  // 제품 검색 필터
+  var filter = document.getElementById('grp-filter');
+  var grpCount = document.getElementById('grp-count');
+  if (filter) {
+    filter.addEventListener('input', function () {
+      var q = (filter.value || '').toLowerCase().trim();
+      var shown = 0;
+      all('.grp-card').forEach(function (card) {
+        var hay = (card.getAttribute('data-search') || '');
+        var match = !q || hay.indexOf(q) !== -1;
+        card.style.display = match ? '' : 'none';
+        if (match) shown++;
+      });
+      if (grpCount) grpCount.textContent = q ? ('🔍 ' + shown + '개 제품 표시') : '';
+    });
+  }
+
+  // 특정 제품으로 진입한 경우 해당 제품 자동 선택
+  var pre = document.querySelector('.grp-card[data-preselect="1"]');
+  if (pre) {
+    Array.prototype.slice.call(pre.querySelectorAll('.unit-check')).forEach(function (c) {
+      c.checked = true;
+    });
+    pre.style.boxShadow = '0 0 0 3px rgba(201,169,97,0.45)';
+    setTimeout(function () {
+      pre.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  }
+
+  refresh();
+})();
+</script>
+
+{% endblock %}

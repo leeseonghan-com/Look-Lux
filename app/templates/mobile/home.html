@@ -9,7 +9,7 @@
 <div class="alert">✓ 비용이 등록되었습니다</div>
 {% endif %}
 
-{% if request.state.can_view_amounts %}
+{% if request.state.can_view_revenue %}
 <!-- 매출/부가세 (강조 카드) — 금액 권한자만 -->
 <div class="m-card" style="background: #0A0E1A; color: white; padding: 14px 16px; margin-bottom: 10px;">
   <div style="font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px;">매출 분해</div>
@@ -42,16 +42,11 @@
     <div class="value">{{ today_workers }}</div>
     <div class="sub">명</div>
   </div>
-  {% if request.state.can_view_amounts %}
+  {% if request.state.can_view_settle %}
   <div class="kpi">
     <div class="label">미수금</div>
     <div class="value" style="color: #DC2626;">{{ unpaid_count }}</div>
     <div class="sub">건</div>
-  </div>
-  {% else %}
-  <div class="kpi" style="opacity: 0.5;">
-    <div class="label">미수금</div>
-    <div class="value" style="font-size: 14px; color: #94A3B8;">권한 없음</div>
   </div>
   {% endif %}
   <div class="kpi">

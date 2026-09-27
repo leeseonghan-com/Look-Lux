@@ -14,7 +14,7 @@
   </div>
 </div>
 
-{% set can_view = request.state.can_view_amounts %}
+{% set can_view = request.state.can_view_revenue %}
 
 {% if can_view %}
 <!-- 매출 분해 행: 공급가 / 부가세 / 총 매출 (관리자/권한자만) -->
@@ -37,44 +37,33 @@
 </div>
 {% endif %}
 
-<!-- KPI ROW -->
+<!-- KPI ROW (권한별 — 권한 없는 항목은 아예 표시하지 않음) -->
+{% set rs = request.state %}
 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-10">
   <div class="kpi-card">
     <div class="label">진행 프로젝트</div>
     <div class="value num">{{ project_count }}<span class="unit">건</span></div>
   </div>
-  {% if can_view %}
+  {% if rs.can_view_sub or rs.can_view_wage %}
   <div class="kpi-card">
-    <div class="label">총 지출 <span class="text-xs" style="color: var(--ink-4); font-weight: 500;">(하청+인건비)</span></div>
-    <div class="value value-sm num" style="color: var(--negative);">{{ (total_expense + total_wage)|money }}<span class="unit">원</span></div>
-    {% if (sub_unpaid_amount + wage_unpaid_amount) > 0 %}
-    <div class="text-xs mt-1" style="color: #B91C1C; font-weight: 600;">
-      💸 미지급 {{ (sub_unpaid_amount + wage_unpaid_amount)|money }}원
-    </div>
-    {% else %}
-    <div class="text-xs mt-1" style="color: var(--positive); font-weight: 600;">✓ 지급 완료</div>
-    {% endif %}
+    <div class="label">지급 현황 <span class="text-xs" style="color: var(--ink-4); font-weight: 500;">({% if rs.can_view_sub %}외주{% endif %}{% if rs.can_view_sub and rs.can_view_wage %}+{% endif %}{% if rs.can_view_wage %}알바{% endif %})</span></div>
+    {% set _paid_total = (total_expense if rs.can_view_sub else 0) + (total_wage if rs.can_view_wage else 0) %}
+    <div class="value value-sm num" style="color: var(--negative);">{{ _paid_total|money_raw }}<span class="unit">원</span></div>
+    {% if rs.can_view_sub %}<div class="text-xs mt-1" style="color:#475569;">🏗 외주 미지급 <b style="color:#B91C1C;">{{ sub_unpaid_amount|money_raw }}원</b></div>{% endif %}
+    {% if rs.can_view_wage %}<div class="text-xs" style="color:#475569;">🧢 알바 미지급 <b style="color:#B91C1C;">{{ wage_unpaid_amount|money_raw }}원</b></div>{% endif %}
   </div>
+  {% endif %}
+  {% if rs.can_view_profit %}
   <div class="kpi-card">
     <div class="label">순이익 <span class="text-xs" style="color: var(--ink-4); font-weight: 500;">(공급가 기준)</span></div>
-    <div class="value value-sm num" style="color: {% if net_profit >= 0 %}var(--positive){% else %}var(--negative){% endif %};">{{ net_profit|money }}<span class="unit">원</span></div>
+    <div class="value value-sm num" style="color: {% if net_profit >= 0 %}var(--positive){% else %}var(--negative){% endif %};">{{ net_profit|money_raw }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
+  {% if rs.can_view_settle %}
   <div class="kpi-card">
     <div class="label">미수금 <span class="text-xs" style="color: var(--ink-4); font-weight: 500;">({{ unpaid_count }}건)</span></div>
-    <div class="value value-sm num" style="color: var(--warning);">{{ unpaid_amount|money }}<span class="unit">원</span></div>
-  </div>
-  {% else %}
-  <div class="kpi-card" style="background:#F3F4F6;">
-    <div class="label">미수 건수</div>
-    <div class="value value-sm num" style="color: var(--warning);">{{ unpaid_count }}<span class="unit">건</span></div>
-  </div>
-  <div class="kpi-card" style="background:#F3F4F6;">
-    <div class="label">금액 정보</div>
-    <div class="value value-sm num" style="color: var(--ink-5); font-size: 14px;">권한 없음</div>
-  </div>
-  <div class="kpi-card" style="background:#F3F4F6;">
-    <div class="label">금액 정보</div>
-    <div class="value value-sm num" style="color: var(--ink-5); font-size: 14px;">권한 없음</div>
+    {% if rs.can_view_revenue %}<div class="value value-sm num" style="color: var(--warning);">{{ unpaid_amount|money_raw }}<span class="unit">원</span></div>
+    {% else %}<div class="value value-sm num" style="color: var(--warning);">{{ unpaid_count }}<span class="unit">건</span></div>{% endif %}
   </div>
   {% endif %}
 </div>
@@ -98,7 +87,7 @@
           {% if can_view %}
           <div class="text-sm font-bold num" style="color: var(--ink);">{{ p.revenue|money }}<span class="text-xs ml-0.5" style="color: var(--ink-4);">원</span></div>
           {% endif %}
-          <div class="mt-0.5"><span class="badge badge-dot {% if p.settlement_status == '입금완료' %}badge-green{% else %}badge-orange{% endif %}">{{ p.settlement_status }}</span></div>
+          {% if request.state.can_view_settle %}<div class="mt-0.5"><span class="badge badge-dot {% if p.settlement_status == '입금완료' %}badge-green{% else %}badge-orange{% endif %}">{{ p.settlement_status }}</span></div>{% endif %}
         </div>
       </a>
       {% endfor %}
@@ -111,6 +100,7 @@
     {% endif %}
   </div>
 
+  {% if request.state.can_view_settle %}
   <div class="card">
     <div class="flex items-center justify-between mb-5">
       <div>
@@ -146,10 +136,8 @@
             </div>
           </div>
           <div class="text-right ml-4">
-            {% if can_view %}
+            {% if request.state.can_view_revenue %}
             <div class="text-sm font-bold num" style="color: var(--warning);">{{ p.revenue|money }}<span class="text-xs ml-0.5" style="color: var(--ink-4);">원</span></div>
-            {% else %}
-            <div class="text-sm font-bold num" style="color: var(--ink-5);">—</div>
             {% endif %}
           </div>
         </a>
@@ -167,6 +155,7 @@
     </div>
     {% endif %}
   </div>
+  {% endif %}
 </div>
 
 <!-- 빠른 작업 -->

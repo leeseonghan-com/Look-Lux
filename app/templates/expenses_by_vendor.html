@@ -18,19 +18,19 @@
   <div class="card" style="padding:14px;">
     <div class="text-xs font-bold text-slate-600">전체 발주액</div>
     <div class="num font-bold mt-1" style="font-size:24px;">
-      {% if request.state.can_view_amounts %}{{ grand_total|money }}원{% else %}—{% endif %}
+      {% if request.state.can_view_sub %}{{ grand_total|money_sub }}원{% else %}—{% endif %}
     </div>
   </div>
   <div class="card" style="padding:14px; background:#FEF2F2; border-color:#FCA5A5;">
     <div class="text-xs font-bold" style="color:#7F1D1D;">미지급 잔액</div>
     <div class="num font-bold mt-1" style="font-size:24px; color:#B91C1C;">
-      {% if request.state.can_view_amounts %}{{ grand_unpaid|money }}원{% else %}—{% endif %}
+      {% if request.state.can_view_sub %}{{ grand_unpaid|money_sub }}원{% else %}—{% endif %}
     </div>
   </div>
   <div class="card" style="padding:14px; background:#ECFDF5; border-color:#6EE7B7;">
     <div class="text-xs font-bold" style="color:#065F46;">지급 완료</div>
     <div class="num font-bold mt-1" style="font-size:24px; color:#047857;">
-      {% if request.state.can_view_amounts %}{{ (grand_total - grand_unpaid)|money }}원{% else %}—{% endif %}
+      {% if request.state.can_view_sub %}{{ (grand_total - grand_unpaid)|money_sub }}원{% else %}—{% endif %}
     </div>
   </div>
 </div>
@@ -54,11 +54,11 @@
         <td class="font-semibold">🏢 {{ r.vendor_name }}</td>
         <td class="text-center text-xs">{{ r.count }}건</td>
         <td class="text-right num font-bold">
-          {% if request.state.can_view_amounts %}{{ r.total_amount|money }}{% else %}—{% endif %}
+          {% if request.state.can_view_sub %}{{ r.total_amount|money_sub }}{% else %}—{% endif %}
         </td>
         <td class="text-right num font-bold" style="color:#B91C1C;">
           {% if r.unpaid_amount %}
-            {% if request.state.can_view_amounts %}{{ r.unpaid_amount|money }}{% else %}—{% endif %}
+            {% if request.state.can_view_sub %}{{ r.unpaid_amount|money_sub }}{% else %}—{% endif %}
             <div class="text-xs" style="font-weight:400;">{{ r.unpaid_count }}건</div>
           {% else %}
           <span class="text-slate-300">—</span>
@@ -66,7 +66,7 @@
         </td>
         <td class="text-right num" style="color:#047857;">
           {% if r.paid_amount %}
-            {% if request.state.can_view_amounts %}{{ r.paid_amount|money }}{% else %}—{% endif %}
+            {% if request.state.can_view_sub %}{{ r.paid_amount|money_sub }}{% else %}—{% endif %}
             <div class="text-xs">{{ r.paid_count }}건</div>
           {% else %}
           <span class="text-slate-300">—</span>

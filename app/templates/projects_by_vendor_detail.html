@@ -68,7 +68,7 @@
           <span class="badge {% if r.status == '완료' %}badge-green{% elif r.status == '진행중' %}badge-blue{% elif r.status == '취소' %}badge-gray{% else %}badge-orange{% endif %}">{{ r.status }}</span>
         </td>
         <td>
-          <span class="badge {% if r.settlement_status == '입금완료' %}badge-green{% else %}badge-orange{% endif %}">{{ r.settlement_status }}</span>
+          {% if request.state.can_view_settle %}<span class="badge {% if r.settlement_status == '입금완료' %}badge-green{% else %}badge-orange{% endif %}">{{ r.settlement_status }}</span>{% else %}<span style="color:#CBD5E1;">🔒</span>{% endif %}
         </td>
       </tr>
       {% endfor %}

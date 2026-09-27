@@ -16,13 +16,26 @@
         <label class="label">프로젝트 코드 *</label>
         <input name="code" class="input" value="{{ default_code }}" required>
       </div>
-      <div>
-        <label class="label">행사일</label>
-        <input name="event_date" type="date" class="input">
+      <div></div>
+      <div class="md:col-span-2">
+        <label class="label">🗓️ 행사 기간 <span style="color: var(--ink-4); font-size: 11px; font-weight: 500;">(하루 행사면 종료일은 비워두세요)</span></label>
+        <div style="display:grid; grid-template-columns: 1fr auto 1fr auto; gap:8px; align-items:center;">
+          <input name="event_date" id="ev-start" type="date" class="input" value="{{ preset_date or '' }}"
+                 onchange="var e=document.getElementById('ev-end'); e.min=this.value; if(e.value && e.value<this.value) e.value=''; evDays();">
+          <span style="color: var(--ink-4); font-weight:700;">~</span>
+          <input name="event_end_date" id="ev-end" type="date" class="input" value="{{ preset_end or '' }}" min="" onchange="evDays()">
+          <span id="ev-days" style="font-size:12px; font-weight:700; color:#1E40AF; white-space:nowrap; min-width:48px;"></span>
+        </div>
+        <script>
+        function evDays(){var s=document.getElementById('ev-start').value,e=document.getElementById('ev-end').value,o=document.getElementById('ev-days');
+          if(s&&e&&e>s){o.textContent=(Math.round((new Date(e)-new Date(s))/864e5)+1)+'일간';}else if(s){o.textContent='1일';}else{o.textContent='';}}
+        evDays();
+        </script>
       </div>
       <div class="md:col-span-2">
         <label class="label">프로젝트명 *</label>
-        <input name="name" class="input" placeholder="예: OO기업 신년 행사" required>
+        <input name="name" class="input" placeholder="예: OO기업 신년 행사" required value="{{ preset_name or '' }}">
+        {% if from_event %}<input type="hidden" name="from_event" value="{{ from_event }}">{% endif %}
       </div>
       <div>
         <label class="label">거래처 <span style="color: var(--ink-4); font-size: 11px; font-weight: 500;">(이름·사업자번호로 검색)</span></label>

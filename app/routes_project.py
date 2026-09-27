@@ -83,8 +83,12 @@ def auto_status(project) -> tuple[str, str]:
 
     today = date.today()
     days_until = (project.event_date - today).days   # 양수=미래, 0=오늘, 음수=과거
-    is_past = days_until < 0
-    is_imminent = 0 <= days_until <= IMMINENT_DAYS   # 3일 전 ~ 당일
+    # 다일 행사: 종료일이 지나야 '완료'. 시작~종료 사이는 '진행중'
+    _end = getattr(project, "event_end_date", None) or project.event_date
+    if _end < project.event_date:
+        _end = project.event_date
+    is_past = today > _end
+    is_imminent = (not is_past) and days_until <= IMMINENT_DAYS   # 3일 전 ~ 종료일
 
     # 진행상태 자동 계산
     if is_past:
@@ -189,6 +193,26 @@ def _to_int(value, default: int = 0) -> int:
         return int(float(s))
     except (ValueError, TypeError):
         return default
+
+
+def _norm_end_date(start, end):
+    """종료일 정규화: 시작일 없거나, 종료일이 시작일과 같거나 이전이면 None(하루 행사)"""
+    if not start or not end or end <= start:
+        return None
+    return end
+
+
+def event_period_text(p) -> str:
+    """행사 기간 표시: '2026-09-15' 또는 '2026-09-15 ~ 09-17 (3일)'"""
+    st = getattr(p, "event_date", None)
+    if not st:
+        return ""
+    en = getattr(p, "event_end_date", None)
+    if not en or en <= st:
+        return st.isoformat()
+    n = (en - st).days + 1
+    en_s = en.strftime("%m-%d") if en.year == st.year else en.isoformat()
+    return f"{st.isoformat()} ~ {en_s} ({n}일)"
 
 
 def _user(request: Request):
@@ -342,7 +366,7 @@ def project_list(
             rows.append({
                 "id": p.id, "code": p.code, "name": p.name,
                 "vendor_name": v.name if v else "",
-                "event_date": p.event_date, "revenue": p.revenue,
+                "event_date": p.event_date, "event_period": event_period_text(p), "revenue": p.revenue,
                 "supply_amount": p.supply_amount or p.revenue,
                 "expense": exp, "wage": wage,
                 "profit": (p.supply_amount or p.revenue) - exp - wage,
@@ -381,6 +405,7 @@ def project_list(
 @router.get("/projects/new", response_class=HTMLResponse)
 def project_new(request: Request):
     user = _user_with_perm(request, "projects")
+    _pre = (request.query_params.get("date") or "").strip()
     with Session(engine, expire_on_commit=False) as s:
         vendors = s.exec(select(Vendor).order_by(Vendor.name)).all()
         # 자동 코드 생성
@@ -389,6 +414,10 @@ def project_new(request: Request):
         code = f"P-{year}-{count:03d}"
     return templates.TemplateResponse(request, "project_new.html", {"user": user, "vendors": vendors,
         "today": date.today(), "default_code": code,
+        "preset_date": _pre if (len(_pre or "") == 10) else "",
+        "preset_end": (request.query_params.get("end") or "") if (request.query_params.get("end") or "") != _pre else "",
+        "preset_name": request.query_params.get("name") or "",
+        "from_event": request.query_params.get("from_event") or "",
         "category_options": CATEGORY_OPTIONS,
         "category_icons": CATEGORY_ICONS,
     })
@@ -425,6 +454,7 @@ def project_create(
     request: Request,
     code: str = Form(...), name: str = Form(...),
     vendor_id: Optional[str] = Form(None), event_date: str = Form(""),
+    event_end_date: str = Form(""),
     location: str = Form(""),
     amount_input: str = Form("0"),  # 콤마 포함 가능 → 서버에서 파싱
     vat_mode: str = Form("supply"),
@@ -434,6 +464,7 @@ def project_create(
     tax_excluded_note: str = Form(""),
     special_notes: str = Form(""),
     memo: str = Form(""),
+    from_event: str = Form(""),
     categories_csv: str = Form(""),  # 쉼표 구분된 카테고리 (JS가 hidden input으로 채움)
 ):
     _user(request)
@@ -451,6 +482,7 @@ def project_create(
         p = Project(
             code=final_code, name=name.strip(), vendor_id=v_id,
             event_date=_parse_date_safe(event_date),
+            event_end_date=_norm_end_date(_parse_date_safe(event_date), _parse_date_safe(event_end_date)),
             location=location.strip(),
             revenue=total,
             supply_amount=supply,
@@ -467,6 +499,11 @@ def project_create(
         try:
             s.add(p)
             s.commit()
+            if from_event and str(from_event).isdigit():
+                from database import CalendarEvent
+                _ev = s.get(CalendarEvent, int(from_event))
+                if _ev:
+                    s.delete(_ev); s.commit()
         except Exception as ex:
             s.rollback()
             raise HTTPException(400, f"프로젝트 저장 실패: {type(ex).__name__} — {str(ex)[:200]}")
@@ -515,6 +552,12 @@ def projects_bulk_update(
         ids = [int(x) for x in project_ids.split(",") if x.strip()]
     except ValueError:
         raise HTTPException(400, "잘못된 ID 형식")
+    from permissions import has_permission as _hp
+    _u = _user(request)
+    if field == "settlement_status" and not _hp(_u, "manage_settlement"):
+        raise HTTPException(403, "입금완료 처리 권한이 없습니다.")
+    if field == "status" and not _hp(_u, "projects_edit"):
+        raise HTTPException(403, "프로젝트 수정 권한이 없습니다.")
     if field not in ("settlement_status", "status"):
         raise HTTPException(400, f"허용되지 않은 필드: {field}")
 
@@ -699,7 +742,9 @@ def project_detail(request: Request, pid: int):
         unified = unified_status(p)
         pd = {
             "id": p.id, "code": p.code, "name": p.name,
-            "event_date": p.event_date, "location": p.location, "revenue": p.revenue,
+            "event_date": p.event_date, "event_end_date": p.event_end_date,
+            "event_period": event_period_text(p),
+            "location": p.location, "revenue": p.revenue,
             "supply_amount": p.supply_amount, "vat_amount": p.vat_amount,
             "vat_mode": p.vat_mode or "supply",
             # 화면에는 자동 계산 결과를 우선 표시
@@ -719,7 +764,10 @@ def project_detail(request: Request, pid: int):
             "categories": [c for c in (p.categories or "").split(",") if c.strip()],
         }
         vd = {"id": v.id, "name": v.name} if v else None
+        from routes_staff import project_staff_context
+        staff_ctx = project_staff_context(s, p)
     return templates.TemplateResponse(request, "project_detail.html", {
+        **staff_ctx,
         "user": user, "p": pd, "vendor": vd,
         "expenses": expenses, "attendances": att_rows,
         "total_expense": total_expense, "total_wage": total_wage, "profit": profit,
@@ -729,7 +777,9 @@ def project_detail(request: Request, pid: int):
 
 @router.post("/projects/{pid}/settle")
 def mark_settled(request: Request, pid: int):
-    _user(request)
+    from permissions import has_permission
+    if not has_permission(_user(request), "manage_settlement"):
+        raise HTTPException(403, "입금완료 처리 권한이 없습니다.")
     with Session(engine, expire_on_commit=False) as s:
         p = s.get(Project, pid)
         if p:
@@ -748,7 +798,8 @@ def project_edit(request: Request, pid: int):
             raise HTTPException(404)
         vendors = s.exec(select(Vendor).order_by(Vendor.name)).all()
         pd = {"id": p.id, "code": p.code, "name": p.name, "vendor_id": p.vendor_id,
-              "event_date": p.event_date, "location": p.location, "revenue": p.revenue,
+              "event_date": p.event_date, "event_end_date": p.event_end_date,
+              "location": p.location, "revenue": p.revenue,
               "supply_amount": p.supply_amount, "vat_amount": p.vat_amount,
               "vat_mode": p.vat_mode or "supply",
               "status": p.status, "settlement_status": p.settlement_status,
@@ -772,6 +823,7 @@ def project_update(
     request: Request, pid: int,
     code: str = Form(...), name: str = Form(...),
     vendor_id: Optional[str] = Form(None), event_date: str = Form(""),
+    event_end_date: str = Form(""),
     location: str = Form(""),
     amount_input: str = Form("0"),  # 콤마 포함 가능
     vat_mode: str = Form("supply"),
@@ -811,21 +863,26 @@ def project_update(
         p.name = name.strip()
         p.vendor_id = v_id
         p.event_date = _parse_date_safe(event_date)
+        p.event_end_date = _norm_end_date(p.event_date, _parse_date_safe(event_end_date))
         p.location = location.strip()
-        p.revenue = total
-        p.supply_amount = supply
-        p.vat_amount = vat
-        p.vat_mode = vat_mode if vat_mode in ("supply", "total", "cash") else "supply"
+        from permissions import has_permission as _hpr
+        if _hpr(_user(request), "view_revenue"):
+            p.revenue = total
+            p.supply_amount = supply
+            p.vat_amount = vat
+            p.vat_mode = vat_mode if vat_mode in ("supply", "total", "cash") else "supply"
         p.status = status if status in ("준비중","진행중","완료","취소") else p.status
-        p.settlement_status = settlement_status if settlement_status in ("미수금","입금완료") else p.settlement_status
-        p.invoice_date = _parse_date_safe(invoice_date)
-        p.settle_due_date = _parse_date_safe(settle_due_date)
-        p.paid_date = _parse_date_safe(paid_date)
-        p.payment_method = payment_method
-        p.payment_memo = payment_memo
-        is_cash = (cash_no_invoice == "yes") or (vat_mode == "cash")
-        p.cash_no_invoice = is_cash
-        p.tax_excluded_note = (tax_excluded_note or "").strip() if is_cash else ""
+        from permissions import has_permission as _hp2
+        if _hp2(_user(request), "manage_settlement"):
+            p.settlement_status = settlement_status if settlement_status in ("미수금","입금완료") else p.settlement_status
+            p.invoice_date = _parse_date_safe(invoice_date)
+            p.settle_due_date = _parse_date_safe(settle_due_date)
+            p.paid_date = _parse_date_safe(paid_date)
+            p.payment_method = payment_method
+            p.payment_memo = payment_memo
+            is_cash = (cash_no_invoice == "yes") or (vat_mode == "cash")
+            p.cash_no_invoice = is_cash
+            p.tax_excluded_note = (tax_excluded_note or "").strip() if is_cash else ""
         p.special_notes = special_notes
         p.memo = memo
         # 입금일이 있으면 자동으로 settlement_status를 입금완료로
@@ -882,6 +939,11 @@ def project_delete(request: Request, pid: int):
         except Exception:
             # RentalLog 테이블이 아직 없는 환경에서는 무시
             pass
+
+        # 5-1) 투입 인력 배치 삭제
+        from database import ProjectStaff
+        for ps in s.exec(select(ProjectStaff).where(ProjectStaff.project_id == pid)).all():
+            s.delete(ps)
 
         # 6) 프로젝트 삭제
         s.delete(p)

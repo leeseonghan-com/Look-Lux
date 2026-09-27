@@ -16,7 +16,7 @@
     <div>
       <div class="text-xs" style="color:#7F1D1D;">총 미지급 잔액</div>
       <div class="num font-bold" style="font-size:30px; color:#B91C1C;">
-        {% if request.state.can_view_amounts %}{{ grand_total|money }}원{% else %}—{% endif %}
+        {% if request.state.can_view_sub %}{{ grand_total|money_sub }}원{% else %}—{% endif %}
       </div>
     </div>
     <div>
@@ -31,7 +31,7 @@
     <div>
       <div class="text-xs" style="color:#9A3412;">⚠️ 지급 지연</div>
       <div class="num font-bold" style="font-size:30px; color:#C2410C;">
-        {% if request.state.can_view_amounts %}{{ overdue_total|money }}원{% else %}—{% endif %}
+        {% if request.state.can_view_sub %}{{ overdue_total|money_sub }}원{% else %}—{% endif %}
       </div>
     </div>
     {% endif %}
@@ -68,7 +68,7 @@
     <div class="text-right">
       <div class="text-xs" style="color:#7F1D1D;">지급 예정 합계</div>
       <div class="num font-bold" style="font-size:24px; color:#B91C1C;">
-        {% if request.state.can_view_amounts %}{{ g.total_amount|money }}원{% else %}—{% endif %}
+        {% if request.state.can_view_sub %}{{ g.total_amount|money_sub }}원{% else %}—{% endif %}
       </div>
     </div>
   </div>
@@ -124,20 +124,22 @@
             {% endif %}
           </td>
           <td class="text-right num font-bold">
-            {% if request.state.can_view_amounts %}
-              {{ it.amount|money }}
+            {% if request.state.can_view_sub %}
+              {{ it.amount|money_sub }}
               {% if it.vat_amount %}
-              <div class="text-xs" style="font-weight:400; color:var(--ink-4);">VAT {{ it.vat_amount|money }} 포함</div>
+              <div class="text-xs" style="font-weight:400; color:var(--ink-4);">VAT {{ it.vat_amount|money_sub }} 포함</div>
               {% endif %}
             {% else %}—{% endif %}
           </td>
           <td class="text-center whitespace-nowrap">
+            {% if request.state.can_manage_sub %}
             <form method="post" action="/expenses/{{ it.id }}/toggle-pay" style="display:inline;"
-                  onsubmit="return confirm('{{ g.vendor_name }}\n{{ it.amount|money }}원을 지급완료로 처리하시겠습니까?');">
+                  onsubmit="return confirm('{{ g.vendor_name }}\n{{ it.amount|money_sub }}원을 지급완료로 처리하시겠습니까?');">
               <button type="submit" class="btn-primary" style="padding:5px 12px; font-size:11px; background:#047857;">
                 ✓ 지급완료
               </button>
             </form>
+            {% endif %}
             <a href="/expenses/{{ it.id }}/edit" class="text-slate-500 text-xs ml-1" style="text-decoration:underline;">수정</a>
           </td>
         </tr>

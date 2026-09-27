@@ -14,7 +14,22 @@
     <h2 class="text-lg font-bold mb-4" style="color: var(--ink);">📋 기본 정보</h2>
     <div class="grid md:grid-cols-2 gap-4">
       <div><label class="label">프로젝트 코드 *</label><input name="code" class="input" value="{{ p.code }}" required></div>
-      <div><label class="label">행사일</label><input name="event_date" type="date" class="input" value="{{ p.event_date or '' }}"></div>
+      <div></div>
+      <div class="md:col-span-2">
+        <label class="label">🗓️ 행사 기간 <span style="color: var(--ink-4); font-size: 11px; font-weight: 500;">(하루 행사면 종료일은 비워두세요)</span></label>
+        <div style="display:grid; grid-template-columns: 1fr auto 1fr auto; gap:8px; align-items:center;">
+          <input name="event_date" id="ev-start" type="date" class="input" value="{{ p.event_date or '' }}"
+                 onchange="var e=document.getElementById('ev-end'); e.min=this.value; if(e.value && e.value<this.value) e.value=''; evDays();">
+          <span style="color: var(--ink-4); font-weight:700;">~</span>
+          <input name="event_end_date" id="ev-end" type="date" class="input" value="{{ p.event_end_date or '' }}" min="{{ p.event_date or '' }}" onchange="evDays()">
+          <span id="ev-days" style="font-size:12px; font-weight:700; color:#1E40AF; white-space:nowrap; min-width:48px;"></span>
+        </div>
+        <script>
+        function evDays(){var s=document.getElementById('ev-start').value,e=document.getElementById('ev-end').value,o=document.getElementById('ev-days');
+          if(s&&e&&e>s){o.textContent=(Math.round((new Date(e)-new Date(s))/864e5)+1)+'일간';}else if(s){o.textContent='1일';}else{o.textContent='';}}
+        evDays();
+        </script>
+      </div>
       <div class="md:col-span-2"><label class="label">프로젝트명 *</label><input name="name" class="input" value="{{ p.name }}" required></div>
       <div>
         <label class="label">거래처 <span style="color: var(--ink-4); font-size: 11px; font-weight: 500;">(이름·사업자번호로 검색)</span></label>
@@ -61,6 +76,7 @@
   </script>
 
   <!-- 매출액 + 부가세 카드 -->
+  {% if request.state.can_view_revenue %}
   <div class="card">
     <h2 class="text-lg font-bold mb-4" style="color: var(--ink);">💰 매출액 (부가세 10%)</h2>
 
@@ -122,7 +138,13 @@
     </div>
   </div>
 
+  {% else %}
+  <div class="card" style="background:#F8FAFC;"><h2 class="text-lg font-bold mb-1" style="color: var(--ink);">💰 매출 금액</h2>
+    <p class="text-sm" style="color: var(--ink-4);">🔒 매출 금액 조회 권한이 없습니다. 저장해도 기존 금액은 그대로 유지됩니다.</p></div>
+  {% endif %}
+
   <!-- 결제 정보 -->
+  {% if request.state.can_manage_settle %}
   <div class="card">
     <h2 class="text-lg font-bold mb-1" style="color: var(--ink);">💳 결제 정보</h2>
     <p class="text-xs mb-4" style="color: var(--ink-4);">계산서 발행일·결제 완료일·결제 수단을 정확히 기록하면 정산이 자동 추적됩니다.</p>
@@ -188,6 +210,10 @@
       </div>
     </div>
   </div>
+  {% else %}
+  <div class="card" style="background:#F8FAFC;"><h2 class="text-lg font-bold mb-1" style="color: var(--ink);">💳 결제 정보</h2>
+    <p class="text-sm" style="color: var(--ink-4);">🔒 결제·정산 정보는 입금 처리 권한이 있는 계정만 수정할 수 있습니다.</p></div>
+  {% endif %}
 
   <!-- 특이사항 -->
   <div class="card">

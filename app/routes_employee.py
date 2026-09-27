@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 
 from database import engine, User, Worker, hash_password
 from permissions import (
-    PERMISSION_KEYS, DEFAULT_STAFF_PERMISSIONS,
+    PERMISSION_KEYS, DEFAULT_STAFF_PERMISSIONS, PERMISSION_GROUPS, PERMISSION_PRESETS,
     get_permissions, get_stored_permissions, set_permissions, is_admin,
 )
 from template_utils import templates
@@ -26,6 +26,27 @@ def _require_admin(request: Request):
     if not is_admin(user):
         raise HTTPException(403, "관리자 권한이 필요합니다.")
     return user
+
+
+def _link_workers():
+    with Session(engine, expire_on_commit=False) as s:
+        return [{"id": w.id, "name": w.name, "type": w.employee_type or "알바",
+                 "status": w.employment_status or "재직"}
+                for w in s.exec(select(Worker).order_by(Worker.name)).all()]
+
+
+def _perm_ctx():
+    import json as _json
+    return {"perm_groups": PERMISSION_GROUPS,
+            "presets": PERMISSION_PRESETS,
+            "presets_json": _json.dumps({k: v[1] for k, v in PERMISSION_PRESETS.items()})}
+
+
+def _parse_wid(v):
+    try:
+        return int(v) if v and str(v).strip() else None
+    except (TypeError, ValueError):
+        return None
 
 
 @router.get("/employees", response_class=HTMLResponse)
@@ -55,8 +76,9 @@ def employee_list(request: Request):
 def employee_new(request: Request):
     admin = _require_admin(request)
     return templates.TemplateResponse(request, "employee_form.html", {
+        "link_workers": _link_workers(), **_perm_ctx(),
+        "emp_perms": DEFAULT_STAFF_PERMISSIONS,
         "user": admin, "e": None,
-        "perms": DEFAULT_STAFF_PERMISSIONS,
         "permission_keys": PERMISSION_KEYS,
     })
 
@@ -87,6 +109,7 @@ async def employee_create(request: Request):
             phone=form.get("phone") or "",
             role=form.get("role") or "staff",
             employee_type=form.get("employee_type") or "정직원",
+            worker_id=_parse_wid(form.get("worker_id")),
             is_active=True,
         )
         # 권한 설정 — perms_submitted 마커가 있을 때만 폼 값 반영 (안전장치)
@@ -118,8 +141,10 @@ def employee_edit(request: Request, eid: int):
             "role": u.role, "phone": u.phone,
             "employee_type": u.employee_type,
             "is_self": u.id == admin.id,
+            "worker_id": u.worker_id,
         },
-        "perms": perms,
+        "link_workers": _link_workers(), **_perm_ctx(),
+        "emp_perms": perms,
         "permission_keys": PERMISSION_KEYS,
     })
 
@@ -135,6 +160,7 @@ async def employee_update(request: Request, eid: int):
         u.name = (form.get("name") or u.name).strip()
         u.phone = form.get("phone") or ""
         u.employee_type = form.get("employee_type") or u.employee_type
+        u.worker_id = _parse_wid(form.get("worker_id"))
 
         # 비밀번호 변경 (입력한 경우에만)
         new_pw = (form.get("password") or "").strip()

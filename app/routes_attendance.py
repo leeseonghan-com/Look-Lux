@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from sqlmodel import Session, select
 
 from database import engine, Attendance, Worker, WorkerCheckin, Project, User
-from permissions import is_admin
+from permissions import is_admin, is_employed, my_worker
 from template_utils import templates
 
 router = APIRouter()
@@ -75,9 +75,16 @@ def attendance_list(
     with Session(engine, expire_on_commit=False) as s:
         if tab == "fulltime":
             # 정직원: 오늘 출퇴근 현황 + 선택 기간 기록
-            workers_q = s.exec(
-                select(Worker).where(Worker.is_active == True, Worker.employee_type == "정직원").order_by(Worker.name)
-            ).all()
+            admin = is_admin(user)
+            me = my_worker(s, user)
+            if admin:
+                # 관리자: 재직 중인 정직원 전체 (퇴사자 제외)
+                workers_q = [w for w in s.exec(
+                    select(Worker).where(Worker.employee_type == "정직원").order_by(Worker.name)
+                ).all() if is_employed(w)]
+            else:
+                # 직원: 본인만
+                workers_q = [me] if (me and is_employed(me)) else []
             workers_today = []
             for w in workers_q:
                 ci = s.exec(
@@ -95,6 +102,8 @@ def attendance_list(
 
             # 기간 필터링된 기록
             q = select(WorkerCheckin)
+            if not admin:
+                q = q.where(WorkerCheckin.worker_id == (me.id if me else -1))
             if range_from:
                 q = q.where(WorkerCheckin.work_date >= range_from)
             if range_to:
@@ -128,6 +137,7 @@ def attendance_list(
                 "to_date": (range_to.isoformat() if range_to else ""),
                 "total_hours": round(total_hours, 1),
                 "is_admin": is_admin(user),
+                "no_link": (not admin) and not me,
             })
 
         # 기본: 알바 일당 기록 탭
@@ -175,16 +185,30 @@ def attendance_list(
     })
 
 
+def check_worker_access(s, user, worker_id: int):
+    """출퇴근 등록/수정 권한 — 관리자는 재직자 전체, 직원은 본인만"""
+    w = s.get(Worker, worker_id)
+    if not w or not is_employed(w):
+        raise HTTPException(403, "퇴사했거나 존재하지 않는 직원입니다.")
+    if is_admin(user):
+        return w
+    me = my_worker(s, user)
+    if not me or me.id != w.id:
+        raise HTTPException(403, "본인의 출퇴근만 등록할 수 있습니다.")
+    return w
+
+
 # ============================================================
 # 정직원 출퇴근 버튼
 # ============================================================
 @router.post("/attendance/checkin")
 def worker_checkin(request: Request, worker_id: int = Form(...)):
     """정직원 출근 — 오늘 날짜에 이미 출근 기록 있으면 무시"""
-    _user(request)
+    user = _user(request)
     today = date.today()
     now = datetime.now()
     with Session(engine, expire_on_commit=False) as s:
+        check_worker_access(s, user, worker_id)
         existing = s.exec(
             select(WorkerCheckin).where(
                 WorkerCheckin.worker_id == worker_id,
@@ -204,10 +228,11 @@ def worker_checkin(request: Request, worker_id: int = Form(...)):
 @router.post("/attendance/checkout")
 def worker_checkout(request: Request, worker_id: int = Form(...)):
     """정직원 퇴근 — 오늘 날짜의 출근 기록에 퇴근 시간 기록"""
-    _user(request)
+    user = _user(request)
     today = date.today()
     now = datetime.now()
     with Session(engine, expire_on_commit=False) as s:
+        check_worker_access(s, user, worker_id)
         existing = s.exec(
             select(WorkerCheckin).where(
                 WorkerCheckin.worker_id == worker_id,
@@ -283,9 +308,16 @@ def attendance_create(
     memo: str = Form(""),
 ):
     user = _user(request)
+    from permissions import has_permission as _hpw
+    _can_w = _hpw(user, "view_wage_pay")
     wage = _safe_int(daily_wage, 0)
     bonus = _safe_int(bonus_amount, 0)
     with Session(engine, expire_on_commit=False) as s:
+        if not _can_w:
+            _w = s.get(Worker, worker_id)
+            wage = (_w.default_daily_wage if _w else 0) or 0
+            bonus = 0
+            bonus_memo = ""
         a = Attendance(
             project_id=project_id, worker_id=worker_id,
             work_date=datetime.strptime(work_date, "%Y-%m-%d").date(),
@@ -337,13 +369,17 @@ def attendance_update(
     bonus_memo: str = Form(""),
     memo: str = Form(""),
 ):
-    _user(request)
+    _u = _user(request)
+    from permissions import has_permission as _hpw
+    _can_w = _hpw(_u, "view_wage_pay")
     wage = _safe_int(daily_wage, 0)
     bonus = _safe_int(bonus_amount, 0)
     with Session(engine, expire_on_commit=False) as s:
         a = s.get(Attendance, aid)
         if not a:
             raise HTTPException(404)
+        if not _can_w:   # 급여 권한 없으면 기존 금액 유지
+            wage, bonus, bonus_memo = a.daily_wage, a.bonus_amount or 0, a.bonus_memo or ""
         a.project_id = project_id
         a.worker_id = worker_id
         a.work_date = datetime.strptime(work_date, "%Y-%m-%d").date()
@@ -360,7 +396,9 @@ def attendance_update(
 
 @router.post("/attendance/{aid}/pay")
 def attendance_pay(request: Request, aid: int):
-    _user(request)
+    from permissions import has_permission
+    if not has_permission(_user(request), "manage_wage_pay"):
+        raise HTTPException(403, "알바 급여 지급완료 처리 권한이 없습니다.")
     with Session(engine, expire_on_commit=False) as s:
         a = s.get(Attendance, aid)
         if a:
@@ -393,6 +431,10 @@ def checkin_edit(request: Request, cid: int):
         ci = s.get(WorkerCheckin, cid)
         if not ci:
             raise HTTPException(404, "출퇴근 기록을 찾을 수 없습니다.")
+        if not is_admin(user):
+            me = my_worker(s, user)
+            if not me or me.id != ci.worker_id:
+                raise HTTPException(403, "본인의 출퇴근 기록만 수정할 수 있습니다.")
         worker = s.get(Worker, ci.worker_id)
         # 시간을 HH:MM 형식으로 표시하기 쉽게 변환
         ci_dict = {
@@ -418,8 +460,8 @@ def checkin_update(
     check_out_date: str = Form(""), check_out_time: str = Form(""),
     memo: str = Form(""),
 ):
-    """출퇴근 시간 수정 — 직원·관리자 모두 가능. 잘못된 입력은 친절히 거부."""
-    _user(request)
+    """출퇴근 시간 수정 — 관리자: 전체 / 직원: 본인 기록만"""
+    user = _user(request)
     parsed_work_date = _parse_date(work_date) or date.today()
 
     def _combine(d_str: str, t_str: str, default_date: date):
@@ -440,6 +482,10 @@ def checkin_update(
         ci = s.get(WorkerCheckin, cid)
         if not ci:
             raise HTTPException(404, "출퇴근 기록을 찾을 수 없습니다.")
+        if not is_admin(user):
+            me = my_worker(s, user)
+            if not me or me.id != ci.worker_id:
+                raise HTTPException(403, "본인의 출퇴근 기록만 수정할 수 있습니다.")
         ci.work_date = parsed_work_date
         ci.check_in = ci_dt
         ci.check_out = co_dt
@@ -489,7 +535,7 @@ def attendance_export(
     project_id: str = "",
 ):
     """근태 엑셀 다운로드 — 알바 일당 / 정직원 출퇴근"""
-    _user(request)
+    user = _user(request)
     try:
         project_id = int(project_id) if project_id and str(project_id).strip() else None
     except (ValueError, TypeError):
@@ -512,6 +558,9 @@ def attendance_export(
             for cell in ws[1]:
                 cell.font = header_font; cell.fill = header_fill; cell.alignment = center
             q = select(WorkerCheckin)
+            if not is_admin(user):
+                _me = my_worker(s, user)
+                q = q.where(WorkerCheckin.worker_id == (_me.id if _me else -1))
             if range_from: q = q.where(WorkerCheckin.work_date >= range_from)
             if range_to: q = q.where(WorkerCheckin.work_date <= range_to)
             q = q.order_by(WorkerCheckin.work_date.desc(), WorkerCheckin.check_in.desc())
@@ -537,7 +586,8 @@ def attendance_export(
             filename = f"정직원_출퇴근_{(range_from or '').__str__()}_{(range_to or '').__str__()}.xlsx"
         else:
             ws.title = "알바 일당"
-            headers = ["날짜", "근무자", "프로젝트", "일수", "일당", "추가금액", "추가메모", "총지급액", "지급상태", "지급일", "메모"]
+            _sw = bool(getattr(request.state, "can_view_wage", False))
+            headers = ["날짜", "근무자", "프로젝트", "일수"] + (["일당", "추가금액", "추가메모", "총지급액", "지급상태", "지급일"] if _sw else []) + ["메모"]
             ws.append(headers)
             for cell in ws[1]:
                 cell.font = header_font; cell.fill = header_fill; cell.alignment = center
@@ -553,12 +603,10 @@ def attendance_export(
                     a.work_date.isoformat() if a.work_date else "",
                     w.name if w else "?",
                     p.name if p else "?",
-                    a.days, a.daily_wage,
-                    a.bonus_amount or 0, a.bonus_memo or "",
-                    a.total_wage, a.pay_status,
-                    a.pay_date.isoformat() if a.pay_date else "",
-                    a.memo or "",
-                ])
+                    a.days,
+                ] + ([a.daily_wage, a.bonus_amount or 0, a.bonus_memo or "",
+                      a.total_wage, a.pay_status,
+                      a.pay_date.isoformat() if a.pay_date else ""] if _sw else []) + [a.memo or ""])
             for col, width in zip("ABCDEFGHIJK", [12,12,18,8,12,12,20,14,12,12,30]):
                 ws.column_dimensions[col].width = width
             filename = f"알바_일당_{(range_from or '').__str__()}_{(range_to or '').__str__()}.xlsx"

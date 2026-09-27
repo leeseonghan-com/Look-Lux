@@ -299,7 +299,7 @@
       <table class="dt w-full" id="items-table">
         <thead>
           <tr>
-            <th class="w-8">순서</th>
+            <th style="width:34px; text-align:center; padding-left:2px; padding-right:2px;">#</th>
             <th>품명 (입력하면 단가표 자동완성)</th>
             <th class="mobile-hide">규격</th>
             <th class="w-20">수량</th>
@@ -308,13 +308,13 @@
             <th class="w-32 text-right" id="price-header">단가</th>
             <th class="w-24 text-right cost-col" style="display:none; background:#D1FAE5;">마진%</th>
             <th class="w-32 text-right">금액</th>
-            <th class="w-16"></th>
+            <th style="width:112px; text-align:center; padding-left:2px; padding-right:2px;">순서/삭제</th>
           </tr>
         </thead>
         <tbody id="items-body"></tbody>
       </table>
     </div>
-    <p class="text-xs text-slate-500 mt-2">💡 순서: ▲▼ 버튼으로 위/아래 이동. 원가 컬럼을 켜면 마진율이 자동 계산됩니다 (인쇄본에는 포함 안 됨).</p>
+    <p class="text-xs text-slate-500 mt-2">💡 순서 변경: 각 행 오른쪽 <b>▲ ▼</b> 버튼으로 위/아래 이동 (숫자 = 현재 순번). 원가 컬럼을 켜면 마진율이 자동 계산됩니다 (인쇄본에는 포함 안 됨).</p>
   </div>
 
   <!-- 마진 요약 (원가 컬럼 활성 시) -->
@@ -533,13 +533,7 @@ function addRow(data) {
   tr.dataset.row = rowSeq;
   const initCost = parseInt(data.cost_price) || 0;
   tr.innerHTML = `
-    <td class="text-center text-xs" style="white-space:nowrap;">
-      <div style="display:flex; flex-direction:column; gap:1px; align-items:center;">
-        <button type="button" onclick="moveRow(this, -1)" title="위로" style="background:none; border:1px solid #D1D5DB; border-radius:3px; padding:0 4px; font-size:9px; cursor:pointer; line-height:1.2;">▲</button>
-        <span class="row-num" style="font-weight:700;">0</span>
-        <button type="button" onclick="moveRow(this, 1)" title="아래로" style="background:none; border:1px solid #D1D5DB; border-radius:3px; padding:0 4px; font-size:9px; cursor:pointer; line-height:1.2;">▼</button>
-      </div>
-    </td>
+    <td class="seq-cell" style="text-align:center; font-size:12px; font-weight:800; color:#475569; padding:0 2px; vertical-align:middle;">-</td>
     <td><input class="w-full px-2 py-1 border border-slate-200 rounded text-sm ac-input" name="name" placeholder="품명 입력..." value="${data.name||''}"></td>
     <td class="mobile-hide"><input class="w-full px-2 py-1 border border-slate-200 rounded text-sm" name="spec" placeholder="규격" value="${data.spec||''}"></td>
     <td><input class="w-full px-2 py-1 border border-slate-200 rounded text-sm num text-right" name="quantity" type="number" min="1" step="1" inputmode="numeric" value="${parseInt(data.quantity)||1}" oninput="calcRow(this)" onchange="this.value=Math.max(1, parseInt(this.value)||1); calcRow(this);"></td>
@@ -548,7 +542,13 @@ function addRow(data) {
     <td><input class="w-full px-2 py-1 border border-slate-200 rounded text-sm num text-right money-input" name="unit_price" value="${data.unit_price||0}" oninput="calcRow(this)"></td>
     <td class="cost-col margin-cell text-right num text-xs" style="display:none; background:#F0FDF4;">-</td>
     <td class="text-right num font-bold amount-cell">0원</td>
-    <td class="text-center"><button type="button" onclick="removeRow(this)" title="삭제" class="text-red-500 text-sm" style="font-weight:700; padding:2px 6px;">✕</button></td>
+    <td class="act-cell" style="white-space:nowrap; text-align:center; vertical-align:middle; padding:0 2px;">
+      <span style="display:inline-flex; gap:3px; align-items:center; justify-content:center;">
+        <button type="button" class="js-row-up" title="위로 이동" style="width:30px; height:28px; padding:0; margin:0; background:#E2E8F0; color:#0F172A; border:1px solid #64748B; border-radius:4px; font-size:12px; font-weight:800; line-height:26px; text-align:center; cursor:pointer; box-sizing:border-box;">&#9650;</button>
+        <button type="button" class="js-row-down" title="아래로 이동" style="width:30px; height:28px; padding:0; margin:0; background:#E2E8F0; color:#0F172A; border:1px solid #64748B; border-radius:4px; font-size:12px; font-weight:800; line-height:26px; text-align:center; cursor:pointer; box-sizing:border-box;">&#9660;</button>
+        <button type="button" class="js-row-del" title="삭제" style="width:30px; height:28px; padding:0; margin:0; background:#FEF2F2; color:#DC2626; border:1px solid #FCA5A5; border-radius:4px; font-size:13px; font-weight:800; line-height:26px; text-align:center; cursor:pointer; box-sizing:border-box;">&#10005;</button>
+      </span>
+    </td>
   `;
   document.getElementById('items-body').appendChild(tr);
 
@@ -574,17 +574,89 @@ function addRow(data) {
   calcRow(tr.querySelector('input[name=quantity]'));
 }
 
-function removeRow(btn) {
-  btn.closest('tr').remove();
+/* ══════════════════════════════════════════════════════════════
+   품목 순서 이동 — 전면 재작성 (v3)
+   [기존 버그] renumber() 가 tr.querySelector('td') = "첫 번째 칸"에
+   textContent 를 써서 품명 <input> 을 삭제해버렸음.
+   → 이동은 됐지만 입력칸이 파괴돼 "작동 안 함"으로 보였다.
+   [해결] 순번 전용 칸(.seq-cell)을 신설해 그 칸만 갱신하고,
+   버튼은 onclick 인라인 대신 이벤트 위임으로 묶어 항상 동작하게 함.
+   ══════════════════════════════════════════════════════════════ */
+
+/* 순번 = .seq-cell 만 갱신. 입력칸은 절대 건드리지 않는다. */
+function renumber() {
+  const rows = document.querySelectorAll('#items-body tr');
+  rows.forEach(function (tr, i) {
+    const cell = tr.querySelector('.seq-cell');
+    if (cell) cell.textContent = String(i + 1);
+    // 첫 행의 ▲ / 마지막 행의 ▼ 는 비활성 처리
+    const up = tr.querySelector('.js-row-up');
+    const dn = tr.querySelector('.js-row-down');
+    if (up) { up.disabled = (i === 0); up.style.opacity = (i === 0) ? '0.35' : '1'; }
+    if (dn) { dn.disabled = (i === rows.length - 1); dn.style.opacity = (i === rows.length - 1) ? '0.35' : '1'; }
+  });
+}
+
+function flashRow(tr) {
+  try {
+    tr.style.transition = 'background 0.18s';
+    tr.style.background = '#FEF08A';
+    setTimeout(function () { tr.style.background = ''; }, 360);
+  } catch (e) {}
+}
+
+/* 행 이동 핵심: DOM 노드를 그대로 옮기므로 입력값·자동완성·이벤트가 모두 유지됨 */
+function moveRowBy(tr, dir) {
+  if (!tr) return;
+  const body = tr.parentNode;
+  if (!body) return;
+  if (dir < 0) {
+    const prev = tr.previousElementSibling;
+    if (!prev) return;
+    body.insertBefore(tr, prev);
+  } else {
+    const next = tr.nextElementSibling;
+    if (!next) return;
+    body.insertBefore(next, tr);
+  }
+  renumber();
+  flashRow(tr);
+}
+
+function deleteRow(tr) {
+  if (!tr) return;
+  tr.remove();
+  if (document.querySelectorAll('#items-body tr').length === 0) addRow();
   renumber();
   calc();
 }
 
-function renumber() {
-  document.querySelectorAll('#items-body tr').forEach((tr, i) => {
-    tr.querySelector('td').textContent = i + 1;
-  });
-}
+/* 이벤트 위임 — tbody 에 한 번만 등록.
+   행을 몇 번 옮기거나 새로 만들어도 바인딩이 끊기지 않는다. */
+(function bindRowActions() {
+  function bind() {
+    const body = document.getElementById('items-body');
+    if (!body) return false;
+    if (body.__rowActionsBound) return true;
+    body.__rowActionsBound = true;
+    body.addEventListener('click', function (e) {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const tr = btn.closest('tr');
+      if (!tr) return;
+      if (btn.classList.contains('js-row-up'))        { e.preventDefault(); moveRowBy(tr, -1); }
+      else if (btn.classList.contains('js-row-down')) { e.preventDefault(); moveRowBy(tr, 1); }
+      else if (btn.classList.contains('js-row-del'))  { e.preventDefault(); deleteRow(tr); }
+    });
+    return true;
+  }
+  if (!bind()) document.addEventListener('DOMContentLoaded', bind);
+})();
+
+/* 구버전 호환 (혹시 남아있는 인라인 호출 대비) */
+function removeRow(btn) { deleteRow(btn && btn.closest ? btn.closest('tr') : null); }
+function itemUp(btn)    { moveRowBy(btn && btn.closest ? btn.closest('tr') : null, -1); }
+function itemDown(btn)  { moveRowBy(btn && btn.closest ? btn.closest('tr') : null, 1); }
 
 function calcRow(input) {
   const tr = input.closest('tr');
@@ -661,16 +733,6 @@ function updateMarginSummary() {
   mPct.style.color = color;
 }
 
-function moveRow(btn, dir) {
-  const tr = btn.closest('tr');
-  const tbody = tr.parentNode;
-  if (dir < 0 && tr.previousElementSibling) {
-    tbody.insertBefore(tr, tr.previousElementSibling);
-  } else if (dir > 0 && tr.nextElementSibling) {
-    tbody.insertBefore(tr.nextElementSibling, tr);
-  }
-  renumber();
-}
 
 function getVatMode() {
   const checked = document.querySelector('input[name=vat_mode]:checked');

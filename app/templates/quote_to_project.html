@@ -194,7 +194,7 @@
       <tbody>
         {% for it in items %}
         <tr>
-          <td>{{ it.seq }}</td>
+          <td>{{ loop.index }}</td>
           <td class="font-semibold">{{ it.name }}</td>
           <td>{{ it.spec or '-' }}</td>
           <td class="text-right num">{{ '{:g}'.format(it.quantity) }}</td>
