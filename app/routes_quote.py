@@ -82,6 +82,16 @@ def _generate_project_code() -> str:
     return f"P-{year}-{count:03d}"
 
 
+def _unique_quote_number(session, base: str, exclude_id=None) -> str:
+    """견적번호 중복 시 -2, -3 … 자동 부여 (중복 오류 화면 방지)"""
+    cand, n = base, 2
+    while True:
+        q = session.exec(select(Quote).where(Quote.quote_number == cand)).first()
+        if not q or (exclude_id and q.id == exclude_id):
+            return cand
+        cand = f"{base}-{n}"; n += 1
+
+
 def _user_names(session) -> dict:
     return {u.id: (u.name or u.username) for u in session.exec(select(User)).all()}
 
@@ -259,30 +269,6 @@ async def quote_create(request: Request):
     if vat_mode not in ("supply", "total", "cash"):
         vat_mode = "supply"
     discount = _safe_int_q(form.get("discount", "0"), 0)
-    from permissions import has_permission as _hpq
-    _can_rev = _hpq(_user(request), "view_revenue")
-    if not _can_rev:
-        # ★ 금액 권한 없는 직원: 화면에 가격이 없으므로 저장된 기존 가격을 그대로 사용
-        with Session(engine, expire_on_commit=False) as _s0:
-            _old_q = _s0.get(Quote, qid)
-            _olds = _s0.exec(select(QuoteItem).where(QuoteItem.quote_id == qid).order_by(QuoteItem.seq)).all()
-        _by_name = {}
-        for _o in _olds:
-            _by_name.setdefault((_o.name or "").strip(), []).append(_o)
-        for _it in items:
-            _cands = _by_name.get((_it.get("name") or "").strip()) or []
-            _o = _cands.pop(0) if _cands else None
-            _up = (_o.unit_price if _o else 0) or 0
-            _it["unit_price"] = _up
-            _it["cost_price"] = (getattr(_o, "cost_price", 0) if _o else 0) or 0
-            try:
-                _qq = int(float(str(_it.get("quantity", 1) or 1).replace(",", "")))
-            except (ValueError, TypeError):
-                _qq = 1
-            _days = (_old_q.rental_days or 1) if (_old_q and _old_q.quote_type == "렌탈") else 1
-            _it["amount"] = _qq * _up * _days
-        discount = (_old_q.discount if _old_q else 0) or 0
-        vat_mode = (_old_q.vat_mode if _old_q else vat_mode) or vat_mode
     amounts = _calc_quote_amounts(items, discount, vat_mode)
 
     # 날짜 안전 파싱
@@ -326,7 +312,7 @@ async def quote_create(request: Request):
             form_project_name = form.get("project_name") or ""
 
         q = Quote(
-            quote_number=(form.get("quote_number") or "").strip() or f"Q-{date.today().year}-{int(date.today().timestamp()) % 10000:04d}",
+            quote_number=_unique_quote_number(s, (form.get("quote_number") or "").strip() or f"Q-{date.today().year}-{int(date.today().timestamp()) % 10000:04d}"),
             quote_date=quote_date_p,
             event_date=event_date_p,
             quote_type=(form.get("quote_type") or "납품").strip(),
@@ -515,6 +501,35 @@ async def quote_update(request: Request, qid: int):
     if vat_mode not in ("supply", "total", "cash"):
         vat_mode = "supply"
     discount = _safe_int_q(form.get("discount", "0"), 0)
+    from permissions import has_permission as _hpq
+    _uq = _user(request)
+    _can_price = _hpq(_uq, "quote_price")
+    _can_cost = _hpq(_uq, "view_revenue")
+    if not (_can_price and _can_cost):
+        # ★ 화면에 없던 금액은 저장된 기존 값을 그대로 유지
+        with Session(engine, expire_on_commit=False) as _s0:
+            _old_q = _s0.get(Quote, qid)
+            _olds = _s0.exec(select(QuoteItem).where(QuoteItem.quote_id == qid).order_by(QuoteItem.seq)).all()
+        _by_name = {}
+        for _o in _olds:
+            _by_name.setdefault((_o.name or "").strip(), []).append(_o)
+        for _it in items:
+            _cands = _by_name.get((_it.get("name") or "").strip()) or []
+            _o = _cands.pop(0) if _cands else None
+            if not _can_cost:
+                _it["cost_price"] = (getattr(_o, "cost_price", 0) if _o else 0) or 0
+            if not _can_price:
+                _up = (_o.unit_price if _o else 0) or 0
+                _it["unit_price"] = _up
+                try:
+                    _qq = int(float(str(_it.get("quantity", 1) or 1).replace(",", "")))
+                except (ValueError, TypeError):
+                    _qq = 1
+                _days = (_old_q.rental_days or 1) if (_old_q and _old_q.quote_type == "렌탈") else 1
+                _it["amount"] = _qq * _up * _days
+        if not _can_price:
+            discount = (_old_q.discount if _old_q else 0) or 0
+            vat_mode = (_old_q.vat_mode if _old_q else vat_mode) or vat_mode
     amounts = _calc_quote_amounts(items, discount, vat_mode)
 
     # 날짜 안전 파싱
@@ -528,8 +543,8 @@ async def quote_update(request: Request, qid: int):
             raise HTTPException(404, "해당 견적서를 찾을 수 없습니다.")
         # 견적번호 안전 처리 (빈 값 → 기존값 유지)
         new_qn = (form.get("quote_number") or "").strip()
-        if new_qn:
-            q.quote_number = new_qn
+        if new_qn and new_qn != q.quote_number:
+            q.quote_number = _unique_quote_number(s, new_qn, exclude_id=q.id)
         q.quote_date = quote_date_p
         q.event_date = event_date_p
         q.quote_type = (form.get("quote_type") or "납품").strip()
@@ -679,8 +694,8 @@ def quote_print(request: Request, qid: int):
     """인쇄용 깨끗한 견적서"""
     _u = _user(request)
     from permissions import has_permission as _hpq
-    if not _hpq(_u, "view_revenue"):
-        raise HTTPException(403, "견적서 출력은 매출 금액 조회 권한이 필요합니다.")
+    if not _hpq(_u, "quote_price"):
+        raise HTTPException(403, "견적서 출력 권한이 없습니다.")
     with Session(engine, expire_on_commit=False) as s:
         q = s.get(Quote, qid)
         if not q:
@@ -731,8 +746,8 @@ def quote_pdf(request: Request, qid: int, inline: int = 0):
     inline=1 이면 브라우저 내장 뷰어로 열기(모바일 미리보기용)."""
     _u = _user(request)
     from permissions import has_permission as _hpq
-    if not _hpq(_u, "view_revenue"):
-        raise HTTPException(403, "견적서 출력은 매출 금액 조회 권한이 필요합니다.")
+    if not _hpq(_u, "quote_price"):
+        raise HTTPException(403, "견적서 출력 권한이 없습니다.")
     with Session(engine, expire_on_commit=False) as s:
         q = s.get(Quote, qid)
         if not q:

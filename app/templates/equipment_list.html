@@ -102,10 +102,10 @@
           {{ r.in_repair if r.in_repair > 0 else '-' }}
         </td>
         <td class="text-right num text-xs {% if r.consumer_price > 0 %}font-bold{% else %}text-slate-300{% endif %}">
-          {{ r.consumer_price|money if r.consumer_price > 0 else '-' }}
+          {{ r.consumer_price|money_raw if r.consumer_price > 0 else '-' }}
         </td>
         <td class="text-right num text-xs {% if r.rental_daily > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if r.rental_daily > 0 %}#9A3412{% else %}inherit{% endif %};">
-          {{ r.rental_daily|money if r.rental_daily > 0 else '-' }}
+          {{ r.rental_daily|money_raw if r.rental_daily > 0 else '-' }}
         </td>
         <td class="text-center whitespace-nowrap" onclick="event.stopPropagation();">
           <a href="/equipment/{{ r.id }}/edit" class="text-xs font-semibold hover:underline" style="color: var(--gold-2);">수정</a>

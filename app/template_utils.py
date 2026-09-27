@@ -191,13 +191,40 @@ def _hide(v):
     return HIDDEN
 
 
+QUOTE_PRICE_KEYS = {"subtotal", "discount", "after_discount", "vat", "total", "unit_price", "price",
+                    "consumer_price", "rental_daily", "rental_deposit", "amount", "won_amount"}
+# 원가·마진·매입가는 견적 권한만으로는 안 보임 (매출 권한 필요)
+QUOTE_COST_KEYS = {"cost_price", "import_price", "dealer_price", "purchase_price", "margin", "margin_pct",
+                   "line_cost", "line_margin", "line_pct", "total_cost", "total_sell", "margin_info"}
+
+
+def _is_quote_screen(name: str) -> bool:
+    n = name.replace(".html", "")
+    return any(n.startswith(x) for x in ("quote", "mobile/quote", "product", "item", "inventory",
+                                          "equipment", "mobile/equipment"))
+
+
+def _is_stock_screen(name: str) -> bool:
+    """단가표·재고·장비 화면 — 단가표/재고 권한자는 금액 전부 보임 (수정 저장 시 값 유실 방지)"""
+    n = name.replace(".html", "")
+    return any(n.startswith(x) for x in ("product", "item", "inventory", "equipment", "mobile/equipment"))
+
+
 def mask_context(request, name: str, context: dict) -> dict:
     st = getattr(request, "state", None)
     if st is None or getattr(st, "is_admin", False):
         return context
     kind = _TEMPLATE_KIND.get(name.replace(".html", ""), "")
     keys = set()
-    if not getattr(st, "can_view_revenue", False):
+    if _is_stock_screen(name) and (getattr(st, "perms", {}) or {}).get("products"):
+        pass   # 단가표·재고 권한자: 이 화면들은 금액 그대로
+    elif _is_quote_screen(name):
+        # 견적·단가표·재고 화면: 견적 단가 권한 기준
+        if not getattr(st, "can_view_quote_price", False):
+            keys |= QUOTE_PRICE_KEYS | QUOTE_COST_KEYS
+        elif not getattr(st, "can_view_revenue", False):
+            keys |= QUOTE_COST_KEYS
+    elif not getattr(st, "can_view_revenue", False):
         keys |= REVENUE_KEYS
     if not getattr(st, "can_view_sub", False):
         keys |= SUB_KEYS
@@ -207,13 +234,17 @@ def mask_context(request, name: str, context: dict) -> dict:
     if not getattr(st, "can_view_wage", False):
         keys |= WAGE_KEYS
         if kind == "wage":
-            keys |= {"amount"}
+            keys |= {"amount", "pay_status", "pay_date", "unpaid_amount", "total_amount"}
+    if kind == "sub" and not getattr(st, "can_view_sub", False):
+        keys |= {"pay_status", "pay_date", "pay_due_date"}
     if not getattr(st, "can_view_profit", False):
         keys |= {"profit", "net_profit", "filtered_profit"}
     if not getattr(st, "can_view_settle", False):
         keys |= {"unpaid_amount", "unpaid_projects"}
-    if kind != "sub" and not getattr(st, "can_view_revenue", False):
-        keys.add("amount")   # 견적 품목 금액 등
+        if name.startswith("projects_by_vendor"):
+            keys |= {"unpaid_count", "settlement_status", "paid_date"}
+    if kind != "sub" and not _is_quote_screen(name) and not getattr(st, "can_view_revenue", False):
+        keys.add("amount")
     if not keys:
         return context
     safe = {}

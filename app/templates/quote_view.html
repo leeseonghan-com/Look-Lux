@@ -14,7 +14,7 @@
   </div>
   <div class="flex gap-2 flex-wrap">
     <a href="/quotes/{{ q.id }}/edit" class="btn-secondary">✏️ 수정</a>
-    {% if request.state.can_view_revenue %}<a href="/quotes/{{ q.id }}/pdf" class="btn-secondary" title="파일명: 견적번호_프로젝트명.pdf — 휴대폰 다크모드에서도 흰 배경으로 저장됩니다">📄 PDF 저장</a>
+    {% if request.state.can_view_quote_price %}<a href="/quotes/{{ q.id }}/pdf" class="btn-secondary" title="파일명: 견적번호_프로젝트명.pdf — 휴대폰 다크모드에서도 흰 배경으로 저장됩니다">📄 PDF 저장</a>
     <a href="/quotes/{{ q.id }}/print" target="_blank" class="btn-secondary">🖨️ 인쇄</a>{% endif %}
     <form method="post" action="/quotes/{{ q.id }}/delete" onsubmit="return confirm('삭제하시겠습니까?')" class="inline">
       <button class="btn-danger">삭제</button>
@@ -96,7 +96,7 @@ function confirmStatusChange(form) {
 
   <table class="dt mb-4">
     <thead>
-      <tr><th>#</th><th>품명</th><th>규격</th><th class="text-right">수량</th><th>단위</th>{% if request.state.can_view_revenue %}<th class="text-right">{% if q.quote_type == '렌탈' %}1일 단가{% else %}단가{% endif %}</th><th class="text-right">금액</th>{% endif %}</tr>
+      <tr><th>#</th><th>품명</th><th>규격</th><th class="text-right">수량</th><th>단위</th>{% if request.state.can_view_quote_price %}<th class="text-right">{% if q.quote_type == '렌탈' %}1일 단가{% else %}단가{% endif %}</th><th class="text-right">금액</th>{% endif %}</tr>
     </thead>
     <tbody>
       {% for it in items %}
@@ -106,7 +106,7 @@ function confirmStatusChange(form) {
         <td class="text-xs">{{ it.spec }}</td>
         <td class="text-right num">{{ it.quantity|int }}</td>
         <td class="text-center">{{ it.unit }}</td>
-        {% if request.state.can_view_revenue %}
+        {% if request.state.can_view_quote_price %}
         <td class="text-right num">{{ it.unit_price|money_raw }}원</td>
         <td class="text-right num font-bold">{{ it.amount|money_raw }}원</td>
         {% endif %}
@@ -115,7 +115,7 @@ function confirmStatusChange(form) {
     </tbody>
   </table>
 
-  {% if request.state.can_view_revenue %}
+  {% if request.state.can_view_quote_price %}
   <div class="max-w-sm ml-auto space-y-1.5 text-sm">
     <div class="flex justify-between"><span>공급가액 합계</span><span class="num font-bold">{{ q.subtotal|money_raw }}원</span></div>
     <div class="flex justify-between text-red-600"><span>할인금액</span><span class="num font-bold">-{{ q.discount|money_raw }}원</span></div>

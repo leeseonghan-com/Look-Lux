@@ -392,7 +392,8 @@ async def add_user_to_request(request: Request, call_next):
         request.state.perms = {}
         request.state.is_admin = False
         for _k in ("can_view_amounts", "can_view_revenue", "can_view_settle", "can_manage_settle",
-                   "can_view_sub", "can_manage_sub", "can_view_wage", "can_manage_wage", "can_view_profit"):
+                   "can_view_sub", "can_manage_sub", "can_view_wage", "can_manage_wage", "can_view_profit",
+                   "can_view_quote_price"):
             setattr(request.state, _k, False)
     # 회사 설정을 전역에서 사용 가능하게
     try:

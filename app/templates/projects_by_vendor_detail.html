@@ -20,21 +20,27 @@
     <div class="label">진행 건수</div>
     <div class="value value-sm num">{{ total_count }}<span class="unit">건</span></div>
   </div>
+  {% if request.state.can_view_revenue %}
   <div class="kpi-card">
     <div class="label">공급가 합계</div>
     <div class="value value-sm num">{{ total_supply|money }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
+  {% if request.state.can_view_revenue %}
   <div class="kpi-card">
     <div class="label">총 매출 (VAT 포함)</div>
     <div class="value value-sm num" style="color: var(--ink);">{{ total_revenue|money }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
+  {% if request.state.can_view_settle %}
   <div class="kpi-card">
     <div class="label">미수금</div>
-    <div class="value value-sm num" style="color: var(--warning);">{{ unpaid_amount|money }}<span class="unit">원</span></div>
+    {% if request.state.can_view_revenue %}<div class="value value-sm num" style="color: var(--warning);">{{ unpaid_amount|money }}<span class="unit">원</span></div>{% else %}<div class="value value-sm num" style="color: var(--warning);">{{ unpaid_count }}<span class="unit">건</span></div>{% endif %}
     {% if unpaid_count > 0 %}
     <div class="text-xs mt-1" style="color: var(--ink-4);">{{ unpaid_count }}건 미수</div>
     {% endif %}
   </div>
+  {% endif %}
 </div>
 
 <div class="card overflow-x-auto">
@@ -45,10 +51,10 @@
         <th>프로젝트명</th>
         <th class="mobile-hide">항목</th>
         <th class="mobile-hide">행사일</th>
-        <th class="text-right">매출</th>
-        <th class="text-right mobile-hide">순이익</th>
+        {% if request.state.can_view_revenue %}<th class="text-right">매출</th>{% endif %}
+        {% if request.state.can_view_profit %}<th class="text-right mobile-hide">순이익</th>{% endif %}
         <th>진행</th>
-        <th>정산</th>
+        {% if request.state.can_view_settle %}<th>정산</th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -62,14 +68,14 @@
           {% endfor %}
         </td>
         <td class="mobile-hide text-xs">{{ r.event_date or '-' }}</td>
-        <td class="text-right num">{{ r.revenue|money }}</td>
-        <td class="text-right mobile-hide num" style="color: {% if r.profit >= 0 %}var(--positive){% else %}var(--negative){% endif %};">{{ r.profit|money }}</td>
+        {% if request.state.can_view_revenue %}<td class="text-right num">{{ r.revenue|money }}</td>{% endif %}
+        {% if request.state.can_view_profit %}<td class="text-right mobile-hide num" style="color: {% if r.profit >= 0 %}var(--positive){% else %}var(--negative){% endif %};">{{ r.profit|money }}</td>{% endif %}
         <td>
           <span class="badge {% if r.status == '완료' %}badge-green{% elif r.status == '진행중' %}badge-blue{% elif r.status == '취소' %}badge-gray{% else %}badge-orange{% endif %}">{{ r.status }}</span>
         </td>
-        <td>
-          {% if request.state.can_view_settle %}<span class="badge {% if r.settlement_status == '입금완료' %}badge-green{% else %}badge-orange{% endif %}">{{ r.settlement_status }}</span>{% else %}<span style="color:#CBD5E1;">🔒</span>{% endif %}
-        </td>
+        {% if request.state.can_view_settle %}        <td>
+          {% if request.state.can_view_settle %}<span class="badge {% if r.settlement_status == '입금완료' %}badge-green{% else %}badge-orange{% endif %}">{{ r.settlement_status }}</span>{% endif %}
+        </td>{% endif %}
       </tr>
       {% endfor %}
       {% if not rows %}

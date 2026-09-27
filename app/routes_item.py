@@ -336,7 +336,7 @@ def items_search(request: Request, q: str = "", category: str = ""):
         _u = getattr(request.state, "user", None)
         if not _u:
             return JSONResponse([], status_code=401)
-        if not has_permission(_u, "view_revenue"):
+        if not has_permission(_u, "quote_price"):
             for r in result:
                 r["price"] = 0; r["consumer_price"] = 0; r["rental_daily"] = 0; r["price_kind"] = ""
         return JSONResponse(result)

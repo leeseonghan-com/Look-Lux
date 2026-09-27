@@ -7,7 +7,7 @@
   <div class="flex items-start justify-between mt-2 flex-wrap gap-3">
     <div>
       <h1 class="page-title">🏢 거래처별 프로젝트 집계</h1>
-      <p class="page-sub">거래처마다 건수·매출·미수금을 한눈에 확인하세요.</p>
+      <p class="page-sub">거래처마다 거래 건수{% if request.state.can_view_revenue %}·매출{% endif %}{% if request.state.can_view_settle %}·미수금{% endif %}을 한눈에 확인하세요.</p>
     </div>
   </div>
 </div>
@@ -22,14 +22,18 @@
     <div class="label">전체 프로젝트</div>
     <div class="value value-sm num">{{ total_count }}<span class="unit">건</span></div>
   </div>
+  {% if request.state.can_view_revenue %}
   <div class="kpi-card">
     <div class="label">총 매출 (VAT 포함)</div>
     <div class="value value-sm num">{{ total_revenue|money }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
+  {% if request.state.can_view_profit %}
   <div class="kpi-card">
     <div class="label">순이익 합계</div>
     <div class="value value-sm num" style="color: {% if total_profit >= 0 %}var(--positive){% else %}var(--negative){% endif %};">{{ total_profit|money }}<span class="unit">원</span></div>
   </div>
+  {% endif %}
 </div>
 
 <div class="card overflow-x-auto">
@@ -39,10 +43,10 @@
         <th>거래처</th>
         <th class="text-right">건수</th>
         <th class="mobile-hide">진행 항목</th>
-        <th class="text-right mobile-hide">공급가</th>
-        <th class="text-right">총 매출</th>
-        <th class="text-right mobile-hide">순이익</th>
-        <th class="text-right">미수금</th>
+        {% if request.state.can_view_revenue %}<th class="text-right mobile-hide">공급가</th>{% endif %}
+        {% if request.state.can_view_revenue %}<th class="text-right">총 매출</th>{% endif %}
+        {% if request.state.can_view_profit %}<th class="text-right mobile-hide">순이익</th>{% endif %}
+        {% if request.state.can_view_settle %}<th class="text-right">미수금</th>{% endif %}
         <th></th>
       </tr>
     </thead>
@@ -61,17 +65,19 @@
           <span style="display: inline-block; padding: 1px 6px; background: #F4F4F5; color: #18181B; font-size: 10px; border-radius: 3px; font-weight: 700; margin-right: 2px;">{{ category_icons.get(c, '') }} {{ c }}</span>
           {% endfor %}
         </td>
-        <td class="text-right mobile-hide num">{{ r.supply|money }}</td>
-        <td class="text-right num font-bold" style="color: var(--ink);">{{ r.revenue|money }}</td>
-        <td class="text-right mobile-hide num" style="color: {% if r.profit >= 0 %}var(--positive){% else %}var(--negative){% endif %};">{{ r.profit|money }}</td>
+        {% if request.state.can_view_revenue %}<td class="text-right mobile-hide num">{{ r.supply|money }}</td>{% endif %}
+        {% if request.state.can_view_revenue %}<td class="text-right num font-bold" style="color: var(--ink);">{{ r.revenue|money }}</td>{% endif %}
+        {% if request.state.can_view_profit %}<td class="text-right mobile-hide num" style="color: {% if r.profit >= 0 %}var(--positive){% else %}var(--negative){% endif %};">{{ r.profit|money }}</td>{% endif %}
+        {% if request.state.can_view_settle %}
         <td class="text-right">
           {% if r.unpaid_count > 0 %}
-          <div class="font-bold num" style="color: var(--warning);">{{ r.unpaid_amount|money }}</div>
+          {% if request.state.can_view_revenue %}<div class="font-bold num" style="color: var(--warning);">{{ r.unpaid_amount|money }}</div>{% endif %}
           <div class="text-xs" style="color: var(--ink-4);">{{ r.unpaid_count }}건 미수</div>
           {% else %}
           <span class="badge badge-green">완납</span>
           {% endif %}
         </td>
+        {% endif %}
         <td class="text-xs" style="color: var(--link);">상세 →</td>
       </tr>
       {% endfor %}
@@ -85,10 +91,10 @@
         <th>합계</th>
         <th class="text-right num">{{ total_count }}</th>
         <th class="mobile-hide"></th>
-        <th class="text-right mobile-hide num">{{ total_supply|money }}</th>
-        <th class="text-right num">{{ total_revenue|money }}</th>
-        <th class="text-right mobile-hide num">{{ total_profit|money }}</th>
-        <th></th><th></th>
+        {% if request.state.can_view_revenue %}<th class="text-right mobile-hide num">{{ total_supply|money }}</th>{% endif %}
+        {% if request.state.can_view_revenue %}<th class="text-right num">{{ total_revenue|money }}</th>{% endif %}
+        {% if request.state.can_view_profit %}<th class="text-right mobile-hide num">{{ total_profit|money }}</th>{% endif %}
+        {% if request.state.can_view_settle %}<th></th>{% endif %}<th></th>
       </tr>
     </tfoot>
     {% endif %}

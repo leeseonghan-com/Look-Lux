@@ -24,7 +24,7 @@
   <div class="kpi-card"><div class="label">총 보유</div><div class="value value-sm num">{{ units|length }}<span class="unit">대</span></div></div>
   <div class="kpi-card"><div class="label">보유중</div><div class="value value-sm num" style="color: var(--positive);">{{ available }}<span class="unit">대</span></div></div>
   <div class="kpi-card"><div class="label">대여중</div><div class="value value-sm num" style="color: var(--warning);">{{ on_rent }}<span class="unit">대</span></div></div>
-  <div class="kpi-card"><div class="label">총 구입가</div><div class="value value-sm num">{{ total_purchase|money }}<span class="unit">원</span></div></div>
+  <div class="kpi-card"><div class="label">총 구입가</div><div class="value value-sm num">{{ total_purchase|money_raw }}<span class="unit">원</span></div></div>
 </div>
 
 <!-- 개체 추가 -->
@@ -190,7 +190,7 @@ function clearForm(e) {
           <td class="text-xs">{{ u.manager or '—' }}</td>
           <td class="text-xs">{{ u.purchase_vendor or '—' }}</td>
           <td class="text-xs">{{ u.purchase_date or '—' }}</td>
-          <td class="text-right num">{{ u.purchase_price|money }}</td>
+          <td class="text-right num">{{ u.purchase_price|money_raw }}</td>
           <td class="text-xs">{{ u.location or '—' }}</td>
           <td>
             <span class="badge badge-dot {% if u.status == '보유중' %}badge-green{% elif u.status == '대여중' %}badge-orange{% elif u.status == '수리중' %}badge-red{% else %}badge-gray{% endif %}">{{ u.status }}</span>

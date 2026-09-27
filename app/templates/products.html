@@ -151,7 +151,7 @@
         <th class="mobile-hide">분류</th>
         <th class="mobile-hide">규격</th>
         <th>단위</th>
-        {% if request.state.can_view_revenue %}<th class="text-right">📦 납품 단가</th>
+        {% if request.state.can_view_quote_price %}<th class="text-right">📦 납품 단가</th>
         <th class="text-right">🎬 렌탈/일</th>
         <th class="text-right mobile-hide">🎬 보증금</th>{% endif %}
         <th class="text-center">관리</th>
@@ -175,14 +175,14 @@
         </td>
         <td class="mobile-hide text-xs" style="color: var(--ink-4);">{{ r.spec }}</td>
         <td class="text-xs text-center" style="color: var(--ink-3);">{{ r.unit }}</td>
-        {% if request.state.can_view_revenue %}        <td class="text-right num {% if r.consumer_price > 0 %}font-bold{% else %}text-slate-300{% endif %}">
-          {{ r.consumer_price|money if r.consumer_price > 0 else '-' }}
+        {% if request.state.can_view_quote_price %}        <td class="text-right num {% if r.consumer_price > 0 %}font-bold{% else %}text-slate-300{% endif %}">
+          {{ r.consumer_price|money_raw if r.consumer_price > 0 else '-' }}
         </td>{% endif %}
-        {% if request.state.can_view_revenue %}        <td class="text-right num {% if r.rental_daily > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if r.rental_daily > 0 %}#9A3412{% else %}inherit{% endif %};">
-          {{ r.rental_daily|money if r.rental_daily > 0 else '-' }}
+        {% if request.state.can_view_quote_price %}        <td class="text-right num {% if r.rental_daily > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if r.rental_daily > 0 %}#9A3412{% else %}inherit{% endif %};">
+          {{ r.rental_daily|money_raw if r.rental_daily > 0 else '-' }}
         </td>{% endif %}
-        {% if request.state.can_view_revenue %}        <td class="text-right num mobile-hide {% if r.rental_deposit > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if r.rental_deposit > 0 %}#9A3412{% else %}inherit{% endif %};">
-          {{ r.rental_deposit|money if r.rental_deposit > 0 else '-' }}
+        {% if request.state.can_view_quote_price %}        <td class="text-right num mobile-hide {% if r.rental_deposit > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if r.rental_deposit > 0 %}#9A3412{% else %}inherit{% endif %};">
+          {{ r.rental_deposit|money_raw if r.rental_deposit > 0 else '-' }}
         </td>{% endif %}
         <td class="text-center whitespace-nowrap" onclick="event.stopPropagation();">
           {% if r.id %}

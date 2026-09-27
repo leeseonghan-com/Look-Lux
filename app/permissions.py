@@ -12,8 +12,8 @@ PERMISSION_GROUPS = [
     ("📂 메뉴 접근", [
         ("projects", "프로젝트 조회·등록", "프로젝트 목록·캘린더·인력 배치"),
         ("projects_edit", "프로젝트 수정·삭제", "등록된 프로젝트 정보 변경"),
-        ("quotes", "견적서", "견적서 조회·작성·출력"),
-        ("products", "단가표·재고/장비", "물품 단가와 장비 관리"),
+        ("quotes", "견적서", "견적서 조회·작성·출력 (견적 단가 포함)"),
+        ("products", "단가표·재고/장비", "물품 단가·재고·장비 관리 (단가 포함)"),
         ("attendance", "근태 (알바 일당)", "알바 근무 기록 등록·조회"),
         ("expenses", "하청/외주 지급", "외주 발주 내역 등록·조회"),
         ("vendors", "거래처", "거래처 등록·조회"),
@@ -100,6 +100,10 @@ def has_permission(user, key: str) -> bool:
         return False
     if (user.role or "").lower() == "admin":
         return True
+    if key == "quote_price":
+        # 견적 단가(견적서·단가표 금액) = 견적서 또는 단가표 권한이 있으면 자동 허용
+        p = get_permissions(user)
+        return bool(p.get("quotes") or p.get("products") or p.get("view_revenue"))
     perms = get_permissions(user)
     return perms.get(key, False)
 
@@ -129,6 +133,7 @@ def money_flags(user) -> dict:
         "can_view_wage": wage,
         "can_manage_wage": has_permission(user, "manage_wage_pay"),
         "can_view_profit": rev and sub and wage,   # 순이익은 매출·외주·급여 모두 볼 때만
+        "can_view_quote_price": has_permission(user, "quote_price"),
     }
 
 

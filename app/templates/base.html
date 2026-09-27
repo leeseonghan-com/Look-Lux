@@ -1,4 +1,4 @@
-{% set _asset_ver = 'v2026.09.25-1300' %}
+{% set _asset_ver = 'v2026.09.25-1400' %}
 <!doctype html>
 <html lang="ko">
 <head>
@@ -559,7 +559,7 @@ if ('serviceWorker' in navigator) {
 {% endif %}
 
 {# ────── 배포 버전 배지 — 새 버전 배포 시 한 번만 표시 ────── #}
-{% set _current_version = 'v2026.09.25-1300' %}
+{% set _current_version = 'v2026.09.25-1400' %}
 <div id="deploy-version-badge" title="배포 버전 — 클릭하면 이 버전 안내를 다시 표시하지 않습니다"
      data-version="{{ _current_version }}"
      style="display:none; position:fixed; right:10px; bottom:10px; z-index:9990;
@@ -569,7 +569,7 @@ if ('serviceWorker' in navigator) {
             font-family:'Inter', monospace; cursor:pointer;
             box-shadow:0 4px 12px rgba(0,0,0,0.2);
             display:flex; align-items:center; gap:8px;">
-  <span>⚡ {{ _current_version }} · 작업화면복귀+별도일정+금액완전차단</span>
+  <span>⚡ {{ _current_version }} · 견적저장오류수정+견적단가권한+집계정리</span>
   <span style="font-size:14px; color:#999; padding-left:4px;">×</span>
 </div>
 <style>

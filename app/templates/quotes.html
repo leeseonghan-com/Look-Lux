@@ -11,12 +11,12 @@
   </div>
 </div>
 
-{% set can_view = request.state.can_view_revenue %}
+{% set can_view = request.state.can_view_quote_price %}
 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
   <div class="card"><div class="text-xs text-slate-500">전체</div><div class="text-2xl font-bold mt-1 num">{{ total_count }}건</div></div>
   <div class="card"><div class="text-xs text-slate-500">수주</div><div class="text-2xl font-bold mt-1 text-emerald-600 num">{{ won_count }}건</div></div>
   {% if can_view %}
-  <div class="card"><div class="text-xs text-slate-500">수주 금액</div><div class="text-lg font-bold mt-1 num">{{ won_amount|money }}원</div></div>
+  <div class="card"><div class="text-xs text-slate-500">수주 금액</div><div class="text-lg font-bold mt-1 num">{{ won_amount|money_raw }}원</div></div>
   {% endif %}
   <div class="card"><div class="text-xs text-slate-500">수주율</div><div class="text-2xl font-bold mt-1 text-slate-800 num">{{ "%.1f"|format(win_rate) }}%</div></div>
 </div>
@@ -54,7 +54,7 @@
         <td>{{ q.vendor_name }}</td>
         <td class="mobile-hide text-xs">{{ q.project_name }}</td>
         <td class="mobile-hide text-xs">{% if q.author_name %}<span style="display:inline-block; padding:2px 8px; border-radius:999px; background:#F1F5F9; color:#334155; font-weight:700;">✍ {{ q.author_name }}</span>{% else %}<span style="color:#CBD5E1;">-</span>{% endif %}</td>
-        {% if can_view %}<td class="text-right num font-bold">{{ q.total|money }}원</td>{% endif %}
+        {% if can_view %}<td class="text-right num font-bold">{{ q.total|money_raw }}원</td>{% endif %}
         <td onclick="event.stopPropagation();">
           <select class="quote-status-inline
             {% if q.status == '수주' %}status-green{% elif q.status == '실주' %}status-red{% elif q.status == '견적' %}status-orange{% else %}status-gray{% endif %}"

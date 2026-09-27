@@ -29,7 +29,7 @@
       </div>
     </div>
     <div style="display: flex; flex-direction: column; align-items: end; gap: 4px;">
-      {% if request.state.can_view_revenue %}
+      {% if request.state.can_view_quote_price %}
       <div style="font-weight: 800; font-size: 14px; color: #18181B;">{{ '{:,}'.format(q.total) }}원</div>
       {% endif %}
       {% if q.status == '수주' %}<span class="badge badge-green">수주</span>
@@ -38,7 +38,7 @@
       {% else %}<span class="badge badge-gray">{{ q.status }}</span>{% endif %}
     </div>
   </a>
-  {% if request.state.can_view_revenue %}
+  {% if request.state.can_view_quote_price %}
   {# 📄 PDF 저장 — 휴대폰 다크모드 무관하게 흰 배경 보장, 파일명=견적번호_프로젝트명 #}
   <div style="display:flex; gap:8px; padding:0 4px 12px; margin-top:-6px;">
     <a href="/quotes/{{ q.id }}/pdf"

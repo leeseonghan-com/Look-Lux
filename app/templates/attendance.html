@@ -231,8 +231,8 @@
         <th class="text-right">일당</th>
         <th class="text-right mobile-hide">추가금액</th>
         <th class="text-right">합계</th>
-        {% endif %}
         <th>상태</th>
+        {% endif %}
         <th class="text-center">관리</th>
       </tr>
     </thead>
@@ -252,7 +252,6 @@
           {% else %}<span style="color:var(--ink-5);">—</span>{% endif %}
         </td>
         <td class="text-right num font-bold">{{ r.total_wage|money_wage }}</td>
-        {% endif %}
         <td>
           {% if r.pay_status == '지급완료' %}
           <span class="badge badge-green">✓ 지급완료</span>
@@ -260,9 +259,10 @@
           <span class="badge badge-orange">⚠ 미지급</span>
           {% endif %}
         </td>
+        {% endif %}
         <td class="text-center text-xs whitespace-nowrap">
           <a href="/attendance/{{ r.id }}/edit" style="color: var(--gold-2); font-weight: 600;">수정</a>
-          <span style="color: var(--line); margin: 0 4px;">·</span>
+          {% if request.state.can_manage_wage %}<span style="color: var(--line); margin: 0 4px;">·</span>{% endif %}
           {% if not request.state.can_manage_wage %}
           {% elif r.pay_status == '미지급' %}
           <form method="post" action="/attendance/{{ r.id }}/pay" style="display:inline;"
@@ -284,7 +284,7 @@
       </tr>
       {% endfor %}
       {% if not rows %}
-      <tr><td colspan="{% if request.state.can_view_wage %}9{% else %}6{% endif %}" class="text-center py-6" style="color: var(--ink-4);">등록된 알바 근무 기록이 없습니다.</td></tr>
+      <tr><td colspan="{% if request.state.can_view_wage %}9{% else %}5{% endif %}" class="text-center py-6" style="color: var(--ink-4);">등록된 알바 근무 기록이 없습니다.</td></tr>
       {% endif %}
     </tbody>
   </table>

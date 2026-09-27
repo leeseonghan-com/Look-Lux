@@ -5,7 +5,7 @@
 <div class="mb-5">
   <a href="/quotes/{{ q.id }}" class="text-sm" style="color: var(--ink-4);">← 견적서로 돌아가기</a>
   <h1 class="page-title mt-2">📋 견적서를 프로젝트로 등록</h1>
-  <p class="page-sub">{{ q.quote_number }} · {{ q.vendor_name }} · {{ q.total|money }}원 (VAT 포함)</p>
+  <p class="page-sub">{{ q.quote_number }} · {{ q.vendor_name }} · {{ q.total|money_raw }}원 (VAT 포함)</p>
 </div>
 
 <!-- 안내 배너 -->
@@ -13,7 +13,7 @@
   <div class="text-sm" style="opacity: 0.85;">✨ <b>수주가 확정되었습니다.</b> 견적서의 정보가 아래에 자동 반영되었습니다.</div>
   <div class="text-xs mt-2" style="opacity: 0.75; line-height: 1.6;">
     <b style="color: #FCD34D;">자동 반영된 항목:</b>
-    프로젝트명 · {% if default_event_date %}🗓️ 행사일({{ default_event_date }}) · {% endif %}💰 매출({{ default_amount_input|money }}원) ·
+    프로젝트명 · {% if default_event_date %}🗓️ 행사일({{ default_event_date }}) · {% endif %}💰 매출({{ default_amount_input|money_raw }}원) ·
     부가세 모드({% if default_vat_mode == 'cash' %}현금{% elif default_vat_mode == 'total' %}총액{% else %}공급가{% endif %})
     {% if default_payment_method %} · 결제 방법({{ default_payment_method }}){% endif %}
     {% if auto_categories %} · 카테고리({{ auto_categories|join(', ') }}){% endif %}
@@ -110,15 +110,15 @@
     <div class="card" style="background: #FFFBEB; border-color: #FDE68A; padding: 12px 14px; margin-top: 8px;">
       <div class="flex justify-between text-sm mb-1">
         <span>공급가</span>
-        <span class="num font-bold" id="disp-supply">{{ default_supply|money }}원</span>
+        <span class="num font-bold" id="disp-supply">{{ default_supply|money_raw }}원</span>
       </div>
       <div class="flex justify-between text-sm mb-1">
         <span>부가세 (10%)</span>
-        <span class="num font-bold" id="disp-vat">{{ default_vat|money }}원</span>
+        <span class="num font-bold" id="disp-vat">{{ default_vat|money_raw }}원</span>
       </div>
       <div class="flex justify-between text-sm pt-1" style="border-top: 1px solid #FDE68A;">
         <span class="font-bold">총 매출</span>
-        <span class="num font-bold" style="color: #C2410C;" id="disp-total">{{ default_total|money }}원</span>
+        <span class="num font-bold" style="color: #C2410C;" id="disp-total">{{ default_total|money_raw }}원</span>
       </div>
     </div>
 
@@ -199,8 +199,8 @@
           <td>{{ it.spec or '-' }}</td>
           <td class="text-right num">{{ '{:g}'.format(it.quantity) }}</td>
           <td>{{ it.unit }}</td>
-          <td class="text-right num">{{ it.unit_price|money }}</td>
-          <td class="text-right num font-bold">{{ it.amount|money }}</td>
+          <td class="text-right num">{{ it.unit_price|money_raw }}</td>
+          <td class="text-right num font-bold">{{ it.amount|money_raw }}</td>
         </tr>
         {% endfor %}
       </tbody>

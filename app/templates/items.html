@@ -113,9 +113,9 @@
           <span style="display:inline-block; padding:2px 8px; border-radius:10px; background:#F3F4F6; color:#6B7280; font-size:11px; font-weight:700;">⚪ 미설정</span>
           {% endif %}
         </td>
-        <td class="text-right num {% if i.consumer_price > 0 %}font-bold{% else %}text-slate-300{% endif %}">{{ i.consumer_price|money if i.consumer_price > 0 else '-' }}</td>
-        <td class="text-right num {% if i.rental_daily > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if i.rental_daily > 0 %}#9A3412{% else %}inherit{% endif %};">{{ i.rental_daily|money if i.rental_daily > 0 else '-' }}</td>
-        <td class="text-right num mobile-hide text-xs" style="color: var(--text-mid);">{{ i.rental_deposit|money if i.rental_deposit > 0 else '-' }}</td>
+        <td class="text-right num {% if i.consumer_price > 0 %}font-bold{% else %}text-slate-300{% endif %}">{{ i.consumer_price|money_raw if i.consumer_price > 0 else '-' }}</td>
+        <td class="text-right num {% if i.rental_daily > 0 %}font-bold{% else %}text-slate-300{% endif %}" style="color: {% if i.rental_daily > 0 %}#9A3412{% else %}inherit{% endif %};">{{ i.rental_daily|money_raw if i.rental_daily > 0 else '-' }}</td>
+        <td class="text-right num mobile-hide text-xs" style="color: var(--text-mid);">{{ i.rental_deposit|money_raw if i.rental_deposit > 0 else '-' }}</td>
         <td class="text-center whitespace-nowrap">
           <a href="/items/{{ i.id }}/edit" class="text-xs font-semibold hover:underline" style="color: var(--gold-2);">수정</a>
           <span style="color: var(--line); margin: 0 4px;">·</span>

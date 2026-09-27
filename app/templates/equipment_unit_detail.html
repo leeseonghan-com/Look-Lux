@@ -88,7 +88,7 @@
   <div class="card">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-base font-bold" style="color: var(--ink);">🔧 유지보수 이력</h2>
-      <span class="text-xs" style="color: var(--ink-4);">총 수리비 <span class="font-bold num" style="color: var(--ink);">{{ total_maintenance_cost|money }}원</span></span>
+      <span class="text-xs" style="color: var(--ink-4);">총 수리비 <span class="font-bold num" style="color: var(--ink);">{{ total_maintenance_cost|money_raw }}원</span></span>
     </div>
 
     <!-- 추가 폼 -->
@@ -128,7 +128,7 @@
               <span class="badge badge-{% if m.type == '고장' or m.type == 'AS' or m.type == '수리' %}red{% else %}blue{% endif %} text-[10px]">{{ m.type }}</span>
               <span class="text-xs" style="color: var(--ink-4);">{{ m.date }}</span>
               {% if m.cost %}
-              <span class="text-xs font-bold" style="color: var(--negative);">{{ m.cost|money }}원</span>
+              <span class="text-xs font-bold" style="color: var(--negative);">{{ m.cost|money_raw }}원</span>
               {% endif %}
             </div>
             <div class="font-semibold text-sm">{{ m.title }}</div>
