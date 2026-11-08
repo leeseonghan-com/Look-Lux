@@ -1,4 +1,4 @@
-{% set _asset_ver = 'v2026.11.08-1500' %}
+{% set _asset_ver = 'v2026.11.08-1600' %}
 <!doctype html>
 <html lang="ko">
 <head>
@@ -603,6 +603,19 @@ if ('serviceWorker' in navigator) {
     main input, main select, main textarea { font-size: 16px; }  /* 아이폰 확대 방지 */
     .page-title { font-size: 20px !important; }
     #deploy-version-badge { bottom: calc(86px + env(safe-area-inset-bottom)) !important; }
+    /* ★ 화면 밖으로 밀려나던 칸 정리 (입력칸·격자·날짜칸이 폭을 넘지 않게) */
+    html, body { overflow-x: hidden; }
+    main .grid > *, main [style*="grid-template-columns"] > * { min-width: 0; }
+    main input, main select, main textarea { max-width: 100%; min-width: 0; box-sizing: border-box; }
+    main input[type="date"] { -webkit-appearance: none; appearance: none; min-height: 44px; }
+    main img, main video { max-width: 100%; height: auto; }
+    /* 달력 상단(◀ 2026년 11월 ▶ 오늘)이 한 줄에 들어가게 */
+    main .card > .flex > .flex > div[style*="min-width"] { min-width: 0 !important; flex: 1; font-size: 17px !important; }
+    main .card > .flex > .flex { width: 100%; flex-wrap: wrap; }
+    /* 버튼·칩은 손가락으로 누르기 쉽게 */
+    main .btn-primary, main .btn-secondary { min-height: 40px; }
+    /* 안내 배지가 하단 메뉴를 가리지 않게 작게 */
+    #deploy-version-badge { font-size: 10px !important; padding: 5px 10px !important; }
   }
 </style>
 
@@ -615,7 +628,7 @@ if ('serviceWorker' in navigator) {
 {% endif %}
 
 {# ────── 배포 버전 배지 — 새 버전 배포 시 한 번만 표시 ────── #}
-{% set _current_version = 'v2026.11.08-1500' %}
+{% set _current_version = 'v2026.11.08-1600' %}
 <div id="deploy-version-badge" title="배포 버전 — 클릭하면 이 버전 안내를 다시 표시하지 않습니다"
      data-version="{{ _current_version }}"
      style="display:none; position:fixed; right:10px; bottom:10px; z-index:9990;
@@ -625,7 +638,7 @@ if ('serviceWorker' in navigator) {
             font-family:'Inter', monospace; cursor:pointer;
             box-shadow:0 4px 12px rgba(0,0,0,0.2);
             display:flex; align-items:center; gap:8px;">
-  <span>⚡ {{ _current_version }} · 폴더 메뉴·폴더째 내려받기</span>
+  <span>⚡ {{ _current_version }} · PC·모바일 점검</span>
   <span style="font-size:14px; color:#999; padding-left:4px;">×</span>
 </div>
 <style>
