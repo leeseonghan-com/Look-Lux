@@ -57,6 +57,8 @@ def attendance_list(
     project_id: str = "",
     tab: str = "alba",
     period: str = "7d",
+    view: str = "worker",
+    worker_id: str = "",
     from_date: str = "",
     to_date: str = "",
 ):
@@ -87,17 +89,14 @@ def attendance_list(
                 workers_q = [me] if (me and is_employed(me)) else []
             workers_today = []
             for w in workers_q:
-                ci = s.exec(
-                    select(WorkerCheckin).where(
-                        WorkerCheckin.worker_id == w.id,
-                        WorkerCheckin.work_date == today
-                    )
-                ).first()
+                ci = current_shift(s, w.id)
                 workers_today.append({
                     "id": w.id, "name": w.name, "phone": w.phone,
                     "check_in": ci.check_in if ci else None,
                     "check_out": ci.check_out if ci else None,
                     "ci_id": ci.id if ci else None,
+                    "overnight": bool(ci and ci.check_in and ci.work_date != today),
+                    "shift_date": ci.work_date if ci else None,
                 })
 
             # 기간 필터링된 기록
@@ -148,6 +147,12 @@ def attendance_list(
             q = q.where(Attendance.work_date <= range_to)
         if project_id:
             q = q.where(Attendance.project_id == project_id)
+        try:
+            _wid = int(worker_id) if str(worker_id).strip() else None
+        except ValueError:
+            _wid = None
+        if _wid:
+            q = q.where(Attendance.worker_id == _wid)
         q = q.order_by(Attendance.work_date.desc())
         records = s.exec(q).all()
         rows = []
@@ -156,6 +161,8 @@ def attendance_list(
             p = s.get(Project, a.project_id)
             rows.append({
                 "id": a.id, "date": a.work_date,
+                "worker_id": a.worker_id, "project_id": a.project_id,
+                "auto": bool(getattr(a, "staff_id", None)),
                 "worker_name": w.name if w else "?",
                 "project_name": p.name if p else "?",
                 "days": a.days, "daily_wage": a.daily_wage,
@@ -172,9 +179,30 @@ def attendance_list(
         workers_data = [{"id": w.id, "name": w.name, "default_daily_wage": w.default_daily_wage} for w in workers]
         total_amount = sum(r["total_wage"] for r in rows)
         unpaid_amount = sum(r["total_wage"] for r in rows if r["pay_status"] == "미지급")
+        # 근무자별 묶음
+        groups = {}
+        for r in rows:
+            g = groups.setdefault(r["worker_id"], {"worker_id": r["worker_id"], "name": r["worker_name"],
+                                                  "count": 0, "days": 0.0, "total": 0, "unpaid": 0,
+                                                  "unpaid_count": 0, "projects": [], "rows": []})
+            g["count"] += 1
+            g["days"] += r["days"] or 0
+            g["total"] += r["total_wage"] or 0
+            if r["pay_status"] == "미지급":
+                g["unpaid"] += r["total_wage"] or 0
+                g["unpaid_count"] += 1
+            if r["project_name"] not in g["projects"]:
+                g["projects"].append(r["project_name"])
+            g["rows"].append(r)
+        worker_groups = sorted(groups.values(), key=lambda g: g["name"])
+        for g in worker_groups:
+            g["rows"].sort(key=lambda r: r["date"])
+            g["ids"] = ",".join(str(r["id"]) for r in g["rows"] if r["pay_status"] == "미지급")
 
     return templates.TemplateResponse(request, "attendance.html", {
         "user": user, "tab": "alba", "rows": rows,
+        "worker_groups": worker_groups, "view": ("list" if view == "list" else "worker"),
+        "selected_worker_id": _wid,
         "projects": projects_data, "workers": workers_data,
         "selected_project_id": project_id, "today": date.today(),
         "total_amount": total_amount, "unpaid_amount": unpaid_amount,
@@ -198,59 +226,83 @@ def check_worker_access(s, user, worker_id: int):
     return w
 
 
+
+# ════════════════════════════════════════════════════════════
+# 출퇴근 기준: '날짜'가 아니라 '열려 있는 근무(출근만 찍힌 기록)' 기준
+#   → 새벽 2~5시 퇴근해도 전날 출근 기록에 정확히 퇴근이 찍힘
+# ════════════════════════════════════════════════════════════
+OPEN_SHIFT_HOURS = 24   # 출근 후 이 시간 안이면 같은 근무로 봄
+
+
+def open_shift(s, worker_id: int):
+    """퇴근 안 찍힌 가장 최근 출근 기록 (24시간 이내)"""
+    from datetime import timedelta as _td
+    limit = datetime.now() - _td(hours=OPEN_SHIFT_HOURS)
+    return s.exec(
+        select(WorkerCheckin).where(
+            WorkerCheckin.worker_id == worker_id,
+            WorkerCheckin.check_in != None,
+            WorkerCheckin.check_out == None,
+            WorkerCheckin.check_in >= limit,
+        ).order_by(WorkerCheckin.check_in.desc())
+    ).first()
+
+
+def current_shift(s, worker_id: int):
+    """화면 표시용: 진행 중 근무가 있으면 그것, 없으면 오늘 기록"""
+    sh = open_shift(s, worker_id)
+    if sh:
+        return sh
+    return s.exec(select(WorkerCheckin).where(
+        WorkerCheckin.worker_id == worker_id, WorkerCheckin.work_date == date.today()
+    ).order_by(WorkerCheckin.id.desc())).first()
+
+
+def do_checkin(s, worker_id: int):
+    now = datetime.now()
+    if open_shift(s, worker_id):
+        return "already"            # 이미 근무 중 → 중복 출근 방지
+    s.add(WorkerCheckin(worker_id=worker_id, work_date=now.date(), check_in=now))
+    s.commit()
+    return "ok"
+
+
+def do_checkout(s, worker_id: int):
+    now = datetime.now()
+    sh = open_shift(s, worker_id)
+    if sh:
+        sh.check_out = now           # 자정 넘어도 출근한 날짜(work_date) 기록에 퇴근
+        s.add(sh)
+        s.commit()
+        return "ok"
+    return "no_shift"               # 출근 기록 없음 → 자동 생성하지 않음
+
+
 # ============================================================
 # 정직원 출퇴근 버튼
 # ============================================================
 @router.post("/attendance/checkin")
 def worker_checkin(request: Request, worker_id: int = Form(...)):
-    """정직원 출근 — 오늘 날짜에 이미 출근 기록 있으면 무시"""
+    """정직원 출근 — 이미 근무 중(퇴근 전)이면 무시"""
     user = _user(request)
-    today = date.today()
-    now = datetime.now()
     with Session(engine, expire_on_commit=False) as s:
         check_worker_access(s, user, worker_id)
-        existing = s.exec(
-            select(WorkerCheckin).where(
-                WorkerCheckin.worker_id == worker_id,
-                WorkerCheckin.work_date == today
-            )
-        ).first()
-        if existing:
-            if not existing.check_in:
-                existing.check_in = now
-                s.add(existing)
-        else:
-            s.add(WorkerCheckin(worker_id=worker_id, work_date=today, check_in=now))
-        s.commit()
-    return RedirectResponse("/attendance?tab=fulltime&checkin=1", status_code=303)
+        r = do_checkin(s, worker_id)
+    return RedirectResponse(f"/attendance?tab=fulltime&checkin={1 if r == 'ok' else 'dup'}", status_code=303)
 
 
 @router.post("/attendance/checkout")
 def worker_checkout(request: Request, worker_id: int = Form(...)):
-    """정직원 퇴근 — 오늘 날짜의 출근 기록에 퇴근 시간 기록"""
+    """정직원 퇴근 — 날짜와 무관하게 진행 중인 근무에 퇴근 기록 (새벽 퇴근 OK)"""
     user = _user(request)
-    today = date.today()
-    now = datetime.now()
     with Session(engine, expire_on_commit=False) as s:
         check_worker_access(s, user, worker_id)
-        existing = s.exec(
-            select(WorkerCheckin).where(
-                WorkerCheckin.worker_id == worker_id,
-                WorkerCheckin.work_date == today
-            )
-        ).first()
-        if existing:
-            existing.check_out = now
-            s.add(existing)
-        else:
-            # 출근 기록 없이 퇴근 → 자동 보정
-            s.add(WorkerCheckin(worker_id=worker_id, work_date=today, check_out=now))
-        s.commit()
-    return RedirectResponse("/attendance?tab=fulltime&checkout=1", status_code=303)
+        r = do_checkout(s, worker_id)
+    return RedirectResponse(f"/attendance?tab=fulltime&checkout={1 if r == 'ok' else 'none'}", status_code=303)
 
 
 @router.get("/attendance/new", response_class=HTMLResponse)
-def attendance_new(request: Request, project_id: str = ""):
+def attendance_new(request: Request, project_id: str = "", worker_id: str = ""):
     """근무 등록 — ?project_id=N 으로 들어오면 해당 프로젝트가 자동 선택됨"""
     try:
         project_id = int(project_id) if project_id and str(project_id).strip() else None
@@ -266,9 +318,13 @@ def attendance_new(request: Request, project_id: str = ""):
         workers = s.exec(
             select(Worker)
             .where(Worker.is_active == True)
-            .order_by(Worker.created_at.desc(), Worker.id.desc())
+            .order_by(Worker.name)
         ).all()
+        workers = [w for w in workers if (w.employee_type or "알바") != "정직원"] + \
+                  [w for w in workers if (w.employee_type or "알바") == "정직원"]
         projects_data = [{"id": p.id, "name": p.name, "code": p.code, "event_date": p.event_date} for p in projects]
+        project_periods = {str(p.id): [p.event_date.isoformat(), (p.event_end_date or p.event_date).isoformat()]
+                           for p in projects if p.event_date}
         workers_data = [{
             "id": w.id, "name": w.name,
             "default_daily_wage": w.default_daily_wage,
@@ -285,6 +341,8 @@ def attendance_new(request: Request, project_id: str = ""):
         "user": user, "projects": projects_data, "workers": workers_data,
         "today": date.today(),
         "preselect_project": preselect,
+        "project_periods": project_periods,
+        "preselect_worker": (int(worker_id) if str(worker_id).isdigit() else None),
     })
 
 
@@ -296,41 +354,62 @@ def _safe_int(v, default=0):
 
 
 @router.post("/attendance/new")
-def attendance_create(
-    request: Request,
-    project_id: int = Form(...),
-    worker_id: int = Form(...),
-    work_date: str = Form(...),
-    days: float = Form(1.0),
-    daily_wage: str = Form("0"),
-    bonus_amount: str = Form("0"),
-    bonus_memo: str = Form(""),
-    memo: str = Form(""),
-):
+async def attendance_create(request: Request):
+    """알바 근무 일괄 등록 — 여러 명 × 여러 날짜를 한 번에 (같은 사람·같은 날·같은 프로젝트 중복은 건너뜀)"""
     user = _user(request)
+    form = await request.form()
     from permissions import has_permission as _hpw
     _can_w = _hpw(user, "view_wage_pay")
-    wage = _safe_int(daily_wage, 0)
-    bonus = _safe_int(bonus_amount, 0)
+    try:
+        project_id = int(form.get("project_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "프로젝트를 선택해주세요.")
+    worker_ids = []
+    for v in form.getlist("worker_ids") + ([form.get("worker_id")] if form.get("worker_id") else []):
+        try:
+            if int(v) not in worker_ids:
+                worker_ids.append(int(v))
+        except (TypeError, ValueError):
+            pass
+    dates = []
+    for v in (form.get("work_dates") or form.get("work_date") or "").replace(" ", "").split(","):
+        d = _parse_date(v)
+        if d and d not in dates:
+            dates.append(d)
+    if not worker_ids or not dates:
+        raise HTTPException(400, "근무자와 날짜를 1개 이상 선택해주세요.")
+    try:
+        days = float(form.get("days") or 1)
+    except ValueError:
+        days = 1.0
+    wage_in = _safe_int(form.get("daily_wage", "0"), 0)
+    bonus = _safe_int(form.get("bonus_amount", "0"), 0) if _can_w else 0
+    bonus_memo = (form.get("bonus_memo") or "").strip() if _can_w else ""
+    memo = form.get("memo") or ""
+    use_default = (form.get("wage_mode") == "default") or not _can_w
+    created = skipped = 0
     with Session(engine, expire_on_commit=False) as s:
-        if not _can_w:
-            _w = s.get(Worker, worker_id)
-            wage = (_w.default_daily_wage if _w else 0) or 0
-            bonus = 0
-            bonus_memo = ""
-        a = Attendance(
-            project_id=project_id, worker_id=worker_id,
-            work_date=datetime.strptime(work_date, "%Y-%m-%d").date(),
-            days=days, daily_wage=wage,
-            total_wage=int(days * wage) + bonus,  # 일당 합계 + 추가금액
-            bonus_amount=bonus,
-            bonus_memo=(bonus_memo or "").strip(),
-            memo=memo,
-            registered_by=user.id,
-        )
-        s.add(a)
+        for wid in worker_ids:
+            w = s.get(Worker, wid)
+            if not w:
+                continue
+            wage = (w.default_daily_wage or 0) if use_default else wage_in
+            for d in dates:
+                dup = s.exec(select(Attendance).where(Attendance.project_id == project_id,
+                                                      Attendance.worker_id == wid,
+                                                      Attendance.work_date == d)).first()
+                if dup:
+                    skipped += 1
+                    continue
+                s.add(Attendance(project_id=project_id, worker_id=wid, work_date=d, days=days,
+                                 daily_wage=wage, total_wage=int(days * wage) + bonus,
+                                 bonus_amount=bonus, bonus_memo=bonus_memo, memo=memo,
+                                 registered_by=user.id))
+                created += 1
         s.commit()
-    return RedirectResponse("/attendance", status_code=303)
+    back = form.get("back") or "/attendance"
+    sep = "&" if "?" in back else "?"
+    return RedirectResponse(f"{back}{sep}created={created}&skipped={skipped}", status_code=303)
 
 
 @router.get("/attendance/{aid}/edit", response_class=HTMLResponse)
@@ -380,9 +459,12 @@ def attendance_update(
             raise HTTPException(404)
         if not _can_w:   # 급여 권한 없으면 기존 금액 유지
             wage, bonus, bonus_memo = a.daily_wage, a.bonus_amount or 0, a.bonus_memo or ""
+        _nd = datetime.strptime(work_date, "%Y-%m-%d").date()
+        if getattr(a, "staff_id", None) and (a.project_id != project_id or a.worker_id != worker_id or a.work_date != _nd):
+            a.staff_id = None   # 직접 변경 → 수동 기록
         a.project_id = project_id
         a.worker_id = worker_id
-        a.work_date = datetime.strptime(work_date, "%Y-%m-%d").date()
+        a.work_date = _nd
         a.days = days
         a.daily_wage = wage
         a.bonus_amount = bonus
@@ -409,6 +491,34 @@ def attendance_pay(request: Request, aid: int):
     return RedirectResponse(request.headers.get("referer", "/attendance"), status_code=303)
 
 
+@router.post("/attendance/bulk-pay")
+async def attendance_bulk_pay(request: Request):
+    """근무자별 묶음 — 선택 기록 일괄 지급완료/미지급"""
+    from permissions import has_permission
+    if not has_permission(_user(request), "manage_wage_pay"):
+        raise HTTPException(403, "알바 급여 지급완료 처리 권한이 없습니다.")
+    form = await request.form()
+    ids = []
+    for v in (form.get("ids") or "").split(","):
+        try:
+            ids.append(int(v))
+        except ValueError:
+            pass
+    action = form.get("action") or "pay"
+    n = 0
+    with Session(engine, expire_on_commit=False) as s:
+        for aid in ids:
+            a = s.get(Attendance, aid)
+            if not a:
+                continue
+            a.pay_status = "지급완료" if action == "pay" else "미지급"
+            a.pay_date = date.today() if action == "pay" else None
+            s.add(a); n += 1
+        s.commit()
+    back = request.headers.get("referer", "/attendance")
+    return RedirectResponse(back, status_code=303)
+
+
 @router.post("/attendance/{aid}/delete")
 def attendance_delete(request: Request, aid: int):
     _user(request)
@@ -417,7 +527,7 @@ def attendance_delete(request: Request, aid: int):
         if a:
             s.delete(a)
             s.commit()
-    return RedirectResponse("/attendance", status_code=303)
+    return RedirectResponse(request.headers.get("referer", "/attendance"), status_code=303)
 
 
 # ============================================================

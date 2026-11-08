@@ -4,7 +4,7 @@
 <div class="mb-4">
   <a href="/workers" class="text-sm text-slate-500">← 근무자 목록</a>
   <h1 class="text-2xl font-bold text-slate-800 mt-2">{% if readonly %}👤 내 정보: {{ w.name }}{% else %}✏️ 근무자 수정: {{ w.name }}{% endif %}</h1>
-  {% if readonly %}<p class="text-sm mt-1" style="color:var(--ink-4);">🔒 조회 전용입니다. 정보 변경은 관리자에게 요청하세요.</p>{% endif %}
+  {% if readonly %}<p class="text-sm mt-1" style="color:var(--ink-4);">연락처·계좌·사진·비밀번호는 <a href="/me" style="color:#1E40AF; font-weight:700;">👤 내 정보</a>에서 직접 수정할 수 있습니다.</p>{% endif %}
 </div>
 
 <form method="post" action="{% if readonly %}#{% else %}/workers/{{ w.id }}/edit{% endif %}" enctype="multipart/form-data" class="card space-y-4 max-w-3xl" id="worker-form">

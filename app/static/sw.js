@@ -1,12 +1,13 @@
 // 정산관리 시스템 - 서비스 워커
 // 오프라인 시 기본 페이지 캐시 + 정적 자원 캐싱
-const CACHE_NAME = 'jeongsan-v20260925-1400';
+const CACHE_NAME = 'jeongsan-v20261108-1500';
 const STATIC_ASSETS = [
   '/m/',
   '/m/offline',
   '/static/manifest.json',
   '/static/icon-192.png',
   '/static/icon-512.png',
+  '/static/icon-punch-192.png',
 ];
 
 // 설치 시 정적 자원 캐싱

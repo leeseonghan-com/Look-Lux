@@ -9,6 +9,7 @@ from sqlalchemy import or_
 
 from database import engine, Project, Vendor, Expense, Attendance, User
 from template_utils import templates
+from template_utils import expense_cost
 
 router = APIRouter()
 
@@ -155,6 +156,29 @@ def sync_all_project_statuses(session) -> int:
     if changed_count > 0:
         session.commit()
     return changed_count
+
+
+def sync_quotes_on_cancel(s, project, prev_status=None):
+    """프로젝트 '취소' ↔ 연결된 견적서 '실주' 자동 동기화
+    - 취소로 바뀌면: 연결 견적(project_id) 중 '실주'가 아닌 것을 '실주'로
+    - 취소에서 다시 살리면: 자동으로 실주 처리했던 견적을 '수주'로 복구
+    반환: 변경된 견적 수"""
+    from database import Quote
+    n = 0
+    if not project or not project.id:
+        return 0
+    qs = s.exec(select(Quote).where(Quote.project_id == project.id)).all()
+    if project.status == "취소":
+        for q in qs:
+            if q.status != "실주":
+                q.status = "실주"
+                s.add(q); n += 1
+    elif prev_status == "취소":
+        for q in qs:
+            if q.status == "실주":
+                q.status = "수주"
+                s.add(q); n += 1
+    return n
 
 
 def unified_status(project) -> dict:
@@ -358,7 +382,7 @@ def project_list(
                     continue
 
             v = s.get(Vendor, p.vendor_id) if p.vendor_id else None
-            exp = sum(e.amount for e in s.exec(select(Expense).where(Expense.project_id == p.id)).all())
+            exp = sum(expense_cost(e) for e in s.exec(select(Expense).where(Expense.project_id == p.id)).all())
             wage = sum(a.total_wage for a in s.exec(select(Attendance).where(Attendance.project_id == p.id)).all())
             # 자동 계산된 상태 (DB 미수정, 표시용)
             auto_st, auto_settle = auto_status(p)
@@ -568,7 +592,10 @@ def projects_bulk_update(
             p = s.get(Project, pid)
             if not p:
                 continue
+            _prev = p.status
             setattr(p, field, value)
+            if field == "status":
+                sync_quotes_on_cancel(s, p, _prev)
             # 입금완료로 바뀌면 paid_date도 자동 기록 (이미 있으면 유지)
             if field == "settlement_status" and value == "입금완료" and not p.paid_date:
                 p.paid_date = today
@@ -607,7 +634,7 @@ def projects_by_vendor(request: Request):
             g["count"] += 1
             g["supply"] += (p.supply_amount or p.revenue)
             g["revenue"] += p.revenue
-            exp = sum(e.amount for e in s.exec(select(Expense).where(Expense.project_id == p.id)).all())
+            exp = sum(expense_cost(e) for e in s.exec(select(Expense).where(Expense.project_id == p.id)).all())
             wage = sum(a.total_wage for a in s.exec(select(Attendance).where(Attendance.project_id == p.id)).all())
             g["expense"] += exp
             g["wage"] += wage
@@ -659,7 +686,7 @@ def projects_by_vendor_detail(request: Request, vid: int):
 
         rows = []
         for p in projects:
-            exp = sum(e.amount for e in s.exec(select(Expense).where(Expense.project_id == p.id)).all())
+            exp = sum(expense_cost(e) for e in s.exec(select(Expense).where(Expense.project_id == p.id)).all())
             wage = sum(a.total_wage for a in s.exec(select(Attendance).where(Attendance.project_id == p.id)).all())
             auto_st, auto_settle = auto_status(p)
             rows.append({
@@ -736,7 +763,9 @@ def project_detail(request: Request, pid: int):
         } for e in expenses_raw]
         total_expense = sum(e["amount"] for e in expenses)
         total_wage = sum(a["total_wage"] for a in att_rows)
-        profit = p.revenue - total_expense - total_wage
+        # 순이익 = 공급가(VAT 제외) − 하청 공급가(VAT 제외) − 인건비
+        cost_expense = sum(expense_cost(e) for e in expenses_raw)
+        profit = (p.supply_amount or p.revenue) - cost_expense - total_wage
         # 행사일 기준 자동 상태 (표시용, DB 미수정)
         auto_st, auto_settle = auto_status(p)
         unified = unified_status(p)
@@ -871,7 +900,9 @@ def project_update(
             p.supply_amount = supply
             p.vat_amount = vat
             p.vat_mode = vat_mode if vat_mode in ("supply", "total", "cash") else "supply"
+        _prev_status = p.status
         p.status = status if status in ("준비중","진행중","완료","취소") else p.status
+        sync_quotes_on_cancel(s, p, _prev_status)
         from permissions import has_permission as _hp2
         if _hp2(_user(request), "manage_settlement"):
             p.settlement_status = settlement_status if settlement_status in ("미수금","입금완료") else p.settlement_status

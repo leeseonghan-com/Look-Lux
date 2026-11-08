@@ -18,6 +18,8 @@ PERMISSION_GROUPS = [
         ("expenses", "하청/외주 지급", "외주 발주 내역 등록·조회"),
         ("vendors", "거래처", "거래처 등록·조회"),
         ("workers", "근무자 목록", "이름·구분만 표시 (개인정보는 관리자 전용)"),
+        ("files", "자료실 보기·올리기", "사진·영상·문서 조회, 업로드, 다운로드 (본인 자료 삭제)"),
+        ("files_manage", "자료실 정리·삭제", "다른 사람이 올린 자료 삭제·이동, 폴더 삭제, 휴지통 비우기"),
     ]),
     ("💰 프로젝트 매출·정산", [
         ("view_revenue", "매출 금액 보기", "프로젝트별 매출·공급가·부가세, 견적·단가 금액"),
@@ -37,16 +39,16 @@ PERMISSION_KEYS = {k: label for _, items in PERMISSION_GROUPS for k, label, _d i
 
 # 빠른 설정 프리셋
 PERMISSION_PRESETS = {
-    "field": ("현장 직원", ["projects", "attendance"]),
+    "field": ("현장 직원", ["projects", "attendance", "files"]),
     "office": ("사무·경리", ["projects", "projects_edit", "quotes", "products", "attendance", "expenses",
                             "vendors", "workers", "view_revenue", "view_settlement", "manage_settlement",
-                            "view_sub_pay", "manage_sub_pay", "view_wage_pay", "manage_wage_pay"]),
+                            "view_sub_pay", "manage_sub_pay", "view_wage_pay", "manage_wage_pay", "files", "files_manage"]),
     "sales": ("영업 담당", ["projects", "projects_edit", "quotes", "products", "vendors",
-                          "view_revenue", "view_settlement"]),
+                          "view_revenue", "view_settlement", "files"]),
 }
 
 # 신규 직원 기본 권한 (현장 직원 수준, 금액 조회 불가)
-DEFAULT_STAFF_PERMISSIONS = {k: (k in ("projects", "attendance", "expenses")) for k in PERMISSION_KEYS}
+DEFAULT_STAFF_PERMISSIONS = {k: (k in ("projects", "attendance", "expenses", "files")) for k in PERMISSION_KEYS}
 
 # 구버전 키 → 신규 키 자동 변환 (기존 직원 권한 보존)
 _LEGACY_MAP = {
@@ -54,6 +56,7 @@ _LEGACY_MAP = {
     "view_settlement": ["view_amounts"],
     "view_sub_pay": ["view_amounts", "view_expenses"],
     "view_wage_pay": ["view_amounts", "view_wages"],
+    "files": ["projects"],   # 자료실(신규): 저장된 적 없으면 프로젝트 권한 있는 직원에게 보기·올리기 허용
 }
 
 

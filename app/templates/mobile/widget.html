@@ -1,0 +1,97 @@
+{% extends "mobile/base.html" %}
+{% set active_tab = 'more' %}
+{% set back_url = '/m/more' %}
+{% block page_title %}출퇴근 위젯{% endblock %}
+
+{% block content %}
+{% if not ok %}
+<div class="m-card empty">
+  <div class="ico">🔗</div>
+  <b>출퇴근 대상 계정이 아닙니다</b>
+  위젯은 재직 중인 정직원 계정에서 사용할 수 있습니다.<br>관리자에게 <b style="display:inline;">직원 관리 → 연결할 근무자</b> 설정을 요청하세요.
+</div>
+{% else %}
+
+{% if request.query_params.get('reset') %}<div class="alert">✓ 새 링크가 발급되었습니다. 이전 위젯·바로가기는 지우고 다시 추가하세요.</div>{% endif %}
+
+<div class="m-card tp" style="color:#fff; background-color:#0B1220 !important; background-image:linear-gradient(#0B1220,#0B1220) !important;">
+  <div style="font-size:13px; color:#94A3B8; font-weight:700;">{{ worker_name }}님 전용</div>
+  <div style="font-size:20px; font-weight:800; margin-top:4px; letter-spacing:-0.02em;">홈 화면에서 바로 출퇴근</div>
+  <div style="font-size:13px; color:#CBD5E1; margin-top:6px; line-height:1.55;">앱을 열거나 로그인할 필요 없이, 홈 화면 아이콘(위젯)을 누르면 큰 출근/퇴근 버튼이 바로 뜹니다. 자정 넘어 새벽에 퇴근해도 전날 근무에 정확히 기록됩니다.</div>
+  <a href="{{ link }}" style="display:block; margin-top:14px; text-align:center; padding:14px; border-radius:14px; font-weight:800; text-decoration:none; color:#0B1220; background-color:#fff !important; background-image:linear-gradient(#fff,#fff) !important;">출퇴근 화면 열기 →</a>
+</div>
+
+<div class="chips" id="os-chips">
+  <a href="#" class="chip on" data-os="android">안드로이드</a>
+  <a href="#" class="chip" data-os="ios">아이폰</a>
+</div>
+
+<div id="os-android">
+  <div class="m-card">
+    <div class="step"><i>1</i><div><b>위의 [출퇴근 화면 열기]를 누릅니다</b>크롬 또는 삼성 인터넷으로 열어주세요.</div></div>
+    <div class="step"><i>2</i><div><b>메뉴(⋮ 또는 ≡) → '홈 화면에 추가'</b>삼성 인터넷: ≡ → 현재 페이지 추가 → 홈 화면<br>크롬: ⋮ → 홈 화면에 추가 → 설치(또는 추가)</div></div>
+    <div class="step"><i>3</i><div><b>홈 화면에 '출퇴근' 아이콘이 생깁니다</b>원하는 위치로 끌어다 놓으세요. 누르면 바로 출근/퇴근 버튼이 뜹니다.</div></div>
+  </div>
+  <div class="m-card" style="font-size:13px; color:var(--ink-3); line-height:1.6;">
+    <b style="color:var(--ink);">💡 앱 아이콘 길게 누르기</b><br>
+    정산관리 앱이 설치되어 있다면 앱 아이콘을 길게 누르면 <b>출퇴근</b> 바로가기가 나옵니다. 이것도 홈 화면으로 끌어다 놓을 수 있습니다.
+  </div>
+</div>
+
+<div id="os-ios" style="display:none;">
+  <div class="m-card">
+    <div style="font-size:14px; font-weight:800; margin-bottom:10px;">방법 A · 홈 화면 아이콘 (가장 쉬움)</div>
+    <div class="step"><i>1</i><div><b>위의 [출퇴근 화면 열기]를 Safari로 엽니다</b></div></div>
+    <div class="step"><i>2</i><div><b>아래쪽 공유 버튼(□↑) → '홈 화면에 추가'</b></div></div>
+    <div class="step"><i>3</i><div><b>홈 화면의 '출퇴근' 아이콘을 누르면 바로 버튼이 뜹니다</b></div></div>
+  </div>
+  <div class="m-card">
+    <div style="font-size:14px; font-weight:800; margin-bottom:10px;">방법 B · 위젯 한 번 누르면 즉시 기록 (단축어)</div>
+    <div class="step"><i>1</i><div><b>'단축어' 앱 → ＋ → 동작 추가 → 'URL 콘텐츠 가져오기'</b>아래 주소를 붙여넣기 하세요.</div></div>
+    <div class="url-box"><span id="tog">{{ toggle_link }}</span><button type="button" onclick="cp('tog', this)">복사</button></div>
+    <div class="step"><i>2</i><div><b>동작 추가 → '알림 보기'</b>내용에 'URL 콘텐츠'를 넣으면 "출근 완료 (09:02)"처럼 결과가 표시됩니다.</div></div>
+    <div class="step"><i>3</i><div><b>이름을 '출퇴근'으로 저장 → 홈 화면 길게 누르기 → ＋ → 단축어 위젯 추가</b>잠금 화면 위젯으로도 추가할 수 있습니다. 누를 때마다 출근 ↔ 퇴근이 자동으로 바뀝니다.</div></div>
+  </div>
+</div>
+
+<div class="m-card">
+  <div style="font-size:14px; font-weight:800; margin-bottom:6px;">내 출퇴근 링크</div>
+  <div class="url-box"><span id="lnk">{{ link }}</span><button type="button" onclick="cp('lnk', this)">복사</button></div>
+  <div style="font-size:12px; color:var(--ink-4); margin-top:8px; line-height:1.55;">🔒 이 링크는 {{ worker_name }}님 본인만 출퇴근할 수 있는 열쇠입니다. 다른 사람에게 보내지 마세요. 휴대폰을 잃어버렸거나 링크가 노출되었다면 아래에서 새로 발급하세요.</div>
+  <form method="post" action="/m/widget/reset" onsubmit="return confirm('새 링크를 발급하면 기존 위젯·바로가기는 더 이상 작동하지 않습니다. 계속할까요?');" style="margin-top:10px;">
+    <button class="btn btn-secondary" style="width:100%; font-size:14px; padding:12px;">링크 새로 발급</button>
+  </form>
+</div>
+{% endif %}
+
+<style>
+.step { display: flex; gap: 12px; padding: 9px 0; font-size: 13px; color: var(--ink-3); line-height: 1.55; }
+.step i { font-style: normal; flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff; background-color: #0B1220 !important; background-image: linear-gradient(#0B1220,#0B1220) !important; }
+.step b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 2px; }
+.step div, .step b { background: transparent !important; background-image: none !important; }
+.url-box { display: flex; gap: 8px; align-items: center; padding: 10px 10px 10px 12px; border-radius: 12px; border: 1px dashed var(--line); margin: 4px 0 6px; }
+.url-box span { flex: 1; font-size: 12px; font-family: ui-monospace, monospace; word-break: break-all; color: var(--ink-3); background: transparent !important; background-image: none !important; }
+.url-box button { flex-shrink: 0; border: 0; border-radius: 9px; padding: 8px 12px; font-weight: 700; font-family: inherit; color: #fff; background-color: #0B1220 !important; background-image: linear-gradient(#0B1220,#0B1220) !important; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function cp(id, btn) {
+  var t = document.getElementById(id).textContent.trim();
+  (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { btn.textContent = '복사됨'; setTimeout(function () { btn.textContent = '복사'; }, 1500); })
+    .catch(function () { prompt('길게 눌러 복사하세요', t); });
+}
+(function () {
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  function show(os) {
+    document.querySelectorAll('#os-chips .chip').forEach(function (c) { c.classList.toggle('on', c.dataset.os === os); });
+    var a = document.getElementById('os-android'), i = document.getElementById('os-ios');
+    if (a) a.style.display = os === 'android' ? '' : 'none';
+    if (i) i.style.display = os === 'ios' ? '' : 'none';
+  }
+  document.querySelectorAll('#os-chips .chip').forEach(function (c) { c.addEventListener('click', function (e) { e.preventDefault(); show(c.dataset.os); }); });
+  if (isIOS) show('ios');
+})();
+</script>
+{% endblock %}

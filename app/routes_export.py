@@ -9,6 +9,7 @@
   /export/vendors    거래처
   /export/workers    근무자
 """
+from template_utils import expense_cost
 import io
 from datetime import date, datetime
 from fastapi import APIRouter, Request, HTTPException
@@ -144,7 +145,7 @@ def export_projects(request: Request):
     with Session(engine, expire_on_commit=False) as s:
         vendors = {v.id: v.name for v in s.exec(select(Vendor)).all()}
         for p in s.exec(select(Project).order_by(Project.created_at.desc())).all():
-            exp = sum(e.amount for e in s.exec(
+            exp = sum(expense_cost(e) for e in s.exec(
                 select(Expense).where(Expense.project_id == p.id)).all())
             wage = sum(a.total_wage for a in s.exec(
                 select(Attendance).where(Attendance.project_id == p.id)).all())

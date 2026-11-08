@@ -20,13 +20,25 @@
 </div>
 
 {% if request.query_params.get('checkin') %}
+{% if request.query_params.get('checkin') == 'dup' %}
+<div class="card mb-3" style="background: #FFFBEB; border-color: #FDE68A; padding: 10px 16px;">
+  <div class="text-sm font-bold" style="color: #92400E;">이미 근무 중입니다. 퇴근을 먼저 눌러주세요.</div>
+</div>
+{% else %}
 <div class="card mb-3" style="background: #ECFDF5; border-color: #A7F3D0; padding: 10px 16px;">
   <div class="text-sm font-bold" style="color: #047857;">✓ 출근 등록 완료</div>
 </div>
+{% endif %}
 {% elif request.query_params.get('checkout') %}
+{% if request.query_params.get('checkout') == 'none' %}
+<div class="card mb-3" style="background: #FFFBEB; border-color: #FDE68A; padding: 10px 16px;">
+  <div class="text-sm font-bold" style="color: #92400E;">진행 중인 출근 기록이 없습니다. 출근을 먼저 눌러주세요.</div>
+</div>
+{% else %}
 <div class="card mb-3" style="background: #DBEAFE; border-color: #BFDBFE; padding: 10px 16px;">
   <div class="text-sm font-bold" style="color: #1E40AF;">✓ 퇴근 등록 완료</div>
 </div>
+{% endif %}
 {% endif %}
 
 <!-- 기간 필터 (양 탭 공통) -->
@@ -79,7 +91,7 @@
         {% if w.check_in and w.check_out %}
         <span style="display:inline-block; padding:3px 10px; border-radius:10px; background:#D1FAE5; color:#047857; font-size:11px; font-weight:700;">✓ 퇴근</span>
         {% elif w.check_in %}
-        <span style="display:inline-block; padding:3px 10px; border-radius:10px; background:#DBEAFE; color:#1E40AF; font-size:11px; font-weight:700;">🏃 근무중</span>
+        <span style="display:inline-block; padding:3px 10px; border-radius:10px; background:#DBEAFE; color:#1E40AF; font-size:11px; font-weight:700;">🏃 근무중{% if w.overnight %} · {{ w.shift_date.strftime('%m/%d') }} 출근{% endif %}</span>
         {% else %}
         <span style="display:inline-block; padding:3px 10px; border-radius:10px; background:#F3F4F6; color:#6B7280; font-size:11px; font-weight:700;">대기</span>
         {% endif %}
@@ -87,10 +99,10 @@
 
       <div class="text-sm mb-3" style="color: var(--ink-3);">
         {% if w.check_in %}
-        <div>출근: <span class="font-bold">{{ w.check_in.strftime('%H:%M') }}</span></div>
+        <div>출근: <span class="font-bold">{% if w.overnight %}{{ w.check_in.strftime('%m/%d') }} {% endif %}{{ w.check_in.strftime('%H:%M') }}</span></div>
         {% endif %}
         {% if w.check_out %}
-        <div>퇴근: <span class="font-bold">{{ w.check_out.strftime('%H:%M') }}</span>
+        <div>퇴근: <span class="font-bold">{% if w.check_in and w.check_out.date() != w.check_in.date() %}{{ w.check_out.strftime('%m/%d') }} {% endif %}{{ w.check_out.strftime('%H:%M') }}</span>
           {% if w.check_in %}
           ({{ ((w.check_out - w.check_in).total_seconds() / 3600) | round(1) }}시간)
           {% endif %}
@@ -162,7 +174,7 @@
           <td class="text-xs">{{ r.date }}</td>
           <td class="font-semibold">{{ r.worker_name }}</td>
           <td class="text-center text-xs">{{ r.check_in.strftime('%H:%M') if r.check_in else '-' }}</td>
-          <td class="text-center text-xs">{{ r.check_out.strftime('%H:%M') if r.check_out else '-' }}</td>
+          <td class="text-center text-xs">{% if r.check_out %}{% if r.check_out.date() != r.date %}<span style="color:#7C3AED; font-weight:700;">익일</span> {% endif %}{{ r.check_out.strftime('%H:%M') }}{% else %}-{% endif %}</td>
           <td class="text-center text-xs font-bold">{{ r.hours }}h{% if not r.hours %}-{% endif %}</td>
           <td class="mobile-hide text-xs" style="color: var(--ink-4);">{{ r.memo or '-' }}</td>
           <td class="text-center text-xs whitespace-nowrap">
@@ -202,23 +214,117 @@
   </div>
   <div class="flex gap-2">
     <a href="/workers?type=알바" class="btn-secondary" style="font-size: 13px;">+ 알바 직원 등록</a>
-    <a href="/attendance/new" class="btn-primary">+ 알바 근무 등록</a>
+    <a href="/attendance/new{% if selected_project_id %}?project_id={{ selected_project_id }}{% endif %}" class="btn-primary">+ 알바 근무 등록 (여러 명·여러 날)</a>
   </div>
 </div>
 
-<div class="card mb-4">
-  <form method="get">
+{% if request.query_params.get('created') %}
+<div class="card mb-3" style="background:#ECFDF5; border-color:#A7F3D0; padding:10px 16px;">
+  <div class="text-sm font-bold" style="color:#047857;">✓ {{ request.query_params.get('created') }}건 등록 완료{% if request.query_params.get('skipped') and request.query_params.get('skipped') != '0' %} · 이미 있던 {{ request.query_params.get('skipped') }}건은 건너뜀{% endif %}</div>
+</div>
+{% endif %}
+
+<div class="card mb-4" style="padding:12px 16px;">
+  <form method="get" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
     <input type="hidden" name="tab" value="alba">
-    <label class="label">프로젝트별 필터</label>
-    <select name="project_id" class="input" onchange="this.form.submit()">
-      <option value="">전체</option>
-      {% for p in projects %}
-      <option value="{{ p.id }}" {% if selected_project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
-      {% endfor %}
-    </select>
+    <input type="hidden" name="view" value="{{ view }}">
+    <input type="hidden" name="period" value="{{ period }}">
+    <input type="hidden" name="from_date" value="{{ from_date }}">
+    <input type="hidden" name="to_date" value="{{ to_date }}">
+    <div style="flex:1; min-width:180px;">
+      <label class="label">프로젝트</label>
+      <select name="project_id" class="input" onchange="this.form.submit()">
+        <option value="">전체</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}" {% if selected_project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1; min-width:160px;">
+      <label class="label">근무자</label>
+      <select name="worker_id" class="input" onchange="this.form.submit()">
+        <option value="">전체</option>
+        {% for w in workers %}
+        <option value="{{ w.id }}" {% if selected_worker_id == w.id %}selected{% endif %}>{{ w.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="display:flex; border:1px solid var(--line); border-radius:10px; overflow:hidden;">
+      {% set qs = 'tab=alba&period=' ~ period ~ '&from_date=' ~ from_date ~ '&to_date=' ~ to_date ~ '&project_id=' ~ (selected_project_id or '') ~ '&worker_id=' ~ (selected_worker_id or '') %}
+      <a href="/attendance?{{ qs }}&view=worker" style="padding:9px 14px; font-size:13px; font-weight:700; {% if view == 'worker' %}background:#0A0E1A; color:#fff;{% else %}color:var(--ink-3);{% endif %}">👥 근무자별</a>
+      <a href="/attendance?{{ qs }}&view=list" style="padding:9px 14px; font-size:13px; font-weight:700; {% if view == 'list' %}background:#0A0E1A; color:#fff;{% else %}color:var(--ink-3);{% endif %}">📋 날짜순 목록</a>
+    </div>
   </form>
 </div>
 
+{% if view == 'worker' %}
+{% for g in worker_groups %}
+<div class="card mb-3" style="padding:0; overflow:hidden;">
+  <div onclick="var b=this.nextElementSibling; b.style.display=b.style.display==='none'?'':'none'; this.querySelector('.arw').textContent=b.style.display==='none'?'▸':'▾';"
+       style="display:flex; align-items:center; gap:14px; padding:14px 18px; cursor:pointer; flex-wrap:wrap; background:#FAFAF7;">
+    <span class="arw" style="color:var(--ink-4); width:12px;">▸</span>
+    <div style="min-width:120px;">
+      <div style="font-size:16px; font-weight:800;">🧢 {{ g.name }}</div>
+      <div class="text-xs" style="color:var(--ink-4); margin-top:2px;">{{ g.projects|join(', ') }}</div>
+    </div>
+    <div style="display:flex; gap:18px; margin-left:auto; flex-wrap:wrap; align-items:center;">
+      <div class="text-center"><div class="text-xs" style="color:var(--ink-4);">근무</div><div class="font-bold num">{{ g.count }}건 · {{ g.days|round(1)|replace('.0','') }}일</div></div>
+      {% if request.state.can_view_wage %}
+      <div class="text-center"><div class="text-xs" style="color:var(--ink-4);">합계</div><div class="font-bold num">{{ g.total|money_wage }}원</div></div>
+      <div class="text-center"><div class="text-xs" style="color:var(--ink-4);">미지급</div><div class="font-bold num" style="color:{% if g.unpaid %}#B91C1C{% else %}#047857{% endif %};">{% if g.unpaid %}{{ g.unpaid|money_wage }}원{% else %}✓ 완료{% endif %}</div></div>
+      {% endif %}
+      <a href="/attendance/new?worker_id={{ g.worker_id }}{% if selected_project_id %}&project_id={{ selected_project_id }}{% endif %}" onclick="event.stopPropagation();" class="btn-secondary" style="padding:6px 12px; font-size:12px;">+ 날짜 추가</a>
+      {% if request.state.can_manage_wage and g.ids %}
+      <form method="post" action="/attendance/bulk-pay" onclick="event.stopPropagation();" onsubmit="return confirm('{{ g.name }}님의 미지급 {{ g.unpaid_count }}건을 모두 지급완료 처리할까요?');" style="margin:0;">
+        <input type="hidden" name="ids" value="{{ g.ids }}"><input type="hidden" name="action" value="pay">
+        <button class="btn-primary" style="padding:6px 12px; font-size:12px;">✓ 일괄 지급</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  <div style="display:none; border-top:1px solid var(--line);">
+    <table class="dt" style="margin:0;">
+      <thead><tr>
+        <th>날짜</th><th>프로젝트</th><th class="text-right">근무일</th>
+        {% if request.state.can_view_wage %}<th class="text-right">일당</th><th class="text-right mobile-hide">추가</th><th class="text-right">합계</th><th>상태</th>{% endif %}
+        <th class="text-center">관리</th>
+      </tr></thead>
+      <tbody>
+      {% for r in g.rows %}
+      <tr>
+        <td class="text-xs whitespace-nowrap">{{ r.date.strftime('%m/%d') }}({{ '월화수목금토일'[r.date.weekday()] }}){% if r.auto %} <span title="인력배치에서 자동 등록" style="font-size:10px; padding:1px 5px; border-radius:4px; background:#EEF2FF; color:#4338CA; font-weight:700;">배치</span>{% endif %}</td>
+        <td class="text-xs">{{ r.project_name }}</td>
+        <td class="text-right text-xs">{{ r.days }}일</td>
+        {% if request.state.can_view_wage %}
+        <td class="text-right num text-xs">{{ r.daily_wage|money_wage }}</td>
+        <td class="text-right num text-xs mobile-hide" style="color:#7C3AED;">{% if r.bonus_amount %}+{{ r.bonus_amount|money_wage }}{% else %}—{% endif %}</td>
+        <td class="text-right num font-bold">{{ r.total_wage|money_wage }}</td>
+        <td>{% if r.pay_status == '지급완료' %}<span class="badge badge-green">✓ 지급완료</span>{% else %}<span class="badge badge-orange">미지급</span>{% endif %}</td>
+        {% endif %}
+        <td class="text-center text-xs whitespace-nowrap">
+          <a href="/attendance/{{ r.id }}/edit" style="color: var(--gold-2); font-weight: 600;">수정</a>
+          {% if request.state.can_manage_wage %}
+          <span style="color: var(--line); margin: 0 4px;">·</span>
+          <form method="post" action="/attendance/{{ r.id }}/pay" style="display:inline;">
+            <button type="submit" style="background:none; border:none; color:{% if r.pay_status == '미지급' %}#059669{% else %}#B45309{% endif %}; font-size:12px; font-weight:600; cursor:pointer; padding:0;">{% if r.pay_status == '미지급' %}✓ 지급{% else %}↺ 되돌리기{% endif %}</button>
+          </form>
+          {% endif %}
+          <span style="color: var(--line); margin: 0 4px;">·</span>
+          <form method="post" action="/attendance/{{ r.id }}/delete" style="display:inline;" onsubmit="return confirm('이 근무 기록을 삭제하시겠습니까?');">
+            <button type="submit" style="background:none; border:none; color:#DC2626; font-size:12px; font-weight:600; cursor:pointer; padding:0;">삭제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+{% if not worker_groups %}
+<div class="card text-center py-10" style="color: var(--ink-4);">이 기간에 등록된 알바 근무 기록이 없습니다.</div>
+{% endif %}
+{% else %}
 <div class="card overflow-x-auto" style="padding: 0;">
   <table class="dt">
     <thead>
@@ -290,6 +396,7 @@
   </table>
 </div>
 
+{% endif %}
 {% endif %}
 
 {% endblock %}

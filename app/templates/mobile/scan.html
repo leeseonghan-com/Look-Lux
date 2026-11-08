@@ -1,6 +1,5 @@
 {% extends "mobile/base.html" %}
 {% set active_tab = 'scan' %}
-{% set back_url = '/m/' %}
 {% block page_title %}QR 스캔{% endblock %}
 
 {% block head_extra %}
@@ -28,6 +27,12 @@
     box-shadow: 0 0 0 9999px rgba(0,0,0,0.4);
     pointer-events: none;
   }
+  /* ★ 공통 '흰 배경' 규칙이 네모 안을 흰색으로 덮던 문제 → 네모 안은 투명하게 (카메라가 보이도록) */
+  .scan-wrap .scan-frame, .scan-wrap .scan-frame span {
+    background: transparent !important; background-color: transparent !important; background-image: none !important;
+  }
+  .scan-wrap, #scan-video { background: #000 !important; background-image: none !important; }
+  #scan-video { display: block; }
   .scan-frame::before, .scan-frame::after,
   .scan-frame .br, .scan-frame .bl {
     content: ''; position: absolute; width: 24px; height: 24px;

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select
 
-from database import engine, Project, Worker, User, ProjectStaff, STAFF_ROLES, CalendarEvent, EVENT_KINDS
+from database import engine, Project, Worker, User, ProjectStaff, STAFF_ROLES, CalendarEvent, EVENT_KINDS, Attendance
 from template_utils import templates
 
 router = APIRouter()
@@ -229,6 +229,7 @@ async def staff_add(request: Request, pid: int):
             s.add(ProjectStaff(project_id=pid, worker_id=wid, person_name=nm, role=role,
                                start_date=st, end_date=en, memo=memo))
         s.commit()
+        sync_attendance_from_staff(s, pid)
     back = form.get("back") or f"/projects/{pid}#staff"
     return RedirectResponse(back if back.startswith("/") else f"/projects/{pid}", status_code=303)
 
@@ -243,6 +244,7 @@ async def staff_delete(request: Request, sid: int):
         if r:
             s.delete(r)
             s.commit()
+            sync_attendance_from_staff(s, pid)
     back = form.get("back") or (f"/projects/{pid}#staff" if pid else "/staffing")
     return RedirectResponse(back if back.startswith("/") else "/staffing", status_code=303)
 
@@ -266,6 +268,7 @@ async def staff_edit(request: Request, sid: int):
         s.add(r)
         s.commit()
         pid = r.project_id
+        sync_attendance_from_staff(s, pid)
     back = form.get("back") or f"/projects/{pid}#staff"
     return RedirectResponse(back if back.startswith("/") else "/staffing", status_code=303)
 
@@ -414,7 +417,8 @@ async def staffing_project_save(request: Request, pid: int):
                                    is_offer=bool(person.get("offer")), start_date=a, end_date=b))
                 n += 1
         s.commit()
-    return JSONResponse({"ok": True, "ranges": n})
+        synced = sync_attendance_from_staff(s, pid, user_id=getattr(_user(request), "id", None))
+    return JSONResponse({"ok": True, "ranges": n, "attendance": synced})
 
 
 # ════════════════════════════════════════════════════════════
@@ -567,3 +571,45 @@ async def cal_event_to_project(request: Request, eid: int):
     from urllib.parse import quote as _q
     return RedirectResponse(f"/projects/new?date={e.start_date.isoformat()}&end={e.end_date.isoformat()}"
                             f"&name={_q(e.title)}&from_event={e.id}", status_code=303)
+
+
+
+# ════════════════════════════════════════════════════════════
+# 인력배치 → 알바 근무 자동 연동
+#   - 배치된 '알바' 근무자의 날짜마다 근무 기록 자동 생성 (일당 = 근무자 기본 일당)
+#   - 배치에서 빠진 날짜의 '자동 생성' 기록은 자동 삭제 (단, 지급완료된 건은 보존)
+#   - 직접 등록한 근무 기록(수동)은 절대 건드리지 않음 / 같은 날 수동 기록 있으면 중복 생성 안 함
+# ════════════════════════════════════════════════════════════
+def sync_attendance_from_staff(s, pid: int, user_id=None) -> dict:
+    want = {}   # (worker_id, date) -> is_offer
+    for r in s.exec(select(ProjectStaff).where(ProjectStaff.project_id == pid,
+                                               ProjectStaff.worker_id != None)).all():
+        w = s.get(Worker, r.worker_id)
+        if not w or (w.employee_type or "알바") == "정직원":
+            continue          # 정직원은 출퇴근으로 관리 → 알바 근무 대상 아님
+        c = r.start_date
+        while c <= r.end_date:
+            want[(r.worker_id, c)] = bool(getattr(r, "is_offer", False))
+            c += timedelta(days=1)
+    existing = s.exec(select(Attendance).where(Attendance.project_id == pid)).all()
+    have_auto = {(a.worker_id, a.work_date): a for a in existing if getattr(a, "staff_id", None)}
+    have_any = {(a.worker_id, a.work_date) for a in existing}
+    added = removed = 0
+    for key, offer in want.items():
+        if key in have_any:
+            a = have_auto.get(key)
+            if a and offer and "오퍼" not in (a.memo or ""):
+                a.memo = ((a.memo or "") + " [오퍼]").strip(); s.add(a)
+            continue
+        w = s.get(Worker, key[0])
+        wage = (w.default_daily_wage or 0) if w else 0
+        s.add(Attendance(project_id=pid, worker_id=key[0], work_date=key[1], days=1.0,
+                         daily_wage=wage, total_wage=wage, bonus_amount=0, bonus_memo="",
+                         memo="[인력배치]" + (" [오퍼]" if offer else ""), staff_id=pid,
+                         registered_by=user_id))
+        added += 1
+    for key, a in have_auto.items():
+        if key not in want and (a.pay_status or "미지급") != "지급완료":
+            s.delete(a); removed += 1
+    s.commit()
+    return {"added": added, "removed": removed}

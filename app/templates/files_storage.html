@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}자료실 저장소 설정{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <a href="/files" class="text-sm" style="color:var(--ink-4);">← 자료실</a>
+  <h1 class="page-title mt-2">☁ 자료실 저장소 설정</h1>
+  <p class="page-sub">사진·영상·문서가 실제로 저장되는 곳을 확인하고, Cloudflare R2 연결을 점검합니다. (관리자 전용)</p>
+</div>
+
+<div class="card mb-4" style="padding:18px 20px; {% if mode == 's3' %}background:#ECFDF5; border-color:#A7F3D0;{% else %}background:#FFFBEB; border-color:#FDE68A;{% endif %}">
+  <div style="font-size:13px; font-weight:700; color:{% if mode == 's3' %}#047857{% else %}#92400E{% endif %};">현재 새 자료 저장 위치</div>
+  <div style="font-size:22px; font-weight:800; margin-top:4px;">
+    {% if mode == 's3' %}✓ Cloudflare R2 <span style="font-size:14px; font-weight:600; color:var(--ink-3);">버킷: {{ bucket }}</span>
+    {% else %}서버 저장공간 (Railway){% endif %}
+  </div>
+  <div style="font-size:13px; color:var(--ink-3); margin-top:6px;">
+    {% if mode == 's3' %}새로 올리는 자료는 모두 R2에 저장됩니다. R2에 일시적으로 문제가 생기면 자료를 잃지 않도록 서버에 임시 저장됩니다.
+    {% elif bucket %}R2 설정값이 있지만 연결 준비에 실패했습니다: {{ error }}
+    {% else %}아직 R2 설정값이 없습니다. 안내서에 따라 Railway Variables에 4개 값을 넣고 재배포하면 자동으로 R2로 바뀝니다.{% endif %}
+  </div>
+  <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <button class="btn-primary" onclick="testR2(this)">🔌 R2 연결 확인</button>
+    <span id="test-r" style="font-size:13px; font-weight:700;"></span>
+  </div>
+</div>
+
+<div class="grid gap-3 mb-4" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+  <div class="card" style="padding:16px;">
+    <div class="text-xs font-bold" style="color:var(--ink-4);">서버(Railway)에 있는 자료</div>
+    <div style="font-size:24px; font-weight:800; margin-top:4px;"><span id="ln">{{ local_n }}</span>개 <span style="font-size:14px; color:var(--ink-4);" id="lb">{{ local_size }}</span></div>
+    {% if disk %}<div class="text-xs mt-1" style="color:var(--ink-4);">서버 남은 공간 {{ disk.free }} / {{ disk.total }}</div>{% endif %}
+  </div>
+  <div class="card" style="padding:16px;">
+    <div class="text-xs font-bold" style="color:var(--ink-4);">R2에 있는 자료</div>
+    <div style="font-size:24px; font-weight:800; margin-top:4px;"><span id="sn">{{ s3_n }}</span>개 <span style="font-size:14px; color:var(--ink-4);" id="sb">{{ s3_size }}</span></div>
+    <div class="text-xs mt-1" style="color:var(--ink-4);">10GB까지 무료 · 이후 GB당 월 약 20원</div>
+  </div>
+</div>
+
+<div class="card mb-4" style="padding:18px 20px;">
+  <div style="font-size:16px; font-weight:800;">📦 서버에 있는 기존 자료를 R2로 옮기기</div>
+  <p class="text-sm mt-1" style="color:var(--ink-3);">
+    R2 연결 확인이 성공한 뒤에 누르세요. 파일 하나씩 R2에 올라간 것을 확인한 다음에만 서버 사본을 지우므로 중간에 멈춰도 자료는 안전합니다.
+    옮기는 동안에도 자료실은 그대로 쓸 수 있습니다. 다시 누르면 남은 것만 이어서 옮깁니다.
+  </p>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+    <button class="btn-primary" id="mig-btn" onclick="migrate()" {% if mode != 's3' %}disabled style="opacity:.5;" title="R2 연결 후 사용할 수 있습니다"{% endif %}>R2로 옮기기 시작</button>
+    <span id="mig-t" style="font-size:13px; font-weight:700;">
+      {% if mig.running %}옮기는 중… {{ mig.done }}/{{ mig.total }}{% elif mig.finished_at %}마지막 실행 {{ mig.finished_at }} · 완료 {{ mig.done }} · 실패 {{ mig.fail }}{% endif %}
+    </span>
+  </div>
+  <div style="height:8px; background:#E2E8F0; border-radius:8px; overflow:hidden; margin-top:12px;"><i id="mig-bar" style="display:block; height:100%; width:0; background:#2563EB;"></i></div>
+  <div id="mig-err" class="text-xs mt-2" style="color:#B91C1C;">{{ mig.last_error }}</div>
+</div>
+
+<div class="card" style="padding:18px 20px; font-size:13px; color:var(--ink-3); line-height:1.7;">
+  <div style="font-size:15px; font-weight:800; color:var(--ink); margin-bottom:6px;">설정값 (Railway → 서비스 → Variables)</div>
+  <table class="dt" style="font-size:13px;">
+    <tr><td style="width:220px;"><code>R2_ACCOUNT_ID</code></td><td>Cloudflare 계정 ID</td><td>{% if endpoint %}✓{% else %}—{% endif %}</td></tr>
+    <tr><td><code>R2_BUCKET</code></td><td>버킷 이름</td><td>{% if bucket %}✓ {{ bucket }}{% else %}—{% endif %}</td></tr>
+    <tr><td><code>R2_ACCESS_KEY_ID</code></td><td>API 토큰의 Access Key ID</td><td>{% if has_key %}✓{% else %}—{% endif %}</td></tr>
+    <tr><td><code>R2_SECRET_ACCESS_KEY</code></td><td>API 토큰의 Secret Access Key</td><td>{% if has_key %}입력됨(보안상 숨김){% else %}—{% endif %}</td></tr>
+  </table>
+  <div class="mt-2">값을 넣거나 바꾼 뒤에는 Railway가 자동으로 재배포합니다. 재배포가 끝나면 이 화면에서 <b>R2 연결 확인</b>을 눌러주세요.</div>
+</div>
+
+<script>
+function post(u) { return fetch(u, { method: 'POST', credentials: 'same-origin' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status)); return j; }); }); }
+function testR2(b) {
+  var o = document.getElementById('test-r'); o.style.color = '#475569'; o.textContent = '확인 중…'; b.disabled = true;
+  post('/api/files/storage/test').then(function (j) { o.style.color = j.ok ? '#047857' : '#B91C1C'; o.textContent = j.msg; })
+    .catch(function (e) { o.style.color = '#B91C1C'; o.textContent = e.message; }).finally(function () { b.disabled = false; });
+}
+function human(n) { var u = ['B', 'KB', 'MB', 'GB', 'TB'], i = 0; while (n >= 1024 && i < 4) { n /= 1024; i++; } return (i < 2 ? Math.round(n) : n.toFixed(1)) + u[i]; }
+function poll() {
+  fetch('/api/files/storage/status', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
+    document.getElementById('ln').textContent = j.local_n; document.getElementById('lb').textContent = human(j.local_b);
+    document.getElementById('sn').textContent = j.s3_n; document.getElementById('sb').textContent = human(j.s3_b);
+    var pct = j.total ? Math.round((j.done + j.fail) / j.total * 100) : (j.finished_at ? 100 : 0);
+    document.getElementById('mig-bar').style.width = pct + '%';
+    document.getElementById('mig-t').textContent = j.running ? ('옮기는 중… ' + j.done + '/' + j.total + ' (' + human(j.bytes) + ')') : (j.finished_at ? ('완료 ' + j.done + '개 · 실패 ' + j.fail + '개 (' + j.finished_at + ')') : '');
+    document.getElementById('mig-err').textContent = j.fail ? ('최근 오류: ' + j.last_error + ' — 다시 누르면 실패한 것만 재시도합니다') : '';
+    document.getElementById('mig-btn').disabled = j.running;
+    if (j.running) setTimeout(poll, 1500);
+  });
+}
+function migrate() {
+  if (!confirm('서버에 있는 기존 자료를 R2로 옮길까요?\n\n옮긴 뒤에는 서버 사본이 지워져 서버 공간이 비워집니다.')) return;
+  post('/api/files/storage/migrate').then(function () { poll(); }).catch(function (e) { alert(e.message); });
+}
+{% if mig.running %}poll();{% endif %}
+</script>
+{% endblock %}

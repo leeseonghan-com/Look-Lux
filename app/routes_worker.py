@@ -368,3 +368,103 @@ def serve_worker_photo(request: Request, filename: str):
     if not fpath.exists():
         raise HTTPException(404, "사진을 찾을 수 없습니다.")
     return FileResponse(fpath)
+
+
+
+# ============================================================
+# 내 정보 (직원 본인) — 연락처·계좌·사진·비밀번호만 본인이 수정
+#   급여·구분·입사/퇴사·재직상태는 관리자만 변경
+# ============================================================
+def _login_user(request: Request):
+    uid = request.session.get("user_id")
+    if not uid:
+        raise HTTPException(303, headers={"Location": "/login"})
+    with Session(engine, expire_on_commit=False) as s:
+        u = s.get(User, uid)
+    if not u:
+        raise HTTPException(303, headers={"Location": "/login"})
+    return u
+
+
+@router.get("/me", response_class=HTMLResponse)
+def my_info(request: Request):
+    user = _login_user(request)
+    from permissions import my_worker
+    with Session(engine, expire_on_commit=False) as s:
+        w = my_worker(s, user)
+        wd = None
+        if w:
+            wd = {"id": w.id, "name": w.name, "phone": w.phone or "", "bank": w.bank or "",
+                  "account": w.account or "", "resident_no": w.resident_no or "",
+                  "photo_filename": w.photo_filename or "", "employee_type": w.employee_type or "",
+                  "position": getattr(w, "position", "") or "",
+                  "hire_date": getattr(w, "hire_date", None),
+                  "employment_status": getattr(w, "employment_status", "재직") or "재직"}
+    return templates.TemplateResponse(request, "my_info.html", {
+        "user": user, "w": wd, "u": {"username": user.username, "name": user.name, "phone": getattr(user, "phone", "") or ""},
+    })
+
+
+@router.post("/me")
+async def my_info_save(request: Request):
+    user = _login_user(request)
+    form = await request.form()
+    from permissions import my_worker
+    from database import hash_password, verify_password
+    err = ""
+    with Session(engine, expire_on_commit=False) as s:
+        u = s.get(User, user.id)
+        new_pw = (form.get("new_password") or "").strip()
+        if new_pw:
+            if len(new_pw) < 4:
+                err = "pwshort"
+            elif not verify_password((form.get("cur_password") or ""), u.password_hash):
+                err = "pwwrong"
+            elif new_pw != (form.get("new_password2") or "").strip():
+                err = "pwmatch"
+            else:
+                u.password_hash = hash_password(new_pw)
+        phone = (form.get("phone") or "").strip()
+        if hasattr(u, "phone"):
+            u.phone = phone
+        s.add(u)
+        w = my_worker(s, u)
+        if w:
+            w = s.get(Worker, w.id)
+            w.phone = phone
+            if "bank" in form:
+                w.bank = (form.get("bank") or "").strip()
+            if "account" in form:
+                w.account = (form.get("account") or "").strip()
+            if "resident_no" in form:
+                w.resident_no = _format_resident_no(form.get("resident_no", ""))
+            photo_file = form.get("photo")
+            if photo_file and hasattr(photo_file, "filename") and photo_file.filename:
+                new_photo = _save_photo(photo_file)
+                if new_photo:
+                    if w.photo_filename:
+                        try:
+                            (WORKER_PHOTO_DIR / w.photo_filename).unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                    w.photo_filename = new_photo
+            s.add(w)
+        if err:
+            s.rollback()
+            return RedirectResponse(f"/me?err={err}", status_code=303)
+        s.commit()
+    return RedirectResponse("/me?saved=1", status_code=303)
+
+
+@router.get("/my-photo")
+def my_photo(request: Request):
+    user = _login_user(request)
+    from permissions import my_worker
+    with Session(engine, expire_on_commit=False) as s:
+        w = my_worker(s, user)
+    if not w or not w.photo_filename:
+        raise HTTPException(404)
+    path = WORKER_PHOTO_DIR / w.photo_filename
+    if not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path)

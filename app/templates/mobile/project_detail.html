@@ -5,48 +5,56 @@
 
 {% block content %}
 
+{% set lbl = u.label %}
+{% if not request.state.can_view_settle and u.key in ('미수금', '입금완료') %}{% set lbl = '완료' %}{% endif %}
 <div class="m-card">
-  <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
-    <div style="flex: 1;">
-      <div style="font-size: 20px; font-weight: 800; line-height: 1.2; letter-spacing: -0.02em;">{{ p.name }}</div>
-      <div style="font-size: 13px; color: #71717A; margin-top: 4px;">
-        {{ p.event_date or '날짜 미정' }} · {{ p.code }}
-      </div>
-    </div>
-    {% if p.status == '진행중' %}<span class="badge badge-blue">진행중</span>
-    {% elif p.status == '완료' %}<span class="badge badge-green">완료</span>
-    {% elif p.status == '취소' %}<span class="badge badge-red">취소</span>{% endif %}
+  <span class="badge" style="background:{{ u.bg }}; background-image:none !important; color:{{ u.color }};">{{ lbl }}</span>
+  <div style="font-size:22px; font-weight:800; line-height:1.25; letter-spacing:-0.03em; margin-top:8px;">{{ p.name }}</div>
+  <div class="info">
+    <div><i>일정</i>{% if p.event_date %}{{ p.event_date.strftime('%Y.%m.%d') }}{% if days > 1 %} ~ {{ end.strftime('%m.%d') }} <b>{{ days }}일</b>{% endif %}{% else %}미정{% endif %}</div>
+    {% if vendor %}<div><i>거래처</i>{{ vendor.name }}</div>{% endif %}
+    {% if p.location %}<div><i>장소</i>{{ p.location }}</div>{% endif %}
+    <div><i>코드</i>{{ p.code }}</div>
   </div>
   {% if p.categories %}
-  <div style="margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap;">
-    {% set cat_colors = {'음향':'#2563EB', '조명':'#D97706', '영상':'#7C3AED', '납품':'#059669', '무대':'#BE185D', '특수효과':'#DC2626'} %}
-    {% set cat_icons = {'음향':'🎵', '조명':'💡', '영상':'🎬', '납품':'📦', '무대':'🎭', '특수효과':'✨'} %}
-    {% for c in p.categories.split(',') if c.strip() %}
-    {% set c_clean = c.strip() %}
-    <span style="display:inline-flex; align-items:center; gap:4px; padding:5px 12px; border-radius:99px; background:{{ cat_colors.get(c_clean, '#71717A') }}; color:white; font-size:12px; font-weight:700;">
-      {{ cat_icons.get(c_clean, '📌') }} {{ c_clean }}
-    </span>
-    {% endfor %}
+  <div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;">
+    {% for c in p.categories.split(',') if c.strip() %}<span class="badge badge-gray">{{ c.strip() }}</span>{% endfor %}
   </div>
   {% endif %}
-
-  <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-    <a href="/m/project/{{ p.id }}/edit"
-       style="background: #F3F4F6; color: #18181B; padding: 12px; border-radius: 10px; text-align: center; font-weight: 700; text-decoration: none; font-size: 14px;">
-      ✏️ 수정
-    </a>
-    <a href="/m/expense/new"
-       style="background: #DBEAFE; color: #1E40AF; padding: 12px; border-radius: 10px; text-align: center; font-weight: 700; text-decoration: none; font-size: 14px;">
-      ₩ 비용 등록
-    </a>
+  <div style="margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+    <a href="/m/project/{{ p.id }}/edit" class="btn btn-secondary" style="padding:12px; font-size:14px;">✏️ 수정</a>
+    <button type="button" onclick="openStaffPicker({{ p.id }})" class="btn btn-primary" style="padding:12px; font-size:14px;">👷 인력 배치</button>
   </div>
-  <form method="post" action="/m/project/{{ p.id }}/delete" style="margin-top: 8px;"
-        onsubmit="return confirm('프로젝트 [{{ p.name }}]을(를) 삭제하시겠습니까?\n\n관련 비용·근태 기록도 함께 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.');">
-    <button style="width:100%; background:#FEE2E2; color:#991B1B; padding:10px; border:none; border-radius:10px; font-weight:700; font-size:13px;">
-      🗑 프로젝트 삭제
-    </button>
-  </form>
 </div>
+
+{% if request.state.is_admin or (request.state.perms or {}).get('files') %}
+<a href="/files?project={{ p.id }}" class="m-card" style="display:flex; align-items:center; gap:12px; text-decoration:none;">
+  <span style="font-size:24px; background:transparent !important; background-image:none !important;">📁</span>
+  <span style="flex:1; background:transparent !important; background-image:none !important;"><b style="display:block; font-size:15px; background:transparent !important; background-image:none !important;">자료 (사진·영상·문서)</b><small style="color:var(--ink-4); background:transparent !important; background-image:none !important;">현장에서 바로 찍어 올리기</small></span>
+  <span style="color:var(--ink-5); font-size:20px; background:transparent !important; background-image:none !important;">›</span>
+</a>
+{% endif %}
+
+<div class="m-section">투입 인력 {{ people|length }}명 {% if people %}<a href="javascript:void(0)" onclick="saveStaffRosterImage({{ p.id }})">🖼 이미지 저장</a>{% endif %}</div>
+{% if people %}
+<div class="m-card" style="display:flex; flex-wrap:wrap; gap:6px;">
+  {% for m in people %}
+  <span class="pp {% if m.offer %}of{% endif %}">{{ m.name }}{% if m.offer %} ★{% endif %}<small>{{ m.days }}일</small></span>
+  {% endfor %}
+</div>
+{% else %}
+<button type="button" onclick="openStaffPicker({{ p.id }})" class="m-card" style="width:100%; text-align:center; color:#4F46E5; font-size:14px; font-weight:800; border:2px dashed #C7D2FE; font-family:inherit;">＋ 눌러서 인원 배치하기</button>
+{% endif %}
+
+<style>
+.info { margin-top: 12px; display: grid; gap: 6px; font-size: 14px; }
+.info div { display: flex; gap: 10px; }
+.info i { font-style: normal; color: var(--ink-5); width: 44px; flex-shrink: 0; font-size: 13px; font-weight: 600; }
+.info, .info * { background: transparent !important; background-image: none !important; }
+.pp { display: inline-flex; gap: 5px; align-items: center; padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; border: 1px solid var(--line); }
+.pp small { color: var(--ink-5); font-weight: 600; background: transparent !important; background-image: none !important; }
+.pp.of { color: #6D28D9; border-color: #DDD6FE; background-image: linear-gradient(#F5F3FF,#F5F3FF) !important; }
+</style>
 
 {% if request.state.can_view_revenue %}
 <div class="m-card" style="padding: 14px;">
@@ -78,8 +86,7 @@
     <div class="sub">원 ({{ expenses|length }}건 + 인건비)</div>
   </div>
   <div class="kpi">
-    <div class="label">순이익 (공급가-비용)</div>
-    {% set net = (p.supply_amount or p.revenue or 0) - total_expense - total_wage %}
+    <div class="label">순이익 (부가세 제외)</div>
     <div class="value" style="color: {% if net >= 0 %}#047857{% else %}#DC2626{% endif %};">{% if request.state.can_view_profit %}{{ '{:,}'.format(net) }}{% else %}—{% endif %}</div>
     <div class="sub">원</div>
   </div>
@@ -121,8 +128,15 @@
 </div>
 {% endif %}
 
-<div style="margin-top: 14px;">
-  <a href="/m/expense/new" class="btn btn-primary">+ 비용 추가</a>
+<div style="margin-top: 14px; display:grid; gap:8px;">
+  {% if request.state.is_admin or (request.state.perms or {}).get('expenses') %}<a href="/m/expense/new?project_id={{ p.id }}" class="btn btn-secondary">+ 외주 발주 등록</a>{% endif %}
+  {% if request.state.is_admin or (request.state.perms or {}).get('projects_edit') %}
+  <form method="post" action="/m/project/{{ p.id }}/delete" onsubmit="return confirm('프로젝트 [{{ p.name }}]을(를) 삭제하시겠습니까?\n\n관련 비용·근태 기록도 함께 삭제됩니다.');">
+    <button class="btn" style="width:100%; color:#991B1B; font-size:14px; background-image:linear-gradient(#FEE2E2,#FEE2E2) !important;">프로젝트 삭제</button>
+  </form>
+  {% endif %}
 </div>
 
 {% endblock %}
+
+{% block scripts %}<script src="/static/staff-picker.js?v=v2026.11.08-1000"></script><script src="/static/save-image.js?v=v2026.11.08-1000"></script>{% endblock %}

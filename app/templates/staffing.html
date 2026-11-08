@@ -50,6 +50,7 @@
       <div style="font-size:18px; font-weight:800; min-width:220px; text-align:center;">{{ title }}</div>
       <a href="?view={{ view }}&group={{ group }}&d={{ next_d }}" class="btn-secondary" style="padding:6px 12px;">▶</a>
       <a href="?view={{ view }}&group={{ group }}&d={{ today }}" class="btn-secondary" style="padding:6px 12px;">오늘</a>
+      <button type="button" class="btn-secondary" style="padding:6px 12px;" onclick="saveNodeAsImage('.sf-wrap', '인력배치현황_{{ title|replace(' ','') }}', '👷 인력 배치 현황 · {{ title }}')">🖼 이미지 저장</button>
     </div>
     <div class="flex gap-4 text-sm">
       <span>투입 인원 <b>{{ n_people }}</b>명</span>

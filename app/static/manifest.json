@@ -6,10 +6,13 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0A0E1A",
-  "theme_color": "#0A0E1A",
+  "background_color": "#F5F6F8",
+  "theme_color": "#F5F6F8",
   "lang": "ko-KR",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "id": "/m/",
   "dir": "ltr",
   "icons": [
@@ -48,25 +51,52 @@
   ],
   "shortcuts": [
     {
+      "name": "출퇴근",
+      "short_name": "출퇴근",
+      "description": "버튼 한 번으로 출근/퇴근",
+      "url": "/m/punch",
+      "icons": [
+        {
+          "src": "/static/icon-punch-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
       "name": "QR 스캔",
       "short_name": "스캔",
       "description": "장비 QR 코드 스캔",
       "url": "/m/scan",
-      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/static/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
-      "name": "근태 입력",
-      "short_name": "근태",
-      "description": "오늘 근태 등록",
-      "url": "/m/attendance",
-      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192" }]
+      "name": "견적서 작성",
+      "short_name": "견적",
+      "description": "새 견적서",
+      "url": "/m/quote/new",
+      "icons": [
+        {
+          "src": "/static/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
-      "name": "비용 등록",
-      "short_name": "비용",
-      "description": "비용 빠른 등록",
-      "url": "/m/expense/new",
-      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192" }]
+      "name": "프로젝트 캘린더",
+      "short_name": "캘린더",
+      "description": "월간 일정",
+      "url": "/project-calendar",
+      "icons": [
+        {
+          "src": "/static/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

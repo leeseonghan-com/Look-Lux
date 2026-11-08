@@ -1,0 +1,476 @@
+{% extends "base.html" %}
+{% block title %}자료실{% endblock %}
+{% block content %}
+<style>
+  .fl { display: grid; grid-template-columns: 250px 1fr; gap: 18px; align-items: start; }
+  .fl-side { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; padding: 10px; }
+  .fl-side a { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; font-size: 13px; color: var(--ink-2); text-decoration: none; }
+  .fl-side a:hover { background: #F4F4F5; }
+  .fl-side a.on { background: #0A0E1A; color: #fff; }
+  .fl-side a span.n { margin-left: auto; font-size: 11px; color: #94A3B8; font-weight: 600; }
+  .fl-side a.on span.n { color: #CBD5E1; }
+  .fl-side .lbl { font-size: 11px; font-weight: 800; color: #94A3B8; margin: 12px 10px 4px; letter-spacing: .04em; }
+  .fl-side .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tb { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .chip2 { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; font-weight: 700; color: var(--ink-3); text-decoration: none; background: #fff; }
+  .chip2.on { background: #0A0E1A; border-color: #0A0E1A; color: #fff; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .fold { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; text-decoration: none; color: var(--ink); position: relative; }
+  .fold:hover { border-color: #94A3B8; }
+  .fold .ic { font-size: 26px; }
+  .fold b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fold small { font-size: 11px; color: #94A3B8; }
+  .fold .fm { position: absolute; right: 6px; top: 6px; border: 0; background: transparent; color: #94A3B8; font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+  .fold .fm:hover { background: #F1F5F9; color: #0F172A; }
+  .tile { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; cursor: pointer; user-select: none; }
+  .tile:hover { border-color: #94A3B8; box-shadow: 0 4px 14px rgba(15,23,42,.08); }
+  .tile.sel { outline: 3px solid #2563EB; outline-offset: -3px; }
+  .tile .th { aspect-ratio: 1; background: #F1F5F9; display: flex; align-items: center; justify-content: center; font-size: 40px; overflow: hidden; }
+  .tile .th img { width: 100%; height: 100%; object-fit: cover; }
+  .tile .meta { padding: 8px 10px; }
+  .tile .meta b { display: block; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .meta small { font-size: 11px; color: #94A3B8; }
+  .tile .ck { position: absolute; left: 8px; top: 8px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; background: rgba(15,23,42,.35); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 900; opacity: 0; transition: opacity .1s; }
+  .tile:hover .ck, .tile.sel .ck, body.selmode .tile .ck { opacity: 1; }
+  .tile.sel .ck { background: #2563EB; border-color: #2563EB; }
+  .tile .dur { position: absolute; right: 8px; top: 8px; background: rgba(0,0,0,.65); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+  .tile .play { position: absolute; left: 50%; top: 38%; transform: translate(-50%,-50%); width: 42px; height: 42px; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; padding-left: 3px; }
+  .listv .grid { grid-template-columns: 1fr; gap: 0; }
+  .listv .tile { display: flex; align-items: center; border-radius: 0; border-width: 0 0 1px 0; }
+  .listv .tile .th { width: 52px; height: 52px; aspect-ratio: auto; font-size: 22px; flex-shrink: 0; }
+  .listv .tile .meta { display: flex; gap: 16px; align-items: center; flex: 1; min-width: 0; }
+  .listv .tile .meta b { flex: 1; font-size: 13px; }
+  .listv .tile .ck { position: static; opacity: 1; margin: 0 8px; background: #fff; border-color: #CBD5E1; color: transparent; }
+  .listv .tile.sel .ck { color: #fff; }
+  .listv .tile .dur, .listv .tile .play { display: none; }
+  #drop { position: fixed; inset: 0; z-index: 9000; background: rgba(37,99,235,.12); border: 4px dashed #2563EB; display: none; align-items: center; justify-content: center; font-size: 26px; font-weight: 800; color: #1D4ED8; pointer-events: none; }
+  #selbar { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 8000; display: none; gap: 6px; align-items: center; background: #0A0E1A; color: #fff; padding: 8px 10px 8px 16px; border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.3); flex-wrap: wrap; max-width: 94vw; }
+  #selbar button { border: 0; border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; background: #1E293B; color: #fff; }
+  #selbar button.dan { background: #7F1D1D; }
+  #up { position: fixed; right: 18px; bottom: 18px; z-index: 8500; width: 360px; max-width: calc(100vw - 24px); background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 16px 44px rgba(0,0,0,.18); display: none; overflow: hidden; }
+  #up .hd { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #0A0E1A; color: #fff; font-size: 13px; font-weight: 700; }
+  #up .bd { max-height: 260px; overflow-y: auto; }
+  #up .row { padding: 8px 14px; border-bottom: 1px solid #F1F5F9; font-size: 12px; }
+  #up .row .bar { height: 4px; background: #E2E8F0; border-radius: 4px; margin-top: 5px; overflow: hidden; }
+  #up .row .bar i { display: block; height: 100%; background: #2563EB; width: 0; transition: width .2s; }
+  #up .row.ok .bar i { background: #059669; }
+  #up .row.err { color: #B91C1C; }
+  #vw { position: fixed; inset: 0; z-index: 9500; background: rgba(2,6,23,.94); display: none; flex-direction: column; }
+  #vw .vt { display: flex; align-items: center; gap: 10px; padding: 12px 16px; color: #fff; }
+  #vw .vt b { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #vw .vt a, #vw .vt button { color: #fff; background: #1E293B; border: 0; border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 700; text-decoration: none; cursor: pointer; }
+  #vw .vb { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; position: relative; }
+  #vw .vb img, #vw .vb video { max-width: 96vw; max-height: calc(100vh - 80px); object-fit: contain; }
+  #vw .vb iframe { width: 92vw; height: calc(100vh - 90px); border: 0; background: #fff; border-radius: 8px; }
+  #vw .nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,.12); color: #fff; border: 0; width: 48px; height: 64px; font-size: 26px; cursor: pointer; border-radius: 10px; }
+  @media (max-width: 860px) {
+    .fl { grid-template-columns: 1fr; }
+    .fl-side { display: none; }
+    .grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .tile .meta { display: none; }
+    .tile { border-radius: 8px; }
+    .listv .tile .meta { display: flex; }
+    #selbar { bottom: 76px; }
+  }
+  #fmenu { position: fixed; z-index: 9500; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(15,23,42,.18); padding: 6px; min-width: 190px; display: none; }
+  #fmenu .hd { font-size: 12px; font-weight: 800; color: #94A3B8; padding: 6px 10px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+  #fmenu button { display: flex; width: 100%; align-items: center; gap: 10px; border: 0; background: transparent; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 700; color: #0F172A; cursor: pointer; text-align: left; }
+  #fmenu button:hover { background: #F1F5F9; }
+  #fmenu button.del { color: #B91C1C; }
+  #fmenu button.del:hover { background: #FEF2F2; }
+  #fmenu-bg { position: fixed; inset: 0; z-index: 9400; display: none; }
+  .fold .fm { font-size: 20px !important; padding: 2px 8px !important; }
+</style>
+
+<div class="flex items-end justify-between flex-wrap gap-3 mb-4">
+  <div>
+    <h1 class="page-title">📁 자료실</h1>
+    <p class="page-sub">사진·영상·문서를 폴더별로 한곳에. 필요할 때 폴더(행사명 등)를 만들고 올리세요. 파일을 이 화면에 끌어다 놓으면 바로 올라갑니다.
+      <span style="color:var(--ink-4);">· 사용 {{ total_size }}{% if storage_mode == 's3' %} · ☁ R2 저장{% elif disk %} · 서버 남은 공간 {{ disk.free }}{% endif %}</span>
+      {% if request.state.is_admin %}<a href="/files/storage" style="font-size:12px; font-weight:700; color:#0369A1; margin-left:6px;">☁ 저장소 설정</a>{% endif %}</p>
+  </div>
+  <div class="tb">
+    {% if not trash %}
+    <button class="btn-primary" onclick="pick('file')">⬆ 파일 올리기</button>
+    <button class="btn-secondary" onclick="pick('dir')">📂 폴더째 올리기</button>
+    <button class="btn-secondary" onclick="pick('zip')" title="구글 드라이브에서 내려받은 ZIP을 폴더 구조 그대로 가져옵니다">↘ 구글 드라이브 ZIP 가져오기</button>
+    {% endif %}
+  </div>
+</div>
+
+<input type="file" id="in-file" multiple hidden accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.txt,.csv,.zip,.ai,.psd,.key,.heic">
+<input type="file" id="in-dir" multiple hidden webkitdirectory directory>
+<input type="file" id="in-zip" hidden accept=".zip">
+
+<!-- 모바일: 폴더 선택 -->
+<div class="md:hidden mb-3">
+  <select class="input" onchange="location.href=this.value">
+    <option value="/files" {% if browsing and not fid %}selected{% endif %}>🗂 전체 폴더</option>
+    <option value="/files?scope=recent" {% if recent %}selected{% endif %}>🕘 최근 올린 자료</option>
+    {% for f in top_folders %}<option value="/files?folder={{ f.id }}" {% if top_id == f.id %}selected{% endif %}>📁 {{ f.name }}{% if f.n %} ({{ f.n }}){% endif %}</option>{% endfor %}
+    <option value="/files?trash=1" {% if trash %}selected{% endif %}>🗑 휴지통 ({{ trash_n }})</option>
+  </select>
+  {% if not trash %}<button type="button" class="btn-secondary" style="width:100%; margin-top:8px;" onclick="newFolder()">＋ 새 폴더 만들기{% if fid %} (이 폴더 안에){% endif %}</button>{% endif %}
+</div>
+
+<div class="fl">
+  <aside class="card fl-side">
+    <a href="/files" class="{% if browsing and not fid %}on{% endif %}">🗂 <span class="nm">전체 폴더</span><span class="n">{{ all_n }}</span></a>
+    <a href="/files?scope=recent" class="{% if recent %}on{% endif %}">🕘 <span class="nm">최근 올린 자료</span></a>
+    <a href="/files?trash=1" class="{% if trash %}on{% endif %}">🗑 <span class="nm">휴지통</span><span class="n">{{ trash_n }}</span></a>
+    <input type="search" class="input" placeholder="폴더 찾기" oninput="var v=this.value.trim(); document.querySelectorAll('.pj').forEach(function(a){a.style.display=(!v||a.dataset.n.indexOf(v)>=0)?'':'none';})" style="margin:12px 0 4px; padding:8px 10px; font-size:13px;">
+    <div class="lbl">폴더</div>
+    <a href="javascript:void(0)" onclick="newFolder(true)" style="color:#2563EB; font-weight:800;">＋ <span class="nm">새 폴더 만들기</span></a>
+    {% for f in top_folders %}
+    <a href="/files?folder={{ f.id }}" class="pj {% if top_id == f.id %}on{% endif %}" data-n="{{ f.name }}" title="{{ f.name }}">
+      {{ '📁' if f.n else '📂' }} <span class="nm">{{ f.name }}</span><span class="n">{{ f.n or '' }}</span></a>
+    {% endfor %}
+  </aside>
+
+  <section id="main">
+    <!-- 경로 + 도구 -->
+    <div class="card mb-3" style="padding:12px 14px;">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div style="font-size:15px; font-weight:800; display:flex; gap:6px; align-items:center; flex-wrap:wrap; min-width:0;">
+          {% if trash %}🗑 휴지통 <span style="font-size:12px; color:var(--ink-4); font-weight:500;">30일 지나면 자동으로 영구 삭제됩니다</span>
+          {% elif q %}🔍 "{{ q }}" 검색 결과
+          {% elif recent %}🕘 최근 올린 자료
+          {% else %}
+            <a href="/files" style="color:{% if crumbs %}var(--ink-4){% else %}inherit{% endif %}; text-decoration:none;">🗂 전체 폴더</a>
+            {% for c in crumbs %}<span style="color:#CBD5E1;">›</span><a href="/files?folder={{ c.id }}" style="color:{% if loop.last %}inherit{% else %}var(--ink-4){% endif %}; text-decoration:none;">{{ c.name }}</a>{% endfor %}
+            {% if crumbs %}{% set lc = crumbs[-1] %}<button type="button" class="chip2" style="margin-left:4px; font-size:16px; line-height:1; padding:3px 10px;" title="이 폴더: 이름 변경 · 내려받기 · 삭제" onclick="folderMenu({{ lc.id }}, this.dataset.n, event, true)" data-n="{{ lc.name }}">⋯</button>{% endif %}
+            {% if cur_project %}<a href="/projects/{{ cur_project.id }}" class="chip2" style="margin-left:6px;">프로젝트 보기 ↗</a>{% endif %}
+          {% endif %}
+        </div>
+        <div class="tb">
+          <form method="get" style="display:flex; gap:6px;">
+            <input type="search" name="q" value="{{ q }}" class="input" placeholder="파일 이름 검색" style="padding:7px 10px; font-size:13px; width:170px;">
+          </form>
+          {% if not trash and not scope_root and not q %}<button class="btn-secondary" style="padding:7px 12px; font-size:13px;" onclick="newFolder()">＋ 새 폴더</button>{% endif %}
+          <button class="btn-secondary" style="padding:7px 10px; font-size:13px;" onclick="toggleView()" id="vbtn">☰</button>
+        </div>
+      </div>
+      {% set base = '/files?' ~ ('trash=1&' if trash else '') ~ ('project=' ~ pid ~ '&' if pid else '') ~ ('folder=' ~ fid ~ '&' if fid else '') ~ ('scope=common&' if is_common and not pid else '') ~ ('q=' ~ q|urlencode ~ '&' if q else '') %}
+      <div class="tb" style="margin-top:10px;">
+        <a href="{{ base }}" class="chip2 {% if not kind %}on{% endif %}">전체</a>
+        <a href="{{ base }}kind=image" class="chip2 {% if kind == 'image' %}on{% endif %}">🖼 사진</a>
+        <a href="{{ base }}kind=video" class="chip2 {% if kind == 'video' %}on{% endif %}">🎬 영상</a>
+        <a href="{{ base }}kind=doc" class="chip2 {% if kind == 'doc' %}on{% endif %}">📄 문서</a>
+        <span style="margin-left:auto; font-size:12px; color:var(--ink-4);">{{ rows|length }}개 · 길게 누르거나 ○ 를 눌러 여러 개 선택</span>
+        {% if trash and trash_n and can_manage %}<button class="btn-secondary" style="padding:6px 12px; font-size:12px; color:#B91C1C;" onclick="act('purge',{all:1},'휴지통을 모두 비울까요? 되돌릴 수 없습니다.')">휴지통 비우기</button>{% endif %}
+      </div>
+    </div>
+
+    {% if scope_root and recent_pids %}
+    <div class="tb mb-3">
+      {% for p in projects if p.id in recent_pids %}<a href="/files?project={{ p.id }}" class="chip2">📁 {{ p.name }} · {{ p.n }}</a>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if subfolders %}
+    <div class="grid mb-3" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));">
+      {% for f in subfolders %}
+      <a href="/files?folder={{ f.id }}" class="fold" data-fid="{{ f.id }}">
+        <span class="ic">📁</span>
+        <span style="min-width:0;"><b>{{ f.name }}</b><small>{{ f.n }}개{% if f.nsub %} · 폴더 {{ f.nsub }}{% endif %}</small></span>
+        <button type="button" class="fm" data-n="{{ f.name }}" title="이름 변경 · 내려받기 · 삭제" onclick="event.preventDefault(); event.stopPropagation(); folderMenu({{ f.id }}, this.dataset.n, event)">⋯</button>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div id="gw">
+    {% if rows %}
+    <div class="grid" id="grid">
+      {% for r in rows %}
+      <div class="tile" data-id="{{ r.id }}" data-kind="{{ r.kind }}" data-name="{{ r.name }}" data-mime="{{ r.mime }}" data-i="{{ loop.index0 }}">
+        <div class="th">
+          {% if r.thumb %}<img loading="lazy" src="/files/{{ r.id }}/thumb" alt="">
+          {% elif r.kind == 'video' %}🎬{% elif r.kind == 'image' %}🖼
+          {% elif r.mime == 'application/pdf' %}📕{% elif r.name.lower().endswith(('.xls','.xlsx','.csv')) %}📗{% elif r.name.lower().endswith(('.hwp','.hwpx','.doc','.docx')) %}📘{% elif r.name.lower().endswith(('.ppt','.pptx','.key')) %}📙{% else %}📄{% endif %}
+        </div>
+        {% if r.kind == 'video' %}<span class="play">▶</span>{% if r.dur %}<span class="dur">{{ r.dur }}</span>{% endif %}{% endif %}
+        <span class="ck">✓</span>
+        <div class="meta">
+          <b title="{{ r.name }}">{{ r.name }}</b>
+          <small>{{ r.date.strftime('%Y.%m.%d') }} · {{ r.size }}{% if r.by %} · {{ r.by }}{% endif %}{% if (scope_root or q or trash) and r.project %} · {{ r.project }}{% endif %}</small>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif not subfolders %}
+    <div class="card" style="text-align:center; padding:56px 20px; color:var(--ink-4);">
+      {% if trash %}<div style="font-size:40px;">🗑</div><b style="display:block; color:var(--ink-2); margin-top:8px;">휴지통이 비어 있습니다</b>
+      {% else %}
+      <div style="font-size:44px;">☁</div>
+      <b style="display:block; color:var(--ink-2); margin:8px 0 4px; font-size:16px;">{% if scope_root %}아직 올린 자료가 없습니다{% else %}이 곳에 자료를 올려보세요{% endif %}</b>
+      파일이나 폴더를 이 화면에 끌어다 놓거나 위의 <b>⬆ 파일 올리기</b>를 누르세요.<br>
+      {% if browsing and not fid %}<span style="font-size:12px;">먼저 <b>＋ 새 폴더</b>로 행사명·프로젝트명 폴더를 만든 뒤 그 안에 올리면 정리가 쉽습니다.</span>{% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+    </div>
+  </section>
+</div>
+
+<div id="drop">여기에 놓으면 올라갑니다</div>
+<div id="selbar">
+  <span id="seln" style="font-size:13px; font-weight:800; margin-right:6px;">0개</span>
+  {% if trash %}
+  <button onclick="act('restore',null)">↩ 복구</button>
+  {% if can_manage %}<button class="dan" onclick="act('purge',null,'선택한 자료를 영구 삭제할까요? 되돌릴 수 없습니다.')">영구 삭제</button>{% endif %}
+  {% else %}
+  <button onclick="zipSel()">⬇ 내려받기</button>
+  <button onclick="moveSel()">↪ 이동</button>
+  <button class="dan" onclick="act('trash',null,'선택한 자료를 휴지통으로 보낼까요?')">🗑 삭제</button>
+  {% endif %}
+  <button onclick="clearSel()">✕</button>
+</div>
+<div id="up"><div class="hd"><span id="up-t">올리는 중…</span><button onclick="document.getElementById('up').style.display='none'" style="border:0; background:none; color:#fff; font-size:16px; cursor:pointer;">✕</button></div><div class="bd" id="up-b"></div></div>
+
+<div id="vw">
+  <div class="vt">
+    <b id="vw-n"></b>
+    <a id="vw-dl" href="#">⬇ 원본 받기</a>
+    {% if not trash %}<button onclick="renameCur()">✎ 이름</button>{% endif %}
+    <button onclick="closeV()">✕ 닫기</button>
+  </div>
+  <div class="vb" id="vw-b"></div>
+</div>
+
+
+
+<div id="fmenu-bg" onclick="fmClose()"></div>
+<div id="fmenu" role="menu">
+  <div class="hd" id="fmenu-hd"></div>
+  <button type="button" onclick="fmRename()">✏️ 이름 변경</button>
+  <button type="button" onclick="fmZip()">⬇ 폴더째 내려받기 (ZIP)</button>
+  {% if can_manage %}<button type="button" class="del" onclick="fmDelete()">🗑 삭제</button>{% endif %}
+</div>
+
+<dialog id="mv" style="border:0; border-radius:16px; padding:0; width:min(440px,94vw); box-shadow:0 20px 60px rgba(0,0,0,.3);">
+  <div style="padding:18px 20px;">
+    <div style="font-size:17px; font-weight:800; margin-bottom:12px;">↪ 어디로 옮길까요?</div>
+    <select id="mv-p" class="input" style="margin-bottom:10px;">
+      <option value="">🗂 맨 위 (폴더 없음)</option>
+      {% for f in all_folders %}<option value="{{ f.id }}" {% if fid == f.id %}selected{% endif %}>📁 {{ f.path }}</option>{% endfor %}
+    </select>
+    <div style="font-size:12px; color:var(--ink-4);">선택한 폴더 안으로 옮겨집니다.</div>
+  </div>
+  <div style="display:flex; gap:8px; justify-content:flex-end; padding:12px 20px; background:#F8FAFC;">
+    <button class="btn-secondary" onclick="document.getElementById('mv').close()">취소</button>
+    <button class="btn-primary" onclick="doMove()">옮기기</button>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  var CTX = { project_id: {{ pid if pid else 'null' }}, folder_id: {{ fid if fid else 'null' }}, root: {{ 'true' if scope_root else 'false' }}, trash: {{ 'true' if trash else 'false' }} };
+  var CHUNK = {{ chunk }};
+  var sel = new Set(), tiles = [].slice.call(document.querySelectorAll('.tile')), cur = -1;
+
+  // ── 보기 전환 ──
+  window.toggleView = function () { var l = document.getElementById('gw').classList.toggle('listv'); localStorage.setItem('files_view', l ? 'list' : 'grid'); document.getElementById('vbtn').textContent = l ? '▦' : '☰'; };
+  if (localStorage.getItem('files_view') === 'list') toggleView();
+
+  // ── 선택 ──
+  function paint() {
+    tiles.forEach(function (t) { t.classList.toggle('sel', sel.has(t.dataset.id)); });
+    document.getElementById('selbar').style.display = sel.size ? 'flex' : 'none';
+    document.getElementById('seln').textContent = sel.size + '개 선택';
+    document.body.classList.toggle('selmode', sel.size > 0);
+  }
+  window.clearSel = function () { sel.clear(); paint(); };
+  function toggle(t) { var id = t.dataset.id; sel.has(id) ? sel.delete(id) : sel.add(id); paint(); }
+  var pressT = null, pressed = false;
+  tiles.forEach(function (t, i) {
+    t.addEventListener('click', function (e) {
+      if (pressed) { pressed = false; return; }
+      if (e.target.closest('.ck') || sel.size || e.ctrlKey || e.metaKey || e.shiftKey || CTX.trash) return toggle(t);
+      openV(i);
+    });
+    t.addEventListener('touchstart', function () { pressed = false; pressT = setTimeout(function () { pressed = true; toggle(t); if (navigator.vibrate) navigator.vibrate(20); }, 450); }, { passive: true });
+    ['touchend', 'touchmove', 'touchcancel'].forEach(function (ev) { t.addEventListener(ev, function () { clearTimeout(pressT); }, { passive: true }); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (document.getElementById('vw').style.display === 'flex') {
+      if (e.key === 'Escape') closeV(); if (e.key === 'ArrowRight') openV(cur + 1); if (e.key === 'ArrowLeft') openV(cur - 1);
+    } else if (e.key === 'Escape') clearSel();
+    else if ((e.ctrlKey || e.metaKey) && e.key === 'a' && tiles.length && !/input|textarea/i.test(e.target.tagName)) { e.preventDefault(); tiles.forEach(function (t) { sel.add(t.dataset.id); }); paint(); }
+  });
+
+  // ── 보기(사진·영상·PDF) ──
+  window.openV = function (i) {
+    if (i < 0 || i >= tiles.length) return;
+    cur = i; var t = tiles[i], id = t.dataset.id, k = t.dataset.kind, m = t.dataset.mime, b = document.getElementById('vw-b');
+    document.getElementById('vw-n').textContent = t.dataset.name + '  (' + (i + 1) + '/' + tiles.length + ')';
+    document.getElementById('vw-dl').href = '/files/' + id + '/download';
+    var h;
+    if (k === 'image') h = '<img src="/files/' + id + '/raw" alt="">';
+    else if (k === 'video') h = '<video src="/files/' + id + '/raw" controls autoplay playsinline preload="metadata"></video>';
+    else if (m === 'application/pdf') h = '<iframe src="/files/' + id + '/raw"></iframe>';
+    else h = '<div style="color:#fff; text-align:center;"><div style="font-size:60px;">📄</div><div style="margin:10px 0 16px; font-size:15px;">미리보기를 지원하지 않는 파일입니다</div><a href="/files/' + id + '/download" style="background:#2563EB; color:#fff; padding:12px 22px; border-radius:10px; text-decoration:none; font-weight:800;">⬇ 내려받기</a></div>';
+    h += '<button class="nav" style="left:12px;" onclick="openV(' + (i - 1) + ')">‹</button><button class="nav" style="right:12px;" onclick="openV(' + (i + 1) + ')">›</button>';
+    b.innerHTML = h;
+    document.getElementById('vw').style.display = 'flex'; document.body.style.overflow = 'hidden';
+  };
+  window.closeV = function () { document.getElementById('vw-b').innerHTML = ''; document.getElementById('vw').style.display = 'none'; document.body.style.overflow = ''; };
+  var sx = null;
+  document.getElementById('vw-b').addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; }, { passive: true });
+  document.getElementById('vw-b').addEventListener('touchend', function (e) { if (sx === null) return; var dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 60 && !e.target.closest('video')) openV(cur + (dx < 0 ? 1 : -1)); sx = null; }, { passive: true });
+  window.renameCur = function () {
+    var t = tiles[cur], n = prompt('새 이름', t.dataset.name); if (!n || n === t.dataset.name) return;
+    post('/api/files/' + t.dataset.id + '/rename', { name: n }).then(function () { location.reload(); });
+  };
+
+  // ── 서버 호출 ──
+  function post(url, body) {
+    return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status)); return j; }); });
+  }
+  window.act = function (what, body, confirmMsg) {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    post('/api/files/' + what, body || { ids: Array.from(sel) }).then(function (j) {
+      if (j.denied) alert('본인이 올린 자료만 삭제할 수 있어 ' + j.denied + '개는 제외되었습니다.');
+      location.reload();
+    }).catch(function (e) { alert(e.message); });
+  };
+  window.moveSel = function () { document.getElementById('mv').showModal(); };
+  window.doMove = function () { post('/api/files/move', { ids: Array.from(sel), folder_id: document.getElementById('mv-p').value || null }).then(function () { location.reload(); }).catch(function (e) { alert(e.message); }); };
+  window.zipSel = function () {
+    var ids = Array.from(sel);
+    if (ids.length === 1) { location.href = '/files/' + ids[0] + '/download'; return; }
+    var f = document.createElement('form'); f.method = 'post'; f.action = '/api/files/zip';
+    f.innerHTML = '<input type="hidden" name="ids" value="' + ids.join(',') + '">'; document.body.appendChild(f); f.submit(); f.remove();
+  };
+  window.newFolder = function (top) {
+    var inside = !top && CTX.folder_id;
+    var n = prompt(inside ? '이 폴더 안에 만들 폴더 이름 (예: 현장사진, 셋업영상, 계약서)' : '새 폴더 이름 (예: 2026 OO기업 송년회)'); if (!n) return;
+    post('/api/files/folder', { name: n, parent_id: inside ? CTX.folder_id : null }).then(function (j) { location.href = '/files?folder=' + j.id; }).catch(function (e) { alert(e.message); });
+  };
+  // ── 폴더 ⋯ 메뉴: 이름 변경 · 내려받기 · 삭제 ──
+  var FM = { id: null, name: '', self: false };
+  window.folderMenu = function (id, name, ev, isSelf) {
+    FM = { id: id, name: name, self: !!isSelf };
+    var m = document.getElementById('fmenu'), bg = document.getElementById('fmenu-bg');
+    document.getElementById('fmenu-hd').textContent = '📁 ' + name;
+    m.style.display = 'block'; bg.style.display = 'block';
+    var r = ev && ev.currentTarget ? ev.currentTarget.getBoundingClientRect() : { left: innerWidth / 2, bottom: innerHeight / 2, right: innerWidth / 2 };
+    var w = m.offsetWidth, h = m.offsetHeight;
+    var x = Math.min(Math.max(8, r.right - w), innerWidth - w - 8), y = r.bottom + 6;
+    if (y + h > innerHeight - 8) y = Math.max(8, r.top - h - 6);
+    m.style.left = x + 'px'; m.style.top = y + 'px';
+  };
+  window.fmClose = function () { document.getElementById('fmenu').style.display = 'none'; document.getElementById('fmenu-bg').style.display = 'none'; };
+  window.fmRename = function () {
+    fmClose();
+    var c = prompt('폴더 새 이름', FM.name); if (!c || !c.trim() || c === FM.name) return;
+    post('/api/files/folder/' + FM.id + '/rename', { name: c.trim() }).then(function () { location.reload(); }).catch(function (e) { alert(e.message); });
+  };
+  window.fmZip = function () {
+    fmClose();
+    var a = document.createElement('a'); a.href = '/files/folder/' + FM.id + '/zip'; document.body.appendChild(a); a.click(); a.remove();
+    toast('📦 "' + FM.name + '" 폴더를 ZIP으로 묶는 중… 자료가 많으면 잠시 걸립니다.');
+  };
+  window.fmDelete = function () {
+    fmClose();
+    if (!confirm('"' + FM.name + '" 폴더를 삭제할까요?\n\n안에 있는 하위 폴더와 자료는 모두 휴지통으로 옮겨지며, 30일 안에 복구할 수 있습니다.')) return;
+    post('/api/files/folder/' + FM.id + '/delete').then(function (j) {
+      alert('폴더를 삭제하고 자료 ' + j.trashed + '개를 휴지통으로 옮겼습니다.');
+      if (FM.self) location.href = j.parent_id ? '/files?folder=' + j.parent_id : '/files'; else location.reload();
+    }).catch(function (e) { alert(e.message); });
+  };
+  function toast(t) {
+    var d = document.createElement('div'); d.textContent = t;
+    d.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#0F172A;color:#fff;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:700;z-index:9600;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90vw;';
+    document.body.appendChild(d); setTimeout(function () { d.remove(); }, 4000);
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fmClose(); });
+
+  // ── 업로드 ──
+  window.pick = function (k) { document.getElementById('in-' + k).click(); };
+  document.getElementById('in-file').addEventListener('change', function () { enqueue([].slice.call(this.files).map(function (f) { return { file: f, rel: '' }; })); this.value = ''; });
+  document.getElementById('in-dir').addEventListener('change', function () { enqueue([].slice.call(this.files).map(function (f) { return { file: f, rel: f.webkitRelativePath || '' }; })); this.value = ''; });
+  document.getElementById('in-zip').addEventListener('change', function () { if (this.files[0]) enqueue([{ file: this.files[0], rel: '', zip: true }]); this.value = ''; });
+
+  var queue = [], running = 0, done = 0, failed = 0, total = 0;
+  function enqueue(list) {
+    list = list.filter(function (x) { return x.file.size > 0 && !/^\./.test(x.file.name) && x.file.name !== 'desktop.ini'; });
+    if (!list.length) return;
+    if (!CTX.folder_id && !CTX.trash) {
+      if (!confirm('지금은 폴더 밖(맨 위)입니다. 여기에 올릴까요?\n\n폴더에 넣으려면 [취소] 후 폴더를 먼저 열거나 [＋ 새 폴더]를 만드세요.' + (list.some(function (x) { return x.rel || x.zip; }) ? '\n(폴더째·ZIP 올리기는 폴더 구조가 그대로 만들어집니다)' : ''))) return;
+    }
+    if (CTX.trash) { alert('휴지통에는 올릴 수 없습니다.'); return; }
+    var box = document.getElementById('up'), bd = document.getElementById('up-b'); box.style.display = 'block';
+    list.forEach(function (x) {
+      var row = document.createElement('div'); row.className = 'row';
+      row.innerHTML = '<div style="display:flex; justify-content:space-between; gap:8px;"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(x.rel || x.file.name) + (x.zip ? ' <b>(ZIP 가져오기)</b>' : '') + '</span><span class="st">대기</span></div><div class="bar"><i></i></div>';
+      bd.appendChild(row); x.row = row; queue.push(x); total++;
+    });
+    title(); pump();
+  }
+  function title() { document.getElementById('up-t').textContent = (done + failed < total ? '올리는 중… ' : '완료 ') + done + '/' + total + (failed ? ' · 실패 ' + failed : ''); }
+  function pump() {
+    while (running < 3 && queue.length) { running++; one(queue.shift()).then(fin, fin); }
+    if (!running && !queue.length && done + failed === total) {
+      title(); window.onbeforeunload = null;
+      if (done) setTimeout(function () { location.reload(); }, failed ? 2500 : 900);
+    }
+  }
+  function fin() { running--; title(); pump(); }
+  window.onbeforeunload = null;
+  function one(x) {
+    window.onbeforeunload = function () { return '올리는 중입니다. 나가면 업로드가 중단됩니다.'; };
+    var f = x.file, st = x.row.querySelector('.st'), bar = x.row.querySelector('i');
+    return post('/api/files/upload/init', { name: f.name, size: f.size, mime: f.type, project_id: CTX.project_id, folder_id: CTX.folder_id, rel_path: x.rel, import_zip: !!x.zip })
+      .then(function (j) { return sendChunks(j.upload_id, f, 0, bar, st); })
+      .then(function (id) { st.textContent = x.zip ? '압축 푸는 중…' : '마무리 중…'; return post('/api/files/upload/' + id + '/done'); })
+      .then(function (j) { done++; x.row.classList.add('ok'); bar.style.width = '100%'; st.textContent = j.imported != null ? ('✓ ' + j.imported + '개') : '✓'; })
+      .catch(function (e) { failed++; x.row.classList.add('err'); st.textContent = '실패'; x.row.title = e.message; });
+  }
+  function sendChunks(id, f, off, bar, st, tries) {
+    tries = tries || 0;
+    if (off >= f.size) return Promise.resolve(id);
+    var blob = f.slice(off, Math.min(f.size, off + CHUNK));
+    return fetch('/api/files/upload/' + id + '/chunk?offset=' + off, { method: 'POST', credentials: 'same-origin', body: blob })
+      .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      .then(function (o) {
+        if (o.r.status === 409) return sendChunks(id, f, o.j.offset, bar, st, tries);       // 서버 위치에서 이어올리기
+        if (!o.r.ok) throw new Error(o.j.detail || 'HTTP ' + o.r.status);
+        var pct = Math.round(o.j.offset / f.size * 100); bar.style.width = pct + '%'; st.textContent = pct + '%';
+        return sendChunks(id, f, o.j.offset, bar, st, 0);
+      })
+      .catch(function (e) {
+        if (tries >= 6) throw e;
+        st.textContent = '연결 재시도 ' + (tries + 1) + '…';
+        return new Promise(function (ok) { setTimeout(ok, 1500 * (tries + 1)); }).then(function () {
+          // 서버가 받은 위치를 다시 확인해서 이어올림
+          return fetch('/api/files/upload/' + id + '/chunk?offset=-1', { method: 'POST', credentials: 'same-origin', body: '' })
+            .then(function (r) { return r.json(); }).then(function (j) { return sendChunks(id, f, j.offset != null ? j.offset : off, bar, st, tries + 1); });
+        });
+      });
+  }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  // 끌어다 놓기 (폴더 포함)
+  var dz = document.getElementById('drop'), dc = 0;
+  window.addEventListener('dragenter', function (e) { if (e.dataTransfer && [].indexOf.call(e.dataTransfer.types, 'Files') >= 0) { dc++; dz.style.display = 'flex'; } });
+  window.addEventListener('dragleave', function () { if (--dc <= 0) { dc = 0; dz.style.display = 'none'; } });
+  window.addEventListener('dragover', function (e) { e.preventDefault(); });
+  window.addEventListener('drop', function (e) {
+    e.preventDefault(); dc = 0; dz.style.display = 'none';
+    var items = e.dataTransfer.items, out = [], pend = 0;
+    if (items && items.length && items[0].webkitGetAsEntry) {
+      function walk(entry, path) {
+        if (entry.isFile) { pend++; entry.file(function (f) { out.push({ file: f, rel: path ? path + f.name : '' }); if (--pend === 0) enqueue(out); }, function () { if (--pend === 0) enqueue(out); }); }
+        else if (entry.isDirectory) {
+          var rd = entry.createReader(); pend++;
+          (function readAll() { rd.readEntries(function (ents) { if (!ents.length) { if (--pend === 0) enqueue(out); return; } ents.forEach(function (en) { walk(en, path + entry.name + '/'); }); readAll(); }); })();
+        }
+      }
+      [].slice.call(items).forEach(function (it) { var en = it.webkitGetAsEntry && it.webkitGetAsEntry(); if (en) walk(en, ''); });
+    } else enqueue([].slice.call(e.dataTransfer.files).map(function (f) { return { file: f, rel: '' }; }));
+  });
+})();
+</script>
+{% endblock %}

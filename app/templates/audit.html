@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}활동 기록{% endblock %}
+{% block content %}
+<style>
+  .ag { background:#fff; border:1px solid var(--line); border-radius:14px; margin-bottom:10px; overflow:hidden; }
+  .ag-h { display:flex; align-items:center; gap:10px; padding:12px 16px; flex-wrap:wrap; }
+  .ag-h .t { font-size:12px; color:var(--ink-4); font-variant-numeric:tabular-nums; min-width:96px; }
+  .ag-h .w { font-weight:800; font-size:14px; }
+  .ag-h .s { flex:1; min-width:180px; font-size:14px; color:var(--ink-2); }
+  .ab { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:800; margin-right:4px; }
+  .ab.create { background:#D1FAE5; color:#047857; } .ab.update { background:#DBEAFE; color:#1E40AF; }
+  .ab.delete { background:#FEE2E2; color:#991B1B; } .ab.login, .ab.logout { background:#F1F5F9; color:#475569; }
+  .ab.rv { background:#FEF3C7; color:#92400E; }
+  .ag-b { border-top:1px solid var(--line-2, #F1F5F9); padding:10px 16px 12px; background:#FAFBFC; display:none; }
+  .ag.open .ag-b { display:block; }
+  .rec { padding:8px 0; border-bottom:1px dashed #E5E7EB; font-size:13px; }
+  .rec:last-child { border-bottom:0; }
+  .rec table { margin-top:6px; border-collapse:collapse; width:100%; }
+  .rec td { padding:3px 8px 3px 0; vertical-align:top; font-size:12.5px; }
+  .rec td.k { color:var(--ink-4); width:110px; white-space:nowrap; }
+  .rec .old { color:#B91C1C; text-decoration:line-through; }
+  .rec .new { color:#047857; font-weight:700; }
+  .btn-rv { border:1px solid #F59E0B; color:#92400E; background:#FFFBEB; padding:6px 12px; border-radius:10px; font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap; }
+  .btn-rv.sm { padding:3px 8px; font-size:11px; }
+  .done { color:var(--ink-4); font-size:12px; font-weight:700; }
+  .flt { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:8px; }
+</style>
+
+<div class="flex items-end justify-between flex-wrap gap-3 mb-5">
+  <div>
+    <h1 class="page-title">🕘 활동 기록</h1>
+    <p style="color:var(--ink-4); font-size:13px; margin-top:4px;">대표자·직원이 등록·수정·삭제한 모든 내용이 자동으로 남습니다. 잘못 바뀐 내용은 <b>↩ 되돌리기</b>로 이전 상태로 돌릴 수 있습니다. (오늘 변경 {{ today_n }}건 · 기록은 2년 보관)</p>
+  </div>
+</div>
+
+<form method="get" class="card mb-4" style="padding:14px;">
+  <div class="flt">
+    <select name="who" class="input"><option value="">👤 모든 사람</option>
+      {% for u in users %}<option value="{{ u.id }}" {% if f.who == u.id|string %}selected{% endif %}>{{ u.name or u.username }}</option>{% endfor %}</select>
+    <select name="action" class="input"><option value="">모든 활동</option>
+      {% for k, v in AL.items() %}<option value="{{ k }}" {% if f.action == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+    <select name="table" class="input"><option value="">모든 메뉴</option>
+      {% for t in tables %}<option value="{{ t }}" {% if f.table == t %}selected{% endif %}>{{ TL.get(t, t) }}</option>{% endfor %}</select>
+    <input type="date" name="d1" value="{{ f.d1 }}" class="input" title="시작일">
+    <input type="date" name="d2" value="{{ f.d2 }}" class="input" title="종료일">
+    <input type="search" name="q" value="{{ f.q }}" class="input" placeholder="이름·내용 검색">
+  </div>
+  <div class="flex items-center justify-between mt-3 flex-wrap gap-2">
+    <label style="font-size:12px; color:var(--ink-4);"><input type="checkbox" name="auto" value="1" {% if f.auto %}checked{% endif %}> 자동 처리(상태 자동 계산 등)도 보기</label>
+    <div class="flex gap-2"><a href="/audit" class="btn-secondary">초기화</a><button class="btn-primary">검색</button></div>
+  </div>
+</form>
+
+{% if not groups %}
+<div class="card" style="text-align:center; padding:48px; color:var(--ink-4);">기록이 없습니다.</div>
+{% endif %}
+
+{% for g in groups %}
+{% set first = g.recs[0] %}
+<div class="ag" id="g-{{ g.id }}">
+  <div class="ag-h" onclick="this.parentNode.classList.toggle('open')" style="cursor:pointer;">
+    <span class="t">{{ g.at.strftime('%m/%d %H:%M') }}</span>
+    <span class="w">{{ g.who }}</span>
+    <span class="s">
+      {% if g.note %}<span class="ab rv">↩</span>{{ g.note }}{% else %}
+      {% for r in g.recs[:3] %}<span class="ab {{ r.action }}">{{ r.alabel }}</span>{{ r.tlabel }}{% if r.label %} <b>{{ r.label }}</b>{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}
+      {% if g.recs|length > 3 %} 외 {{ g.recs|length - 3 }}건{% endif %}{% endif %}
+    </span>
+    {% if g.reverted %}<span class="done">↩ 되돌림 완료</span>
+    {% elif g.revertable %}<button type="button" class="btn-rv" onclick="event.stopPropagation(); rv({group_id:'{{ g.id }}'})">↩ 되돌리기</button>{% endif %}
+  </div>
+  <div class="ag-b">
+    {% for r in g.recs %}
+    <div class="rec">
+      <span class="ab {{ r.action }}">{{ r.alabel }}</span> {{ r.tlabel }} {% if r.label %}<b>{{ r.label }}</b>{% endif %}
+      {% if r.row_id %}<span style="color:var(--ink-5); font-size:11px;">#{{ r.row_id }}</span>{% endif %}
+      {% if r.reverted_by %}<span class="done"> · 되돌림</span>{% elif r.revertable and g.recs|length > 1 %}<button type="button" class="btn-rv sm" onclick="rv({id:{{ r.id }}})">이것만 되돌리기</button>{% endif %}
+      {% if r.changes %}
+      <table>
+        {% for k, o, n in r.changes %}
+        <tr><td class="k">{{ k }}</td><td>{% if r.action == 'update' %}<span class="old">{{ o }}</span> → {% endif %}<span class="{% if r.action == 'delete' %}old{% else %}new{% endif %}">{{ n }}</span></td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div style="font-size:11px; color:var(--ink-5); margin-top:6px;">{{ g.path }}</div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="flex justify-center gap-2 mt-4">
+  {% set qs = 'who=' ~ f.who ~ '&action=' ~ f.action ~ '&table=' ~ f.table ~ '&q=' ~ f.q|urlencode ~ '&d1=' ~ f.d1 ~ '&d2=' ~ f.d2 ~ ('&auto=1' if f.auto else '') %}
+  {% if page > 1 %}<a class="btn-secondary" href="/audit?{{ qs }}&page={{ page - 1 }}">‹ 최근</a>{% endif %}
+  {% if has_next %}<a class="btn-secondary" href="/audit?{{ qs }}&page={{ page + 1 }}">이전 기록 ›</a>{% endif %}
+</div>
+
+<script>
+function rv(body) {
+  function post(b) {
+    return fetch('/api/audit/revert', { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(b) })
+      .then(function (r) { return r.json(); });
+  }
+  post(Object.assign({ preview: true }, body)).then(function (p) {
+    if (!p.ok) { alert(p.msg); return; }
+    var m = p.n + '건을 이 작업 이전 상태로 되돌립니다.';
+    if (p.warn && p.warn.length) m += '\n\n⚠ 주의 — 이 작업 뒤에 다시 수정된 내용이 있습니다. 되돌리면 그 수정도 덮어씁니다.\n- ' + p.warn.join('\n- ');
+    if (!confirm(m + '\n\n진행할까요?')) return;
+    post(body).then(function (j) { if (!j.ok) { alert(j.msg); return; } alert('✓ 되돌렸습니다.'); location.reload(); });
+  });
+}
+</script>
+{% endblock %}

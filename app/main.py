@@ -12,12 +12,14 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqlmodel import Session, select
 from PIL import Image
 
+import audit  # ★ 활동 기록: 저장 순간 자동 기록 (init_db 전에 불러와 기록 표가 만들어지게)
 from database import (
     engine, init_db, verify_password, hash_password,
     User, Vendor, Project, Expense, Worker, Attendance, Item, Quote, QuoteItem,
 )
 # Vendor는 이미 위에서 import됨 — 별도 추가 불필요
 from template_utils import templates
+from template_utils import expense_cost
 
 # ============================================================
 app = FastAPI(title="정산관리 시스템")
@@ -36,6 +38,9 @@ app.mount("/company", StaticFiles(directory=f"{_DATA_DIR}/company"), name="compa
 def startup():
     try:
         init_db()
+        from routes_files import purge_old_trash
+        purge_old_trash()
+        audit.purge_old(engine)
     except Exception as e:
         # 마이그레이션 실패해도 서버는 살아있게 (Healthcheck 통과용)
         import traceback
@@ -387,7 +392,20 @@ async def add_user_to_request(request: Request, call_next):
         request.state.is_admin = is_admin(user)
         for _k, _v in money_flags(user).items():
             setattr(request.state, _k, _v)
+        # 모바일 하단 '출퇴근' 버튼 색 (근무 중이면 초록)
+        request.state.punch_working = False
+        if user and request.url.path.startswith("/m"):
+            try:
+                from permissions import my_worker as _mw
+                from routes_attendance import open_shift as _os
+                from sqlmodel import Session as _S
+                with _S(engine) as _s:
+                    _w = _mw(_s, user)
+                    request.state.punch_working = bool(_w and _os(_s, _w.id))
+            except Exception:
+                pass
     except Exception:
+        user = None
         request.state.user = None
         request.state.perms = {}
         request.state.is_admin = False
@@ -408,6 +426,12 @@ async def add_user_to_request(request: Request, call_next):
         _rt = (request.query_params.get("_rt") or "").strip()
         if _rt.startswith("/") and not _rt.startswith("//") and not _rt.startswith("/login"):
             _return_to = _rt
+    # ★ 활동 기록: 이 요청에서 바뀌는 모든 내용에 '누가·어디서' 표시
+    try:
+        _ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "") or "").split(",")[0].strip()
+        audit.set_actor(getattr(request.state, "user", None), path=str(request.url.path), method=request.method, ip=_ip)
+    except Exception:
+        pass
     response = await call_next(request)
     if _return_to and response.status_code in (302, 303):
         _loc = response.headers.get("location", "")
@@ -471,6 +495,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         request.session["user_id"] = user.id
         request.session["last_seen"] = int(time.time())
         request.session["remember"] = bool(remember)
+    audit.log_event(engine, "login", label=f"{user.name or user.username} 로그인" + (" (자동 로그인)" if remember else ""), user=user)
     resp = RedirectResponse(_safe_next(next), status_code=303)
     if remember:
         resp.set_cookie(REMEMBER_COOKIE, _make_remember_token(user),
@@ -578,7 +603,7 @@ def home(request: Request):
         unpaid_count = len(unpaid_projects)
 
         # 순이익은 공급가액 기준 (부가세는 결국 국세청에 납부할 돈이라 회사 이익 아님)
-        net_profit = total_supply - total_expense - total_wage
+        net_profit = total_supply - sum(expense_cost(e) for e in _all_exp) - total_wage
 
         # 최근 프로젝트 5개
         recent_projects = sorted(projects, key=lambda p: p.created_at, reverse=True)[:5]
@@ -625,6 +650,9 @@ from routes_backup import router as backup_router
 from routes_export import router as export_router
 from routes_employee import router as employee_router
 from routes_staff import router as staff_router
+from routes_punch import router as punch_router
+from routes_files import router as files_router
+from routes_audit import router as audit_router
 
 # 통합 물품 등록 라우터를 가장 먼저 등록 (우선순위 — 호환 리다이렉트 우선 적용)
 app.include_router(product_router)
@@ -642,6 +670,9 @@ app.include_router(mobile_router)
 app.include_router(backup_router)
 app.include_router(export_router)
 app.include_router(staff_router)
+app.include_router(punch_router)
+app.include_router(files_router)
+app.include_router(audit_router)
 
 
 # PWA: service worker는 루트 scope에서 작동하도록 별도 핸들러

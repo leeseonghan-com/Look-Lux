@@ -106,7 +106,8 @@
     }
     h += '</div>';
 
-    h += '<div style="padding:14px 20px; border-top:1px solid #E5E7EB; display:flex; gap:8px; justify-content:flex-end; background:#F8FAFC;">'
+    h += '<div style="padding:14px 20px; border-top:1px solid #E5E7EB; display:flex; gap:8px; justify-content:flex-end; background:#F8FAFC; flex-wrap:wrap;">'
+       + '<button type="button" data-act="image" style="margin-right:auto; padding:11px 14px; border-radius:10px; border:1px solid #C7D2FE; background:#EEF2FF; background-image:linear-gradient(#EEF2FF,#EEF2FF); color:#4338CA; font-weight:800;">🖼 이미지 저장</button>'
        + '<button type="button" data-act="close" style="padding:11px 18px; border-radius:10px; border:1px solid #CBD5E1; background:#fff; font-weight:700;">취소</button>'
        + '<button type="button" data-act="save" style="padding:11px 26px; border-radius:10px; border:0; background:#2563EB; background-image:linear-gradient(#2563EB,#2563EB); color:#fff; font-weight:800; font-size:15px;">' + (st.saving ? '저장 중…' : '💾 저장') + '</button></div>';
 
@@ -153,6 +154,10 @@
     if (act === 'before') { st.days.unshift(addDays(st.days[0], -1)); return render(); }
     if (act === 'after') { st.days.push(addDays(st.days[st.days.length - 1], 1)); return render(); }
     if (act === 'save') return save();
+    if (act === 'image') {
+      if (!window.buildStaffRosterFromState) return alert('이미지 저장 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요.');
+      return window.buildStaffRosterFromState({ project: st.project, days: st.days, people: st.people.map(function (p) { return { name: p.name, offer: p.offer, days: p.days.slice().sort() }; }) });
+    }
   }
   function onChange(e) {
     return;

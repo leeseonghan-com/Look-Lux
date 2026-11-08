@@ -1,190 +1,227 @@
 {% extends "mobile/base.html" %}
 {% set active_tab = 'attendance' %}
-{% set back_url = '/m/' %}
-{% block page_title %}근태 관리{% endblock %}
-{% block header_right %}{{ today }}{% endblock %}
+{% block page_title %}{% if tab == 'alba' %}알바 근무{% else %}출퇴근{% endif %}{% endblock %}
+{% block header_right %}{% if tab != 'alba' %}<a href="/m/widget" style="background:#fff !important; color:var(--ink) !important; border:1px solid var(--line);">⏱ 위젯</a>{% endif %}{% endblock %}
 
 {% block content %}
 
-<!-- 탭 전환 -->
-<div style="display: flex; gap: 4px; padding: 4px; background: #F3F4F6; border-radius: 10px; margin-bottom: 14px;">
-  <a href="/m/attendance?tab=fulltime" class="m-tab" style="flex:1; padding:10px; text-align:center; border-radius:8px; text-decoration:none; font-size:13px; font-weight:700;
-                                                            background: {% if tab == 'fulltime' %}#0A0E1A{% else %}transparent{% endif %};
-                                                            color: {% if tab == 'fulltime' %}white{% else %}#71717A{% endif %};">
-    💼 정직원
-  </a>
-  <a href="/m/attendance?tab=alba" class="m-tab" style="flex:1; padding:10px; text-align:center; border-radius:8px; text-decoration:none; font-size:13px; font-weight:700;
-                                                        background: {% if tab == 'alba' %}#0A0E1A{% else %}transparent{% endif %};
-                                                        color: {% if tab == 'alba' %}white{% else %}#71717A{% endif %};">
-    🧢 알바
-  </a>
-</div>
-
-{% if request.query_params.get('checkin') %}
-<div class="m-card" style="background: #D1FAE5; border: 1px solid #6EE7B7; padding: 10px 14px;">
-  <div style="font-size: 13px; font-weight: 700; color: #047857;">✓ 출근 등록 완료</div>
-</div>
-{% elif request.query_params.get('checkout') %}
-<div class="m-card" style="background: #DBEAFE; border: 1px solid #93C5FD; padding: 10px 14px;">
-  <div style="font-size: 13px; font-weight: 700; color: #1E40AF;">✓ 퇴근 등록 완료</div>
+{% if can_alba %}
+<div class="seg">
+  <a href="/m/attendance?tab=fulltime" class="{% if tab != 'alba' %}on{% endif %}">💼 정직원 출퇴근</a>
+  <a href="/m/attendance?tab=alba" class="{% if tab == 'alba' %}on{% endif %}">🧢 알바 근무</a>
 </div>
 {% endif %}
 
-{# ============================================================ #}
-{# 정직원 탭 #}
-{# ============================================================ #}
-{% if tab == 'fulltime' %}
+{% set qp = request.query_params %}
+{% if qp.get('checkin') == 'dup' %}<div class="alert warn">이미 근무 중입니다. 퇴근을 먼저 눌러주세요.</div>
+{% elif qp.get('checkin') %}<div class="alert">✓ 출근이 기록되었습니다</div>
+{% elif qp.get('checkout') == 'none' %}<div class="alert warn">진행 중인 출근 기록이 없습니다.</div>
+{% elif qp.get('checkout') %}<div class="alert">✓ 퇴근이 기록되었습니다. 수고하셨습니다</div>
+{% elif qp.get('created') %}<div class="alert">✓ {{ qp.get('created') }}건 등록{% if qp.get('skipped') and qp.get('skipped') != '0' %} · 이미 있던 {{ qp.get('skipped') }}건 건너뜀{% endif %}</div>{% endif %}
 
-{% if workers_today %}
-{% for w in workers_today %}
-<div class="m-card" style="padding: 16px;">
-  <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
-    <div>
-      <div style="font-size: 17px; font-weight: 800; color: #18181B;">{{ w.name }}</div>
-      {% if w.phone %}<div style="font-size: 12px; color: #71717A; margin-top: 2px;">{{ w.phone }}</div>{% endif %}
-    </div>
-    {% if w.check_in and w.check_out %}
-    <span style="padding:4px 12px; border-radius:99px; background:#D1FAE5; color:#047857; font-size:12px; font-weight:700;">✓ 퇴근</span>
-    {% elif w.check_in %}
-    <span style="padding:4px 12px; border-radius:99px; background:#DBEAFE; color:#1E40AF; font-size:12px; font-weight:700;">🏃 근무중</span>
-    {% else %}
-    <span style="padding:4px 12px; border-radius:99px; background:#F3F4F6; color:#6B7280; font-size:12px; font-weight:700;">대기</span>
-    {% endif %}
+{% if tab != 'alba' %}
+{# ═════════════ 정직원 출퇴근 ═════════════ #}
+
+{% if my %}
+<div class="pc {% if my.working %}on{% endif %}">
+  <div class="pc-lbl">{% if my.working %}● 근무 중{% elif my.check_out %}퇴근 완료{% else %}출근 전{% endif %} · {{ my.name }}</div>
+  <div class="pc-clock" id="clk">--:--</div>
+  <div class="pc-sub">
+    {% if my.working %}{{ my.check_in.strftime('%m/%d %H:%M') }} 출근{% if my.hours is not none %} · {% if my.hours < 1 %}{{ (my.hours*60)|round|int }}분째{% else %}{{ my.hours }}시간째{% endif %}{% endif %}{% if my.overnight %}<br>자정이 지났지만 이 근무에 퇴근이 기록됩니다{% endif %}
+    {% elif my.check_out %}{{ my.check_in.strftime('%H:%M') if my.check_in else '' }} ~ {{ my.check_out.strftime('%m/%d %H:%M') }}
+    {% else %}{{ today.strftime('%Y.%m.%d') }} ({{ '월화수목금토일'[today.weekday()] }}){% endif %}
   </div>
-
-  {% if w.check_in or w.check_out %}
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; padding: 10px; background: #F8FAFC; border-radius: 8px;">
-    <div>
-      <div style="font-size: 11px; color: #71717A;">출근</div>
-      <div style="font-size: 16px; font-weight: 700; color: #1E40AF;">{{ w.check_in.strftime('%H:%M') if w.check_in else '—' }}</div>
-    </div>
-    <div>
-      <div style="font-size: 11px; color: #71717A;">퇴근</div>
-      <div style="font-size: 16px; font-weight: 700; color: #047857;">{{ w.check_out.strftime('%H:%M') if w.check_out else '—' }}</div>
-    </div>
-    {% if w.check_in and w.check_out %}
-    <div style="grid-column: span 2; padding-top: 8px; border-top: 1px solid #E5E7EB; display: flex; justify-content: space-between; align-items: center;">
-      <span style="font-size: 12px; color: #71717A;">근무 시간</span>
-      <span style="font-size: 15px; font-weight: 800;">{{ ((w.check_out - w.check_in).total_seconds() / 3600) | round(1) }}시간</span>
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
-
-  {% if not w.check_in %}
-  <form method="post" action="/m/attendance/fulltime/checkin">
-    <input type="hidden" name="worker_id" value="{{ w.id }}">
-    <button class="m-btn" style="width:100%; padding:14px; background:#2563EB; color:white; border:none; border-radius:10px; font-size:16px; font-weight:700;">
-      📥 출근 등록
-    </button>
-  </form>
-  {% elif not w.check_out %}
-  <form method="post" action="/m/attendance/fulltime/checkout"
-        onsubmit="return confirm('{{ w.name }}님 퇴근 처리하시겠습니까?');">
-    <input type="hidden" name="worker_id" value="{{ w.id }}">
-    <button class="m-btn" style="width:100%; padding:14px; background:#059669; color:white; border:none; border-radius:10px; font-size:16px; font-weight:700;">
-      📤 퇴근 등록
-    </button>
+  {% if my.working %}
+  <form method="post" action="/m/attendance/fulltime/checkout" onsubmit="return confirm('퇴근하시겠습니까?');">
+    <input type="hidden" name="worker_id" value="{{ my.id }}"><button class="pc-btn out">퇴근하기</button>
   </form>
   {% else %}
-  <div style="text-align: center; padding: 12px; color: #71717A; font-size: 13px; background: #F3F4F6; border-radius: 8px;">
-    오늘 근무 완료
-  </div>
+  <form method="post" action="/m/attendance/fulltime/checkin">
+    <input type="hidden" name="worker_id" value="{{ my.id }}"><button class="pc-btn in">출근하기</button>
+  </form>
   {% endif %}
 </div>
-{% endfor %}
-{% else %}
-<div style="text-align: center; padding: 60px 20px; color: #71717A;">
-  <div style="font-size: 48px; margin-bottom: 12px;">💼</div>
-  <div style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">출퇴근을 등록할 직원이 없습니다</div>
-  <div style="font-size: 13px; color: #94A3B8;">관리자: 재직 중인 정직원을 등록하세요.<br>직원: 관리자에게 내 계정과 근무자 연결을 요청하세요.</div>
-</div>
-{% endif %}
 
-{# ============================================================ #}
-{# 알바 탭 #}
-{# ============================================================ #}
-{% else %}
-
-<div class="m-card">
-  <div class="m-card-title">🧢 알바 일당 등록</div>
-  <form method="post" action="/m/attendance/checkin" class="m-form">
-    <div class="m-field">
-      <label class="m-label">근무자</label>
-      <select name="worker_id" class="m-input" required>
-        <option value="">선택하세요</option>
-        {% for w in alba_workers %}
-        <option value="{{ w.id }}" data-wage="{{ w.default_daily_wage }}">{{ w.name }}{% if request.state.can_view_wage %} ({{ '{:,}'.format(w.default_daily_wage) }}원/일){% endif %}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="m-field">
-      <label class="m-label">프로젝트</label>
-      <select name="project_id" class="m-input" required>
-        <option value="">선택하세요</option>
-        {% for p in projects %}
-        <option value="{{ p.id }}">{{ p.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="m-field">
-      <label class="m-label">근무 시간</label>
-      <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
-        <label class="m-hour-opt">
-          <input type="radio" name="hours" value="4" style="display:none;">
-          <span>4h</span>
-        </label>
-        <label class="m-hour-opt">
-          <input type="radio" name="hours" value="8" checked style="display:none;">
-          <span>8h</span>
-        </label>
-        <label class="m-hour-opt">
-          <input type="radio" name="hours" value="10" style="display:none;">
-          <span>10h</span>
-        </label>
-        <label class="m-hour-opt">
-          <input type="radio" name="hours" value="12" style="display:none;">
-          <span>12h</span>
-        </label>
-      </div>
-    </div>
-    <!-- 오퍼비/추가금액 -->
-    <div class="m-field" style="background:#FAF5FF; border:1px solid #DDD6FE; border-radius:10px; padding:12px; margin-top:8px;">
-      <label class="m-label" style="color:#6D28D9; font-weight:700;">💰 추가금액 / 오퍼비 (선택)</label>
-      <input type="text" name="bonus_amount" inputmode="numeric" placeholder="0 (일당과 별도 금액)"
-             style="width:100%; padding:10px; border-radius:8px; border:1px solid #E5E7EB; margin-bottom:6px;">
-      <input name="bonus_memo" placeholder="사유 (예: 오퍼비, 야간수당)"
-             style="width:100%; padding:10px; border-radius:8px; border:1px solid #E5E7EB;">
-    </div>
-    <button type="submit" class="m-btn m-btn-primary" style="padding: 14px; font-size: 16px;">+ 일당 등록</button>
-  </form>
-</div>
-
-{% if today_alba_rows %}
-<div class="m-card" style="padding: 0;">
-  <div style="padding: 14px 16px 8px;">
-    <div class="m-card-title" style="margin: 0;">오늘 등록 ({{ today_alba_rows|length }}건)</div>
-  </div>
-  {% for r in today_alba_rows %}
-  <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-top: 1px solid #F1F5F9;">
-    <div>
-      <div style="font-weight: 700; font-size: 14px;">{{ r.worker_name }}</div>
-      <div style="font-size: 12px; color: #71717A; margin-top: 2px;">{{ r.project_name }} · {{ r.days }}일</div>
-    </div>
-    {% if request.state.can_view_wage %}
-    <div style="font-weight: 800; font-size: 15px;">{{ '{:,}'.format(r.total_wage) }}원</div>
-    {% endif %}
+{% if my_recent %}
+<div class="m-section">최근 2주 내 기록</div>
+<div class="m-card" style="padding:4px 0;">
+  {% for r in my_recent %}
+  <div class="rec">
+    <div class="d">{{ r.date.strftime('%m/%d') }}<small>{{ '월화수목금토일'[r.date.weekday()] }}</small></div>
+    <div class="t">{{ r['in'].strftime('%H:%M') if r['in'] else '—' }} <span>→</span> {% if r.out %}{% if r.out.date() != r.date %}<em>익일</em> {% endif %}{{ r.out.strftime('%H:%M') }}{% else %}<em style="color:var(--green);">근무중</em>{% endif %}</div>
+    <div class="h">{% if r.hrs is not none %}{{ r.hrs }}h{% endif %}</div>
   </div>
   {% endfor %}
 </div>
 {% endif %}
+{% elif not admin %}
+<div class="m-card empty">
+  <div class="ico">🔗</div>
+  <b>출퇴근할 근무자와 연결되지 않았습니다</b>
+  관리자에게 <b style="display:inline;">직원 관리 → 연결할 근무자</b> 설정을 요청하세요.
+</div>
+{% endif %}
 
+{% if admin %}
+<div class="m-section">직원 출퇴근 현황 <span style="font-size:12px; color:var(--ink-4); font-weight:600;">근무 중 {{ others|selectattr('working')|list|length }}명</span></div>
+{% if others %}
+<div class="m-card" style="padding:0;">
+  {% for w in others %}
+  <div class="list-item" style="align-items:center;">
+    <div class="list-item-inner">
+      <div class="list-item-title">{{ w.name }}
+        {% if w.working %}<span class="badge badge-green" style="margin-left:4px;">근무중</span>{% elif w.check_out %}<span class="badge badge-gray" style="margin-left:4px;">퇴근</span>{% endif %}</div>
+      <div class="list-item-sub">{% if w.working %}{{ w.check_in.strftime('%m/%d %H:%M') }} 출근{% if w.hours is not none %} · {{ w.hours }}h{% endif %}{% elif w.check_out %}{{ w.check_in.strftime('%H:%M') if w.check_in else '' }} ~ {{ w.check_out.strftime('%H:%M') }}{% else %}출근 전{% endif %}</div>
+    </div>
+    {% if w.working %}
+    <form method="post" action="/m/attendance/fulltime/checkout" onsubmit="return confirm('{{ w.name }}님 퇴근 처리할까요?');">
+      <input type="hidden" name="worker_id" value="{{ w.id }}"><button class="mini out">퇴근</button>
+    </form>
+    {% else %}
+    <form method="post" action="/m/attendance/fulltime/checkin">
+      <input type="hidden" name="worker_id" value="{{ w.id }}"><button class="mini in">출근</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="m-card" style="text-align:center; color:var(--ink-4); font-size:14px;">재직 중인 다른 정직원이 없습니다</div>
+{% endif %}
+<a href="/attendance?tab=fulltime" class="btn btn-secondary" style="width:100%; margin-top:4px; font-size:14px;">전체 기록·수정·엑셀 (PC 화면)</a>
+{% endif %}
+
+{% else %}
+{# ═════════════ 알바 근무 — 여러 명 × 여러 날 ═════════════ #}
+<form method="post" action="/attendance/new" id="alba-form">
+  <input type="hidden" name="back" value="/m/attendance?tab=alba">
+  <input type="hidden" name="wage_mode" value="default">
+  <input type="hidden" name="days" value="1">
+  <input type="hidden" name="work_dates" id="work-dates">
+
+  <div class="m-card">
+    <div class="m-card-title">① 프로젝트</div>
+    <select name="project_id" id="proj" class="m-input" required>
+      <option value="">선택하세요</option>
+      {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}{% if p.date %} · {{ p.date.strftime('%m/%d') }}{% endif %}</option>{% endfor %}
+    </select>
+  </div>
+
+  <div class="m-card">
+    <div class="m-card-title" style="display:flex; justify-content:space-between;">② 근무일 <span id="wd-n" style="color:var(--ink);">0일</span></div>
+    <div id="wd-chips" class="chips" style="flex-wrap:wrap; overflow:visible;"></div>
+    <div style="display:flex; gap:6px;">
+      <input type="date" id="wd-pick" class="m-input" value="{{ today }}" style="flex:1;">
+      <button type="button" class="mini in" style="padding:0 16px;" onclick="wdAdd(document.getElementById('wd-pick').value)">추가</button>
+    </div>
+    <button type="button" id="wd-proj" class="btn btn-secondary" style="width:100%; margin-top:8px; padding:11px; font-size:14px; display:none;" onclick="wdProject()">행사 기간 전체 선택</button>
+  </div>
+
+  <div class="m-card">
+    <div class="m-card-title" style="display:flex; justify-content:space-between;">③ 근무자 <span id="wk-n" style="color:var(--ink);">0명</span></div>
+    <input type="search" id="wk-q" class="m-search" placeholder="이름 검색" autocomplete="off" style="margin-bottom:10px;">
+    <div id="wk-list" style="display:flex; flex-wrap:wrap; gap:6px; max-height:220px; overflow-y:auto;">
+      {% for w in alba_workers %}
+      <label class="pick" data-n="{{ w.name }}"><input type="checkbox" name="worker_ids" value="{{ w.id }}">{{ w.name }}{% if request.state.can_view_wage and w.wage %}<small>{{ '{:,}'.format(w.wage) }}</small>{% endif %}</label>
+      {% endfor %}
+      {% if not alba_workers %}<div style="color:var(--ink-4); font-size:13px;">등록된 알바가 없습니다</div>{% endif %}
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="alba-submit" style="position:sticky; bottom:calc(92px + env(safe-area-inset-bottom)); box-shadow:0 10px 24px rgba(11,18,32,.25);">등록하기</button>
+  <div style="font-size:12px; color:var(--ink-4); text-align:center; margin-top:8px;">일당은 근무자별 기본 일당으로 들어갑니다 · 이미 등록된 날은 건너뜁니다</div>
+</form>
+
+{% if today_alba_rows %}
+<div class="m-section">오늘 근무 ({{ today_alba_rows|length }}명)</div>
+<div class="m-card" style="padding:0;">
+  {% for r in today_alba_rows %}
+  <div class="list-item">
+    <div class="list-item-inner">
+      <div class="list-item-title">{{ r.worker_name }}{% if r.auto %} <span class="badge badge-blue">배치</span>{% endif %}</div>
+      <div class="list-item-sub">{{ r.project_name }} · {{ r.days }}일</div>
+    </div>
+    {% if request.state.can_view_wage %}<div style="font-weight:800;">{{ '{:,}'.format(r.total_wage) }}원</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+<a href="/attendance?tab=alba" class="btn btn-secondary" style="width:100%; margin-top:4px; font-size:14px;">근무자별 전체 내역 (PC 화면)</a>
 {% endif %}
 
 <style>
-.m-hour-opt { display:block; padding:12px; text-align:center; background:white; border:1.5px solid #E4E4E7; border-radius:10px; font-weight:700; font-size:15px; cursor:pointer; color:#71717A; }
-.m-hour-opt input:checked + span { color: white; }
-.m-hour-opt:has(input:checked) { background: #0A0E1A; border-color: #0A0E1A; color: white; }
+.seg { display: flex; gap: 4px; padding: 4px; border-radius: 14px; margin-bottom: 12px; background-color: #E9EBEF !important; background-image: linear-gradient(#E9EBEF,#E9EBEF) !important; }
+.seg a { flex: 1; text-align: center; padding: 10px; border-radius: 11px; font-size: 14px; font-weight: 700; text-decoration: none; color: var(--ink-4); }
+.seg a.on { color: var(--ink); background-color: #fff !important; background-image: linear-gradient(#fff,#fff) !important; box-shadow: 0 1px 3px rgba(15,23,42,.1); }
+.alert.warn { color: #92400E; border-color: #FDE68A; background-image: linear-gradient(#FFFBEB,#FFFBEB) !important; }
+.pc { border-radius: 22px; padding: 22px 20px 18px; margin-bottom: 12px; color: #fff; background-color: #0B1220; background-image: linear-gradient(#0B1220,#0B1220) !important; }
+.pc.on { background-image: linear-gradient(135deg,#065F46,#064E3B) !important; }
+.pc-lbl { font-size: 13px; font-weight: 700; color: rgba(255,255,255,.65); }
+.pc.on .pc-lbl { color: #6EE7B7; }
+.pc-clock { font-size: 56px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; margin-top: 10px; font-variant-numeric: tabular-nums; }
+.pc-sub { font-size: 13px; color: rgba(255,255,255,.65); margin-top: 8px; line-height: 1.5; }
+.pc-btn { width: 100%; margin-top: 18px; border: 0; border-radius: 16px; padding: 20px; font-size: 20px; font-weight: 800; font-family: inherit; color: #fff; }
+.pc-btn:active { transform: scale(.985); }
+.pc-btn.in { background-image: linear-gradient(#2563EB,#2563EB) !important; background-color: #2563EB !important; }
+.pc-btn.out { background-image: linear-gradient(#fff,#fff) !important; background-color: #fff !important; color: #065F46; }
+.rec { display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid var(--line-2); }
+.rec:last-child { border-bottom: 0; }
+.rec .d { width: 46px; font-weight: 800; font-size: 14px; }
+.rec .d small { display: block; font-size: 11px; color: var(--ink-5); font-weight: 700; }
+.rec .t { flex: 1; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rec .t span { color: var(--ink-5); font-weight: 400; margin: 0 2px; }
+.rec .t em { font-style: normal; font-size: 11px; color: #7C3AED; font-weight: 800; }
+.rec .h { font-size: 13px; color: var(--ink-4); font-weight: 700; }
+.rec *, .rec { background: transparent !important; background-image: none !important; }
+.mini { border: 0; border-radius: 10px; padding: 10px 16px; font-size: 14px; font-weight: 800; font-family: inherit; color: #fff; }
+.mini.in { background-image: linear-gradient(#0B1220,#0B1220) !important; background-color: #0B1220 !important; }
+.mini.out { background-image: linear-gradient(#059669,#059669) !important; background-color: #059669 !important; }
+.pick { display: inline-flex; align-items: center; gap: 5px; padding: 9px 14px; border-radius: 999px; border: 1.5px solid var(--line); font-size: 14px; font-weight: 700; cursor: pointer; background-image: linear-gradient(#fff,#fff) !important; }
+.pick input { display: none; }
+.pick small { font-size: 11px; color: var(--ink-5); font-weight: 600; }
+.pick.on { border-color: #0B1220; color: #fff; background-image: linear-gradient(#0B1220,#0B1220) !important; }
+.pick.on small { color: #94A3B8; }
+.dchip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 8px 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #fff; background-image: linear-gradient(#0B1220,#0B1220) !important; }
+.dchip button { border: 0; background: transparent !important; color: #94A3B8; font-size: 14px; padding: 0 4px; }
 </style>
+{% endblock %}
 
+{% block scripts %}
+<script>
+(function () {
+  var c = document.getElementById('clk');
+  if (c) { var f = function () { var d = new Date(); c.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }; f(); setInterval(f, 5000); }
+  document.querySelectorAll('form').forEach(function (fm) { fm.addEventListener('submit', function () { var b = fm.querySelector('button[type=submit],button:not([type])'); if (b) setTimeout(function () { b.disabled = true; b.style.opacity = .6; }, 0); }); });
+})();
+{% if tab == 'alba' %}
+var WD = ['{{ today }}'], PP = {{ project_periods|tojson }};
+function wdRender() {
+  WD.sort(); document.getElementById('work-dates').value = WD.join(',');
+  document.getElementById('wd-n').textContent = WD.length + '일';
+  document.getElementById('wd-chips').innerHTML = WD.map(function (d) {
+    var dt = new Date(d + 'T00:00:00');
+    return '<span class="dchip">' + (dt.getMonth() + 1) + '/' + dt.getDate() + '(' + '일월화수목금토'[dt.getDay()] + ')<button type="button" onclick="wdDel(\'' + d + '\')">✕</button></span>';
+  }).join('') || '<span style="font-size:13px; color:#DC2626;">날짜를 추가하세요</span>';
+  cnt();
+}
+function wdAdd(d) { if (d && WD.indexOf(d) < 0) { WD.push(d); wdRender(); } }
+function wdDel(d) { WD = WD.filter(function (x) { return x !== d; }); wdRender(); }
+function wdProject() { var pp = PP[document.getElementById('proj').value]; if (!pp) return; WD = []; var c = new Date(pp[0] + 'T00:00:00'), e = new Date(pp[1] + 'T00:00:00'), n = 0;
+  while (c <= e && n < 62) { WD.push(c.getFullYear() + '-' + String(c.getMonth() + 1).padStart(2, '0') + '-' + String(c.getDate()).padStart(2, '0')); c.setDate(c.getDate() + 1); n++; } wdRender(); }
+function cnt() { var n = document.querySelectorAll('input[name=worker_ids]:checked').length; document.getElementById('wk-n').textContent = n + '명';
+  document.getElementById('alba-submit').textContent = (n && WD.length) ? (n + '명 × ' + WD.length + '일 = ' + (n * WD.length) + '건 등록') : '등록하기'; }
+document.getElementById('proj').addEventListener('change', function () { var has = !!PP[this.value]; document.getElementById('wd-proj').style.display = has ? '' : 'none'; if (has) wdProject(); });
+document.querySelectorAll('.pick input').forEach(function (cb) { cb.addEventListener('change', function () { cb.parentNode.classList.toggle('on', cb.checked); cnt(); }); });
+var q = document.getElementById('wk-q'), comp = false;
+q.addEventListener('compositionstart', function () { comp = true; }); q.addEventListener('compositionend', function () { comp = false; flt(); });
+q.addEventListener('input', function () { if (!comp) flt(); });
+function flt() { var v = q.value.trim(); document.querySelectorAll('.pick').forEach(function (l) { l.style.display = (!v || l.dataset.n.indexOf(v) >= 0) ? '' : 'none'; }); }
+document.getElementById('alba-form').addEventListener('submit', function (e) {
+  if (!document.getElementById('proj').value) { e.preventDefault(); alert('프로젝트를 선택하세요.'); return; }
+  if (!WD.length) { e.preventDefault(); alert('근무일을 추가하세요.'); return; }
+  if (!document.querySelectorAll('input[name=worker_ids]:checked').length) { e.preventDefault(); alert('근무자를 선택하세요.'); }
+});
+wdRender();
+{% endif %}
+</script>
 {% endblock %}

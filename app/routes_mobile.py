@@ -12,6 +12,7 @@ from database import (
     Worker, Attendance, Expense, Vendor,
 )
 from template_utils import templates
+from template_utils import expense_cost
 
 router = APIRouter(prefix="/m")
 
@@ -28,47 +29,82 @@ def _user(request: Request) -> User:
 # ============================================================
 @router.get("/", response_class=HTMLResponse)
 def mobile_home(request: Request):
+    """모바일 홈 (v2) — 내 출퇴근 카드 + 오늘/이번 주 일정 + 요약"""
     user = _user(request)
     today = date.today()
+    from permissions import my_worker, is_employed, has_permission
+    from routes_attendance import current_shift, open_shift
+    from routes_project import auto_status, unified_status
+    from database import ProjectStaff, CalendarEvent
     with Session(engine, expire_on_commit=False) as s:
-        active_projects = s.exec(
-            select(Project).where(Project.status == "진행중").order_by(Project.event_date.desc())
-        ).all()
-        active_count = len(active_projects)
-        # 오늘 근태
-        today_att = s.exec(
-            select(Attendance).where(Attendance.work_date == today)
-        ).all()
-        today_workers = len(today_att)
-        # 미수금 프로젝트
-        unpaid = s.exec(
-            select(Project).where(Project.settlement_status == "미수금")
-        ).all()
-        unpaid_count = len(unpaid)
-        # 매출 / 부가세 합계 (전체)
-        all_projects = s.exec(select(Project)).all()
-        total_supply = sum((p.supply_amount or p.revenue) for p in all_projects)
-        total_vat = sum((p.vat_amount or 0) for p in all_projects)
-        total_revenue = sum(p.revenue for p in all_projects)
-        # 장비 상태
+        # 내 출퇴근
+        me = my_worker(s, user)
+        punch = None
+        if me and is_employed(me):
+            sh = open_shift(s, me.id)
+            last = current_shift(s, me.id)
+            punch = {"worker_id": me.id, "working": bool(sh),
+                     "check_in": (sh or last).check_in if (sh or last) else None,
+                     "check_out": None if sh else (last.check_out if last else None),
+                     "hours": round((datetime.now() - sh.check_in).total_seconds() / 3600, 1) if sh and sh.check_in else None}
+        projects = s.exec(select(Project)).all()
+
+        def _end(p):
+            e = getattr(p, "event_end_date", None)
+            return e if (e and p.event_date and e > p.event_date) else p.event_date
+        # 오늘 진행 / 다가오는 7일
+        week_end = today + timedelta(days=7)
+        today_list, upcoming = [], []
+        staff_cnt = {}
+        for r in s.exec(select(ProjectStaff)).all():
+            if r.start_date <= today <= r.end_date:
+                staff_cnt[r.project_id] = staff_cnt.get(r.project_id, 0) + 1
+        for p in projects:
+            if not p.event_date or (p.status == "취소"):
+                continue
+            e = _end(p)
+            row = {"id": p.id, "name": p.name, "start": p.event_date, "end": e,
+                   "days": (e - p.event_date).days + 1, "location": p.location or "",
+                   "u": unified_status(p), "staff": staff_cnt.get(p.id, 0),
+                   "dday": (p.event_date - today).days}
+            if p.event_date <= today <= e:
+                today_list.append(row)
+            elif today < p.event_date <= week_end:
+                upcoming.append(row)
+        today_list.sort(key=lambda r: r["start"]); upcoming.sort(key=lambda r: r["start"])
+        events = [{"title": ev.title, "kind": ev.kind, "color": ev.color, "start": ev.start_date, "end": ev.end_date}
+                  for ev in s.exec(select(CalendarEvent).where(CalendarEvent.start_date <= week_end,
+                                                              CalendarEvent.end_date >= today)).all()
+                  if not ev.project_id]
+        events.sort(key=lambda e: e["start"])
+        # 오늘 근무 인원 (알바 근무 + 정직원 출근)
+        from database import WorkerCheckin
+        today_alba = len({a.worker_id for a in s.exec(select(Attendance).where(Attendance.work_date == today)).all()})
+        today_ft = len({c.worker_id for c in s.exec(select(WorkerCheckin).where(WorkerCheckin.work_date == today)).all()})
+        # 미수금
+        unpaid_count = 0
+        for p in projects:
+            st, settle = auto_status(p)
+            if st == "완료" and settle == "미수금":
+                unpaid_count += 1
+        # 장비
         units = s.exec(select(EquipmentUnit)).all()
         eq_on_rent = sum(1 for u in units if u.status == "대여중")
-        eq_repair = sum(1 for u in units if u.status == "수리중")
         eq_total = len(units)
 
     return templates.TemplateResponse(request, "mobile/home.html", {
-        "user": user,
-        "active_count": active_count,
-        "today_workers": today_workers,
-        "unpaid_count": unpaid_count,
-        "total_supply": total_supply,
-        "total_vat": total_vat,
-        "total_revenue": total_revenue,
-        "eq_on_rent": eq_on_rent,
-        "eq_repair": eq_repair,
-        "eq_total": eq_total,
-        "active_projects": active_projects[:5],
+        "user": user, "today": today, "punch": punch,
+        "today_list": today_list, "upcoming": upcoming[:6], "events": events[:5],
+        "today_workers": today_alba + today_ft, "unpaid_count": unpaid_count,
+        "eq_on_rent": eq_on_rent, "eq_total": eq_total,
+        "active_count": len(today_list),
     })
+
+
+@router.get("/more", response_class=HTMLResponse)
+def mobile_more(request: Request):
+    user = _user(request)
+    return templates.TemplateResponse(request, "mobile/more.html", {"user": user})
 
 
 # ============================================================
@@ -201,66 +237,68 @@ def mobile_equipment_list(request: Request, q: str = "", expand: int = 0):
 # ============================================================
 @router.get("/attendance", response_class=HTMLResponse)
 def mobile_attendance(request: Request, tab: str = "fulltime"):
-    """모바일 근태 — 기본 탭은 정직원 출퇴근 (가장 자주 쓰는 기능)"""
+    """모바일 근태 (v2) — 내 출퇴근 카드 · (관리자) 전 직원 현황 · 알바 근무 일괄 등록"""
     user = _user(request)
     today = date.today()
+    from database import WorkerCheckin
+    from permissions import is_admin as _is_admin, is_employed, my_worker, has_permission
+    from routes_attendance import current_shift, open_shift
+    admin = _is_admin(user)
+    can_alba = admin or has_permission(user, "attendance")
+    if tab == "alba" and not can_alba:
+        tab = "fulltime"
     with Session(engine, expire_on_commit=False) as s:
-        from database import WorkerCheckin
-        # 정직원 오늘 출퇴근 현황
-        from permissions import is_admin as _is_admin, is_employed, my_worker
-        if _is_admin(user):
-            fulltime_workers = [w for w in s.exec(
-                select(Worker).where(Worker.employee_type == "정직원").order_by(Worker.name)
-            ).all() if is_employed(w)]
-        else:
-            _me = my_worker(s, user)
-            fulltime_workers = [_me] if (_me and is_employed(_me)) else []
-        workers_today = []
-        for w in fulltime_workers:
-            ci = s.exec(
-                select(WorkerCheckin).where(
-                    WorkerCheckin.worker_id == w.id,
-                    WorkerCheckin.work_date == today
-                )
-            ).first()
-            workers_today.append({
-                "id": w.id, "name": w.name, "phone": w.phone,
-                "check_in": ci.check_in if ci else None,
-                "check_out": ci.check_out if ci else None,
-            })
+        me = my_worker(s, user)
+        me = me if (me and is_employed(me)) else None
 
-        # 알바 일당 (오늘 등록)
-        alba_workers = s.exec(
-            select(Worker).where(
-                Worker.is_active == True,
-                Worker.employee_type == "알바"
-            ).order_by(Worker.name)
-        ).all()
-        projects = s.exec(
-            select(Project).where(Project.status.in_(["진행중", "준비중"])).order_by(Project.event_date.desc())
-        ).all()
-        today_alba = s.exec(
-            select(Attendance).where(Attendance.work_date == today)
-        ).all()
-        today_alba_rows = []
-        for a in today_alba:
-            w = s.get(Worker, a.worker_id)
-            p = s.get(Project, a.project_id)
-            today_alba_rows.append({
-                "id": a.id,
-                "worker_name": w.name if w else "?",
-                "project_name": p.name if p else "?",
-                "days": a.days,
-                "total_wage": a.total_wage,
-            })
+        def _row(w):
+            sh = open_shift(s, w.id)
+            ci = sh or current_shift(s, w.id)
+            return {"id": w.id, "name": w.name, "phone": w.phone,
+                    "working": bool(sh),
+                    "check_in": ci.check_in if ci else None,
+                    "check_out": None if sh else (ci.check_out if ci else None),
+                    "overnight": bool(sh and sh.work_date != today),
+                    "shift_date": ci.work_date if ci else None,
+                    "hours": round((datetime.now() - sh.check_in).total_seconds() / 3600, 1) if sh and sh.check_in else None}
+        my = _row(me) if me else None
+        # 내 최근 7일 기록
+        my_recent = []
+        if me:
+            for c in s.exec(select(WorkerCheckin).where(WorkerCheckin.worker_id == me.id,
+                                                        WorkerCheckin.work_date >= today - timedelta(days=13))
+                            .order_by(WorkerCheckin.work_date.desc(), WorkerCheckin.check_in.desc())).all():
+                my_recent.append({"date": c.work_date, "in": c.check_in, "out": c.check_out,
+                                  "hrs": round((c.check_out - c.check_in).total_seconds() / 3600, 1) if c.check_in and c.check_out else None})
+        # 관리자: 전 직원 현황
+        others = []
+        if admin:
+            for w in s.exec(select(Worker).where(Worker.employee_type == "정직원").order_by(Worker.name)).all():
+                if is_employed(w) and (not me or w.id != me.id):
+                    others.append(_row(w))
+        # 알바
+        alba_workers, projects, today_alba_rows, project_periods = [], [], [], {}
+        if can_alba:
+            alba_workers = [{"id": w.id, "name": w.name, "wage": w.default_daily_wage or 0}
+                            for w in s.exec(select(Worker).where(Worker.is_active == True,
+                                                                 Worker.employee_type == "알바").order_by(Worker.name)).all()]
+            for p in s.exec(select(Project).where(Project.status.in_(["진행중", "준비중"]))
+                            .order_by(Project.event_date.desc())).all():
+                projects.append({"id": p.id, "name": p.name, "date": p.event_date})
+                if p.event_date:
+                    e = getattr(p, "event_end_date", None) or p.event_date
+                    project_periods[str(p.id)] = [p.event_date.isoformat(), max(e, p.event_date).isoformat()]
+            for a in s.exec(select(Attendance).where(Attendance.work_date == today)).all():
+                w = s.get(Worker, a.worker_id); pr = s.get(Project, a.project_id)
+                today_alba_rows.append({"id": a.id, "worker_name": w.name if w else "?",
+                                        "project_name": pr.name if pr else "?", "days": a.days,
+                                        "total_wage": a.total_wage, "auto": bool(getattr(a, "staff_id", None))})
 
     return templates.TemplateResponse(request, "mobile/attendance.html", {
-        "user": user, "tab": tab,
-        "workers_today": workers_today,
-        "alba_workers": [{"id": w.id, "name": w.name, "default_daily_wage": w.default_daily_wage} for w in alba_workers],
-        "projects": [{"id": p.id, "name": p.name} for p in projects],
+        "user": user, "tab": tab, "today": today, "admin": admin, "can_alba": can_alba,
+        "my": my, "my_recent": my_recent, "others": others,
+        "alba_workers": alba_workers, "projects": projects, "project_periods": project_periods,
         "today_alba_rows": today_alba_rows,
-        "today": today,
     })
 
 
@@ -268,51 +306,22 @@ def mobile_attendance(request: Request, tab: str = "fulltime"):
 def mobile_ft_checkin(request: Request, worker_id: int = Form(...)):
     """모바일 정직원 출근"""
     user = _user(request)
-    from database import WorkerCheckin
-    today = date.today()
-    now = datetime.now()
     with Session(engine, expire_on_commit=False) as s:
-        from routes_attendance import check_worker_access
+        from routes_attendance import check_worker_access, do_checkin, do_checkout
         check_worker_access(s, user, worker_id)
-        existing = s.exec(
-            select(WorkerCheckin).where(
-                WorkerCheckin.worker_id == worker_id,
-                WorkerCheckin.work_date == today
-            )
-        ).first()
-        if existing:
-            if not existing.check_in:
-                existing.check_in = now
-                s.add(existing)
-        else:
-            s.add(WorkerCheckin(worker_id=worker_id, work_date=today, check_in=now))
-        s.commit()
-    return RedirectResponse("/m/attendance?tab=fulltime&checkin=1", status_code=303)
+        r = do_checkin(s, worker_id)
+    return RedirectResponse("/m/attendance?tab=fulltime&checkin=" + ("1" if r == "ok" else "dup"), status_code=303)
 
 
 @router.post("/attendance/fulltime/checkout")
 def mobile_ft_checkout(request: Request, worker_id: int = Form(...)):
-    """모바일 정직원 퇴근"""
+    """모바일 정직원 퇴근 (자정 넘어도 진행 중 근무에 기록)"""
     user = _user(request)
-    from database import WorkerCheckin
-    today = date.today()
-    now = datetime.now()
     with Session(engine, expire_on_commit=False) as s:
-        from routes_attendance import check_worker_access
+        from routes_attendance import check_worker_access, do_checkin, do_checkout
         check_worker_access(s, user, worker_id)
-        existing = s.exec(
-            select(WorkerCheckin).where(
-                WorkerCheckin.worker_id == worker_id,
-                WorkerCheckin.work_date == today
-            )
-        ).first()
-        if existing:
-            existing.check_out = now
-            s.add(existing)
-        else:
-            s.add(WorkerCheckin(worker_id=worker_id, work_date=today, check_out=now))
-        s.commit()
-    return RedirectResponse("/m/attendance?tab=fulltime&checkout=1", status_code=303)
+        r = do_checkout(s, worker_id)
+    return RedirectResponse("/m/attendance?tab=fulltime&checkout=" + ("1" if r == "ok" else "none"), status_code=303)
 
 
 @router.post("/attendance/checkin")
@@ -533,12 +542,50 @@ async def mobile_expense_create(request: Request,
 # 프로젝트 리스트/상세 (모바일)
 # ============================================================
 @router.get("/projects", response_class=HTMLResponse)
-def mobile_projects(request: Request):
+def mobile_projects(request: Request, f: str = "", q: str = ""):
+    """모바일 프로젝트 (v2) — 상태 필터 칩 + 검색 + 행사 기간·인원 표시"""
     user = _user(request)
+    from routes_project import unified_status
+    from database import ProjectStaff
+    today = date.today()
     with Session(engine, expire_on_commit=False) as s:
-        projects = s.exec(select(Project).order_by(Project.event_date.desc())).all()
+        projects = s.exec(select(Project)).all()
+        vendors = {v.id: v.name for v in s.exec(select(Vendor)).all()}
+        staff = {}
+        for r in s.exec(select(ProjectStaff)).all():
+            staff.setdefault(r.project_id, set()).add(r.worker_id or r.person_name)
+    rows, counts = [], {"all": 0, "active": 0, "ready": 0, "unpaid": 0, "done": 0}
+    ql = (q or "").strip().lower()
+    for p in projects:
+        u = unified_status(p)
+        key = {"진행중": "active", "준비중": "ready", "미수금": "unpaid", "입금완료": "done"}.get(u["key"], "other")
+        e = getattr(p, "event_end_date", None)
+        e = e if (e and p.event_date and e > p.event_date) else p.event_date
+        hay = f"{p.name} {p.code} {vendors.get(p.vendor_id, '')} {p.location or ''}".lower()
+        if ql and ql not in hay:
+            continue
+        counts["all"] += 1
+        if key in counts:
+            counts[key] += 1
+        if f and f != key:
+            continue
+        rows.append({"id": p.id, "name": p.name, "code": p.code, "start": p.event_date, "end": e,
+                     "days": ((e - p.event_date).days + 1) if p.event_date else 0,
+                     "vendor": vendors.get(p.vendor_id, ""), "location": p.location or "",
+                     "u": u, "staff": len(staff.get(p.id, ())),
+                     "dday": (p.event_date - today).days if p.event_date else None})
+    # 정렬: 진행중 → 다가오는 순 → 지난 순
+    def _k(r):
+        if r["start"] is None:
+            return (3, 0)
+        if r["start"] <= today <= r["end"]:
+            return (0, r["start"].toordinal())
+        if r["start"] > today:
+            return (1, r["start"].toordinal())
+        return (2, -r["start"].toordinal())
+    rows.sort(key=_k)
     return templates.TemplateResponse(request, "mobile/projects.html", {
-        "user": user, "projects": projects,
+        "user": user, "projects": rows, "f": f, "q": q, "counts": counts, "today": today,
     })
 
 
@@ -651,7 +698,14 @@ async def mobile_quote_create(request: Request):
     event_date_s = form.get("event_date", "")
     valid_until_s = form.get("valid_until", "")
 
+    # 기존 프로젝트 연결 (검색으로 선택)
+    try:
+        _link_pid = int(form.get("project_id") or 0) or None
+    except (ValueError, TypeError):
+        _link_pid = None
     with Session(engine, expire_on_commit=False) as s:
+        if _link_pid and not s.get(Project, _link_pid):
+            _link_pid = None
         q = Quote(
             quote_number=form.get("quote_number"),
             quote_date=datetime.strptime(quote_date_s, "%Y-%m-%d").date() if quote_date_s else date.today(),
@@ -663,7 +717,8 @@ async def mobile_quote_create(request: Request):
             subtotal=subtotal, discount=discount, after_discount=after_discount,
             vat=vat, total=total, vat_mode=vat_mode,
             valid_until=datetime.strptime(valid_until_s, "%Y-%m-%d").date() if valid_until_s else None,
-            status="견적",
+            status=("수주" if _link_pid else "견적"),
+            project_id=_link_pid,
             created_by=user.id if user else None,
         )
         s.add(q); s.commit(); s.refresh(q)
@@ -871,7 +926,10 @@ async def mobile_project_update(request: Request, pid: int):
         p.location = (form.get("location", "") or "").strip()
         p.revenue = total; p.supply_amount = supply; p.vat_amount = vat; p.vat_mode = vat_mode
         p.memo = form.get("memo", "") or ""
+        _prev_status = p.status
         p.status = status
+        from routes_project import sync_quotes_on_cancel
+        sync_quotes_on_cancel(s, p, _prev_status)
         p.cash_no_invoice = (vat_mode == "cash")
         p.categories = cats_str
         try:
@@ -893,9 +951,25 @@ def mobile_project_detail(request: Request, pid: int):
         attendances = s.exec(select(Attendance).where(Attendance.project_id == pid)).all()
         total_expense = sum(e.amount for e in expenses)
         total_wage = sum(a.total_wage for a in attendances)
+        cost_expense = sum(expense_cost(e) for e in expenses)
+        from routes_project import unified_status
+        from database import ProjectStaff
+        vendor = s.get(Vendor, p.vendor_id) if p.vendor_id else None
+        people = {}
+        for r in s.exec(select(ProjectStaff).where(ProjectStaff.project_id == pid)).all():
+            k = r.worker_id or r.person_name
+            e = people.setdefault(k, {"name": r.person_name, "offer": False, "days": 0})
+            e["days"] += (r.end_date - r.start_date).days + 1
+            e["offer"] = e["offer"] or bool(getattr(r, "is_offer", False))
+        end = getattr(p, "event_end_date", None)
+        end = end if (end and p.event_date and end > p.event_date) else p.event_date
     return templates.TemplateResponse(request, "mobile/project_detail.html", {
         "user": user, "p": p, "expenses": expenses, "attendances": attendances,
         "total_expense": total_expense, "total_wage": total_wage,
+        "u": unified_status(p), "vendor": vendor, "end": end,
+        "net": (p.supply_amount or p.revenue or 0) - cost_expense - total_wage,
+        "days": ((end - p.event_date).days + 1) if p.event_date else 0,
+        "people": sorted(people.values(), key=lambda x: x["name"]),
     })
 
 

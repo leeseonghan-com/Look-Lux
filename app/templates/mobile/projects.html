@@ -1,43 +1,64 @@
 {% extends "mobile/base.html" %}
 {% set active_tab = 'projects' %}
-{% set back_url = '/m/' %}
 {% block page_title %}프로젝트{% endblock %}
-{% block header_right %}<a href="/m/project/new" style="background:#0A0E1A; color:white; padding:6px 12px; border-radius:8px; font-size:13px; font-weight:700; text-decoration:none;">+ 등록</a>{% endblock %}
+{% block header_right %}<a href="/project-calendar" style="background:#fff !important; color:var(--ink) !important; border:1px solid var(--line);">🗓</a><a href="/m/project/new">+ 등록</a>{% endblock %}
 
 {% block content %}
+{% if request.query_params.get('deleted') == '1' %}<div class="alert" style="color:#991B1B; border-color:#FCA5A5;">🗑 프로젝트가 삭제되었습니다.</div>{% endif %}
 
-{% if request.query_params.get('deleted') == '1' %}
-<div class="m-card" style="background: #FEE2E2; border-left: 4px solid #DC2626; padding: 12px 14px; margin-bottom: 12px;">
-  <div style="font-size: 13px; font-weight: 700; color: #991B1B;">🗑 프로젝트가 삭제되었습니다.</div>
-  <div style="font-size: 11px; color: #7F1D1D; margin-top: 2px;">관련 비용·알바 근태도 함께 삭제되었습니다.</div>
+<form method="get" style="margin-bottom:10px;">
+  {% if f %}<input type="hidden" name="f" value="{{ f }}">{% endif %}
+  <input type="search" name="q" value="{{ q }}" class="m-search" placeholder="프로젝트·거래처·장소 검색">
+</form>
+
+{% set qs = ('&q=' ~ q|urlencode) if q else '' %}
+<div class="chips">
+  <a href="/m/projects?f={{ qs }}" class="chip {% if not f %}on{% endif %}">전체 {{ counts.all }}</a>
+  <a href="/m/projects?f=active{{ qs }}" class="chip {% if f == 'active' %}on{% endif %}">진행중 {{ counts.active }}</a>
+  <a href="/m/projects?f=ready{{ qs }}" class="chip {% if f == 'ready' %}on{% endif %}">준비중 {{ counts.ready }}</a>
+  {% if request.state.can_view_settle %}
+  <a href="/m/projects?f=unpaid{{ qs }}" class="chip {% if f == 'unpaid' %}on{% endif %}">미수금 {{ counts.unpaid }}</a>
+  <a href="/m/projects?f=done{{ qs }}" class="chip {% if f == 'done' %}on{% endif %}">입금완료 {{ counts.done }}</a>
+  {% endif %}
 </div>
-{% endif %}
 
 {% if projects %}
-<div class="m-card" style="padding: 0;">
+<div class="m-card" style="padding:0;">
   {% for p in projects %}
-  <a href="/m/project/{{ p.id }}" class="list-item">
+  {% set lbl = p.u.label %}
+  {% if not request.state.can_view_settle and p.u.key in ('미수금', '입금완료') %}{% set lbl = '완료' %}{% endif %}
+  <a href="/m/project/{{ p.id }}" class="list-item" style="align-items:stretch;">
+    <div class="dd">
+      {% if p.start %}<b>{{ p.start.day }}</b><span>{{ p.start.month }}월</span>{% else %}<span style="font-size:11px;">미정</span>{% endif %}
+    </div>
     <div class="list-item-inner">
       <div class="list-item-title">{{ p.name }}</div>
       <div class="list-item-sub">
-        {{ p.event_date or '날짜 미정' }} · {{ p.code }}
+        {% if p.days > 1 %}{{ p.start.strftime('%m/%d') }}~{{ p.end.strftime('%m/%d') }} ({{ p.days }}일){% elif p.start %}{{ p.start.strftime('%m/%d') }} ({{ '월화수목금토일'[p.start.weekday()] }}){% endif %}{% if p.vendor %} · {{ p.vendor }}{% endif %}
+      </div>
+      <div style="margin-top:6px; display:flex; gap:4px; flex-wrap:wrap;">
+        <span class="badge" style="background:{{ p.u.bg }}; background-image:none !important; color:{{ p.u.color }};">{{ lbl }}</span>
+        {% if p.dday is not none and p.dday > 0 and p.dday <= 14 %}<span class="badge badge-gray">D-{{ p.dday }}</span>{% endif %}
+        {% if p.staff %}<span class="badge badge-gray">👷 {{ p.staff }}명</span>{% endif %}
       </div>
     </div>
-    <div style="display: flex; flex-direction: column; align-items: end; gap: 4px;">
-      {% if p.status == '진행중' %}<span class="badge badge-blue">진행중</span>
-      {% elif p.status == '완료' %}<span class="badge badge-green">완료</span>
-      {% elif p.status == '취소' %}<span class="badge badge-red">취소</span>
-      {% else %}<span class="badge badge-gray">{{ p.status }}</span>{% endif %}
-      <span style="color: #A1A1AA; font-size: 18px; line-height: 1;">›</span>
-    </div>
+    <span class="chev" style="align-self:center;">›</span>
   </a>
   {% endfor %}
 </div>
 {% else %}
-<div style="text-align: center; padding: 60px 20px; color: #71717A;">
-  <div style="font-size: 48px; margin-bottom: 12px;">📋</div>
-  <div style="font-size: 15px; font-weight: 600;">등록된 프로젝트가 없습니다</div>
+<div class="empty">
+  <div class="ico">📋</div>
+  <b>{% if q or f %}조건에 맞는 프로젝트가 없습니다{% else %}등록된 프로젝트가 없습니다{% endif %}</b>
+  <a href="/m/project/new" class="btn btn-primary" style="width:auto; margin-top:12px; padding:12px 22px;">+ 프로젝트 등록</a>
 </div>
 {% endif %}
 
+<style>
+.dd { width: 42px; text-align: center; flex-shrink: 0; padding-top: 2px; }
+.dd b { display: block; font-size: 20px; font-weight: 800; line-height: 1; }
+.dd span { font-size: 11px; color: var(--ink-5); font-weight: 700; }
+.dd, .dd * { background: transparent !important; background-image: none !important; }
+.list-item-inner .list-item-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
 {% endblock %}

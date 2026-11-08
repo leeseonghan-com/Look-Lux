@@ -85,9 +85,47 @@
     </div>
 
     <div class="m-field">
-      <label class="m-label">프로젝트명</label>
-      <input name="project_name" class="m-input" placeholder="예: ABC회사 신년회">
+      <label class="m-label">기존 프로젝트 연결 <span style="font-weight:500; color:var(--ink-5);">(선택 · 연결하면 수주로 저장)</span></label>
+      <div style="position:relative;">
+        <input type="hidden" name="project_id" id="mp-id">
+        <div style="display:flex; gap:6px;">
+          <input type="search" id="mp-q" class="m-input" placeholder="프로젝트명·코드·거래처 검색" autocomplete="off" style="flex:1;">
+          <button type="button" id="mp-x" style="display:none; border:0; border-radius:12px; padding:0 14px; font-weight:800; color:#991B1B; background-image:linear-gradient(#FEE2E2,#FEE2E2) !important;">✕</button>
+        </div>
+        <div id="mp-r" style="display:none; position:absolute; left:0; right:0; top:100%; z-index:40; margin-top:4px; border:1px solid var(--line); border-radius:12px; max-height:280px; overflow-y:auto; box-shadow:0 10px 24px rgba(15,23,42,.12); background-image:linear-gradient(#fff,#fff) !important;"></div>
+      </div>
     </div>
+
+    <div class="m-field">
+      <label class="m-label">프로젝트명</label>
+      <input name="project_name" id="mp-name" class="m-input" placeholder="예: ABC회사 신년회">
+    </div>
+    <script>
+    (function () {
+      var q = document.getElementById('mp-q'), r = document.getElementById('mp-r'), id = document.getElementById('mp-id'), x = document.getElementById('mp-x'), tm = null, comp = false;
+      function esc(s) { return String(s || '').replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+      function load() {
+        fetch('/api/projects/search?limit=15&q=' + encodeURIComponent(q.value.trim()), {credentials: 'same-origin'}).then(function (x) { return x.json(); }).then(function (rows) {
+          r.innerHTML = rows.length ? rows.map(function (p, i) {
+            return '<div data-i="' + i + '" style="padding:12px 14px; border-bottom:1px solid #F1F5F9;"><div style="font-weight:800; font-size:15px;">' + esc(p.name) + (p.status === '취소' ? ' <span style="color:#DC2626; font-size:11px;">취소</span>' : '') + '</div><div style="font-size:12px; color:#64748B;">' + [p.code, p.event_date, p.vendor_name].filter(Boolean).map(esc).join(' · ') + '</div></div>';
+          }).join('') : '<div style="padding:14px; color:#64748B; font-size:13px;">검색 결과가 없습니다</div>';
+          r.style.display = 'block';
+          r.querySelectorAll('[data-i]').forEach(function (el) { el.addEventListener('click', function () {
+            var p = rows[+el.dataset.i]; id.value = p.id; q.value = '[' + (p.code || '') + '] ' + p.name; r.style.display = 'none'; x.style.display = '';
+            q.style.borderColor = '#059669'; var nm = document.getElementById('mp-name'); if (nm && !nm.value.trim()) nm.value = p.name;
+            var ed = document.querySelector('[name=event_date]'); if (ed && p.event_date && !ed.value) ed.value = p.event_date;
+            var vn = document.getElementById('vendor-name-input'); if (vn && p.vendor_name && !vn.value.trim()) vn.value = p.vendor_name;
+          }); });
+        }).catch(function () {});
+      }
+      q.addEventListener('focus', function () { if (!id.value) load(); });
+      q.addEventListener('compositionstart', function () { comp = true; });
+      q.addEventListener('compositionend', function () { comp = false; clearTimeout(tm); tm = setTimeout(load, 200); });
+      q.addEventListener('input', function () { if (id.value) { id.value = ''; x.style.display = 'none'; q.style.borderColor = ''; } if (comp) return; clearTimeout(tm); tm = setTimeout(load, 200); });
+      x.addEventListener('click', function () { id.value = ''; q.value = ''; x.style.display = 'none'; q.style.borderColor = ''; q.focus(); });
+      document.addEventListener('click', function (e) { if (!q.parentNode.parentNode.contains(e.target)) r.style.display = 'none'; });
+    })();
+    </script>
 
     <div class="m-field" id="rental-days-field" style="display:none;">
       <label class="m-label">렌탈 일수</label>

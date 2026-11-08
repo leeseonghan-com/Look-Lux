@@ -255,7 +255,7 @@
             <button class="text-red-500 text-xs">삭제</button>
           </form>
           {% elif w.id == my_worker_id %}
-          <a href="/workers/{{ w.id }}/edit" class="text-xs font-bold" style="color:#1E40AF;">내 정보</a>
+          <a href="/me" class="text-xs font-bold" style="color:#1E40AF;">내 정보</a>
           {% else %}
           <span class="text-xs" style="color:#CBD5E1;">🔒</span>
           {% endif %}

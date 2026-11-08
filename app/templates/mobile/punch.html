@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0B1220">
+<meta name="color-scheme" content="light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="출퇴근">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="/p/{{ token }}/manifest.json">
+<link rel="apple-touch-icon" href="/static/icon-punch-192.png">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<title>출퇴근 · {{ name }}</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; font-family: 'Pretendard', -apple-system, sans-serif; color: #fff;
+    background-color: #0B1220; background-image: linear-gradient(#0B1220, #0B1220) !important; }
+  .wrap { min-height: 100%; display: flex; flex-direction: column; padding: calc(28px + env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom)); max-width: 460px; margin: 0 auto; }
+  .who { font-size: 15px; color: #94A3B8; font-weight: 600; }
+  .who b { color: #fff; font-size: 22px; display: block; margin-top: 4px; letter-spacing: -0.02em; }
+  .clock { font-size: 64px; font-weight: 800; letter-spacing: -0.04em; margin-top: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .date { color: #94A3B8; font-size: 15px; margin-top: 8px; font-weight: 600; }
+  .status { margin-top: 26px; padding: 16px 18px; border-radius: 16px; font-size: 15px; font-weight: 700;
+    background-color: #131C2E; background-image: linear-gradient(#131C2E, #131C2E) !important; border: 1px solid #1E293B; }
+  .status .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+  .status small { display: block; color: #94A3B8; font-weight: 500; margin-top: 6px; font-size: 13px; }
+  .spacer { flex: 1; min-height: 24px; }
+  .big { width: 100%; border: 0; border-radius: 24px; padding: 30px 0; font-size: 28px; font-weight: 800; color: #fff; font-family: inherit; letter-spacing: -0.02em; cursor: pointer; }
+  .big:active { transform: scale(0.98); }
+  .in  { background-color: #2563EB; background-image: linear-gradient(#2563EB, #2563EB) !important; box-shadow: 0 12px 30px rgba(37, 99, 235, .35); }
+  .out { background-color: #059669; background-image: linear-gradient(#059669, #059669) !important; box-shadow: 0 12px 30px rgba(5, 150, 105, .35); }
+  .big small { display: block; font-size: 14px; font-weight: 600; opacity: .8; margin-top: 6px; }
+  .toast { margin-top: 18px; padding: 14px 16px; border-radius: 14px; font-weight: 700; font-size: 15px; text-align: center; }
+  .ok   { background-color: #064E3B; background-image: linear-gradient(#064E3B, #064E3B) !important; color: #A7F3D0; }
+  .warn { background-color: #451A03; background-image: linear-gradient(#451A03, #451A03) !important; color: #FDE68A; }
+  .foot { margin-top: 18px; text-align: center; font-size: 12px; color: #64748B; }
+  .foot a { color: #94A3B8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="who">출퇴근<b>{{ name }}님</b></div>
+  <div class="clock" id="clock">{{ now.strftime('%H:%M') }}</div>
+  <div class="date">{{ now.strftime('%Y.%m.%d') }} ({{ '월화수목금토일'[now.weekday()] }})</div>
+
+  <div class="status">
+    {% if st.working %}
+      <span class="dot" style="background:#34D399;"></span>근무 중
+      <small>{{ st.check_in.strftime('%m/%d %H:%M') }} 출근{% if st.hours is not none %} · {% if st.hours < 1 %}방금 출근{% else %}{{ st.hours }}시간 경과{% endif %}{% endif %}{% if st.shift_date and st.shift_date != now.date() %} · 자정 넘겨도 이 근무에 퇴근이 기록됩니다{% endif %}</small>
+    {% elif st.check_out %}
+      <span class="dot" style="background:#94A3B8;"></span>퇴근 완료
+      <small>{{ st.check_in.strftime('%m/%d %H:%M') if st.check_in else '' }} ~ {{ st.check_out.strftime('%m/%d %H:%M') }}</small>
+    {% else %}
+      <span class="dot" style="background:#64748B;"></span>출근 전
+      <small>아래 버튼을 눌러 출근하세요</small>
+    {% endif %}
+  </div>
+
+  {% if done == 'in' %}<div class="toast ok">✓ 출근이 기록되었습니다</div>
+  {% elif done == 'out' %}<div class="toast ok">✓ 퇴근이 기록되었습니다. 수고하셨습니다</div>
+  {% elif done == 'dup' %}<div class="toast warn">이미 근무 중입니다</div>
+  {% elif done == 'none' %}<div class="toast warn">진행 중인 출근 기록이 없습니다</div>{% endif %}
+
+  <div class="spacer"></div>
+
+  {% if st.working %}
+  <form method="post" action="/p/{{ token }}/out" onsubmit="return confirm('퇴근하시겠습니까?');">
+    <button class="big out">퇴근하기<small>지금 {{ now.strftime('%H:%M') }}로 기록</small></button>
+  </form>
+  {% else %}
+  <form method="post" action="/p/{{ token }}/in">
+    <button class="big in">출근하기<small>지금 {{ now.strftime('%H:%M') }}로 기록</small></button>
+  </form>
+  {% endif %}
+
+  <div class="foot">이 화면은 {{ name }}님 전용 링크입니다 · 다른 사람과 공유하지 마세요<br><a href="/m/">정산관리 앱 열기</a></div>
+</div>
+<script>
+  (function () {
+    var el = document.getElementById('clock');
+    function tick() { var d = new Date(); el.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+    setInterval(tick, 5000);
+    // 다른 화면 갔다 돌아오면 최신 상태로
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') location.replace('/p/{{ token }}'); });
+    // 버튼 연타 방지
+    document.querySelectorAll('form').forEach(function (f) { f.addEventListener('submit', function () { var b = f.querySelector('button'); setTimeout(function () { b.disabled = true; b.style.opacity = .6; }, 0); }); });
+  })();
+</script>
+</body>
+</html>

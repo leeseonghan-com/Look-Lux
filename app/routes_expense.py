@@ -91,7 +91,7 @@ def _user(request: Request):
 # ============================================================
 
 @router.get("/expenses", response_class=HTMLResponse)
-def expense_list(request: Request, project_id: str = "", q: str = "", pay: str = ""):
+def expense_list(request: Request, project_id: str = "", q: str = "", pay: str = "", view: str = "vendor"):
     """하청/외주 지급 목록
     project_id: 프로젝트 필터
     q: 키워드 검색
@@ -175,6 +175,26 @@ def expense_list(request: Request, project_id: str = "", q: str = "", pay: str =
         paid_count = len(rows) - unpaid_count
         overdue_count = sum(1 for r in rows if r["is_overdue"])
 
+        # 거래처별 묶음
+        _vg = {}
+        for e, r in zip(items, rows):
+            key = e.vendor_id or ("n:" + (r["vendor_name"] or "미지정"))
+            g = _vg.setdefault(key, {"vendor_id": e.vendor_id, "name": r["vendor_name"], "phone": r["vendor_phone"],
+                                     "count": 0, "total": 0, "unpaid": 0, "unpaid_count": 0,
+                                     "overdue": 0, "projects": [], "rows": []})
+            g["count"] += 1
+            g["total"] += r["amount"]
+            if r["pay_status"] == "미지급":
+                g["unpaid"] += r["amount"]; g["unpaid_count"] += 1
+            if r["is_overdue"]:
+                g["overdue"] += 1
+            if r["project_name"] not in g["projects"]:
+                g["projects"].append(r["project_name"])
+            g["rows"].append(r)
+        vendor_groups = sorted(_vg.values(), key=lambda g: (-g["unpaid"], g["name"]))
+        for g in vendor_groups:
+            g["ids"] = ",".join(str(r["id"]) for r in g["rows"] if r["pay_status"] == "미지급")
+
         # 프로젝트 목록 (필터용)
         projects_raw = s.exec(
             select(Project).order_by(Project.created_at.desc(), Project.id.desc())
@@ -196,6 +216,8 @@ def expense_list(request: Request, project_id: str = "", q: str = "", pay: str =
         "total_supply": total_supply, "total_vat": total_vat,
         "overdue_count": overdue_count,
         "today": date.today(),
+        "vendor_groups": vendor_groups,
+        "view": ("list" if view == "list" else "vendor"),
     })
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return response
@@ -323,7 +345,12 @@ def expenses_bulk_pay(request: Request, expense_ids: str = Form(...), action: st
             s.add(e)
             updated += 1
         s.commit()
-    return RedirectResponse(f"/expenses?bulk={updated}", status_code=303)
+    back = request.headers.get("referer") or "/expenses"
+    back = back.split("#")[0]
+    import re as _re
+    back = _re.sub(r"([?&])bulk=\d+&?", r"\1", back).rstrip("?&")
+    sep = "&" if "?" in back else "?"
+    return RedirectResponse(f"{back}{sep}bulk={updated}", status_code=303)
 
 
 # ============================================================

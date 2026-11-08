@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdk-pixbuf-2.0-0 \
     libffi-dev \
     shared-mime-info \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 ENV TZ=Asia/Seoul
 
@@ -25,7 +26,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ /app/
 
 # 영구 저장될 디렉토리 (Fly volume과 매핑됨)
-RUN mkdir -p /data/db /data/receipts /data/company
+RUN mkdir -p /data/db /data/receipts /data/company /data/files /data/file_thumbs
 ENV DATA_DIR=/data
 
 EXPOSE 8000

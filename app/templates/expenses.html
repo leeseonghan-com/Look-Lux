@@ -92,6 +92,7 @@
         <option value="지급완료" {% if pay_filter == '지급완료' %}selected{% endif %}>✓ 지급완료</option>
       </select>
     </div>
+    <input type="hidden" name="view" value="{{ view }}">
     <div>
       <button class="btn-primary" type="submit">검색</button>
       {% if search_q or selected_project_id or pay_filter %}
@@ -101,6 +102,88 @@
   </form>
 </div>
 
+<!-- 보기 전환 -->
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+  <div class="text-sm" style="color:var(--ink-4);">{% if view == 'vendor' %}거래처 {{ vendor_groups|length }}곳 · 이름을 누르면 상세 내역이 펼쳐집니다{% endif %}</div>
+  {% set qs = 'q=' ~ (search_q or '')|urlencode ~ '&project_id=' ~ (selected_project_id or '') ~ '&pay=' ~ (pay_filter or '') %}
+  <div style="display:flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff;">
+    <a href="/expenses?{{ qs }}&view=vendor" style="padding:8px 14px; font-size:13px; font-weight:700; {% if view == 'vendor' %}background:#0A0E1A; color:#fff;{% else %}color:var(--ink-3);{% endif %}">🏢 거래처별</a>
+    <a href="/expenses?{{ qs }}&view=list" style="padding:8px 14px; font-size:13px; font-weight:700; {% if view == 'list' %}background:#0A0E1A; color:#fff;{% else %}color:var(--ink-3);{% endif %}">📋 전체 목록</a>
+  </div>
+</div>
+
+{% if view == 'vendor' %}
+{% for g in vendor_groups %}
+<div class="card mb-3" style="padding:0; overflow:hidden;">
+  <div onclick="var b=this.nextElementSibling; b.style.display=b.style.display==='none'?'':'none'; this.querySelector('.arw').textContent=b.style.display==='none'?'▸':'▾';"
+       style="display:flex; align-items:center; gap:14px; padding:14px 18px; cursor:pointer; flex-wrap:wrap; background:#FAFAF7;">
+    <span class="arw" style="color:var(--ink-4); width:12px;">▸</span>
+    <div style="min-width:160px;">
+      <div style="font-size:16px; font-weight:800;">🏢 {{ g.name }}{% if g.overdue %} <span class="badge badge-orange" style="margin-left:4px;">⚠ 지연 {{ g.overdue }}</span>{% endif %}</div>
+      <div class="text-xs" style="color:var(--ink-4); margin-top:2px;">{% if g.phone %}{{ g.phone }} · {% endif %}{{ g.projects[:3]|join(', ') }}{% if g.projects|length > 3 %} 외 {{ g.projects|length - 3 }}{% endif %}</div>
+    </div>
+    <div style="display:flex; gap:18px; margin-left:auto; flex-wrap:wrap; align-items:center;">
+      <div class="text-center"><div class="text-xs" style="color:var(--ink-4);">발주</div><div class="font-bold num">{{ g.count }}건</div></div>
+      {% if request.state.can_view_sub %}
+      <div class="text-center"><div class="text-xs" style="color:var(--ink-4);">총액</div><div class="font-bold num">{{ g.total|money_sub }}원</div></div>
+      <div class="text-center"><div class="text-xs" style="color:var(--ink-4);">미지급</div><div class="font-bold num" style="color:{% if g.unpaid %}#B91C1C{% else %}#047857{% endif %};">{% if g.unpaid %}{{ g.unpaid|money_sub }}원 ({{ g.unpaid_count }}건){% else %}✓ 완료{% endif %}</div></div>
+      {% endif %}
+      {% if request.state.can_manage_sub and g.ids %}
+      <form method="post" action="/expenses/bulk-pay" onclick="event.stopPropagation();" onsubmit="return confirm('{{ g.name }} 미지급 {{ g.unpaid_count }}건을 모두 지급완료 처리할까요?');" style="margin:0;">
+        <input type="hidden" name="expense_ids" value="{{ g.ids }}"><input type="hidden" name="action" value="pay">
+        <button class="btn-primary" style="padding:6px 12px; font-size:12px;">✓ 일괄 지급</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  <div style="display:none; border-top:1px solid var(--line); overflow-x:auto;">
+    <table class="dt" style="margin:0;">
+      <thead><tr>
+        <th>발주일</th><th>역할</th><th class="mobile-hide">프로젝트</th><th>작업 내용</th>
+        {% if request.state.can_view_sub %}<th class="text-right">지급액</th>{% endif %}
+        <th class="text-center">지급예정</th>
+        {% if request.state.can_view_sub %}<th class="text-center">상태</th>{% endif %}
+        <th class="text-center">관리</th>
+      </tr></thead>
+      <tbody>
+      {% for r in g.rows %}
+      <tr {% if r.is_overdue %}style="background:#FFFBEB;"{% endif %}>
+        <td class="whitespace-nowrap text-xs">{{ r.date }}</td>
+        <td><span class="badge badge-blue">{{ r.category }}</span></td>
+        <td class="mobile-hide text-xs">{{ r.project_name }}</td>
+        <td><div class="text-sm">{{ r.description }}</div>{% if r.spec_detail %}<div class="text-xs text-slate-500" style="white-space:pre-line; max-width:260px;">{{ r.spec_detail }}</div>{% endif %}</td>
+        {% if request.state.can_view_sub %}<td class="text-right num font-bold">{{ r.amount|money_sub }}</td>{% endif %}
+        <td class="text-center text-xs whitespace-nowrap">{% if r.pay_due_date %}<span {% if r.is_overdue %}style="color:#B91C1C; font-weight:700;"{% endif %}>{{ r.pay_due_date }}</span>{% else %}—{% endif %}</td>
+        {% if request.state.can_view_sub %}<td class="text-center">
+          {% if request.state.can_manage_sub %}
+          <form method="post" action="/expenses/{{ r.id }}/toggle-pay" style="display:inline;">
+            <button type="submit" class="pay-badge {% if r.pay_status == '미지급' %}pay-unpaid{% else %}pay-paid{% endif %}">{% if r.pay_status == '미지급' %}💸 미지급{% else %}✓ 지급완료{% endif %}</button>
+          </form>
+          {% else %}
+          <span class="pay-badge {% if r.pay_status == '미지급' %}pay-unpaid{% else %}pay-paid{% endif %}">{% if r.pay_status == '미지급' %}💸 미지급{% else %}✓ 지급완료{% endif %}</span>
+          {% endif %}
+        </td>{% endif %}
+        <td class="text-center whitespace-nowrap">
+          <a href="/expenses/{{ r.id }}/edit" class="text-slate-600 text-xs mr-2">수정</a>
+          <form method="post" action="/expenses/{{ r.id }}/delete" style="display:inline;" onsubmit="return confirm('삭제하시겠습니까?')">
+            <button class="text-red-500 text-xs" style="background:none;border:none;cursor:pointer;">삭제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+{% if not vendor_groups %}
+<div class="card text-center py-12 text-slate-400">
+  <div style="font-size:36px;">🏗️</div>
+  <div class="mt-2 font-semibold">등록된 하청/외주 발주가 없습니다</div>
+  <a href="/expenses/new" class="inline-block mt-3 btn-primary" style="padding:8px 16px;">+ 첫 발주 등록</a>
+</div>
+{% endif %}
+{% else %}
 <!-- 목록 -->
 <div class="card overflow-x-auto">
   <table class="dt">
@@ -204,6 +287,7 @@
     </tbody>
   </table>
 </div>
+{% endif %}
 
 <style>
   .pay-badge {

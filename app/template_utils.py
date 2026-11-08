@@ -278,3 +278,19 @@ def _safe_money(v):
 
 # 필터들도 None → "—"
 templates.env.filters["money_raw"] = _safe_money
+
+
+# ════════════════════════════════════════════════════════════
+# 순이익 계산 기준 (2026.11)
+#   매출: 공급가액(부가세 제외)   —  부가세는 국세청에 낼 돈
+#   하청/외주: 공급가액(부가세 제외) — 받은 계산서의 부가세는 매입세액 공제
+#   → 매출 120만(VAT포함) / 하청 120만(VAT포함) = 순이익 0원
+#   (부가세 없는 현금 발주는 지급액 전체가 비용)
+# ════════════════════════════════════════════════════════════
+def expense_cost(e) -> int:
+    amt = int(getattr(e, "amount", 0) or 0)
+    sup = int(getattr(e, "supply_amount", 0) or 0)
+    vat = int(getattr(e, "vat_amount", 0) or 0)
+    if vat > 0 and sup > 0:
+        return sup
+    return amt

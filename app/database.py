@@ -39,6 +39,7 @@ class User(SQLModel, table=True):
     permissions_json: str = "{}"
     employee_type: str = "정직원"  # 정직원 / 알바생 / 관리자 (정직원만 출퇴근 버튼 사용)
     worker_id: Optional[int] = Field(default=None, foreign_key="worker.id", index=True)
+    punch_token: str = Field(default="", index=True)   # 홈 화면 위젯 출퇴근용 개인 링크 키
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -121,6 +122,38 @@ STAFF_ROLES = ["음향", "조명", "영상", "무대", "특효", "운영", "기�
 
 # 하청/외주 역할 구분 옵션
 SUBCONTRACT_ROLES = ["음향", "조명", "영상", "무대", "특효", "전기", "운반", "인력", "기타"]
+
+
+class FileFolder(SQLModel, table=True):
+    """자료실 폴더 — project_id 가 있으면 그 프로젝트 자료, 없으면 공용 자료"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    parent_id: Optional[int] = Field(default=None, index=True)
+    project_id: Optional[int] = Field(default=None, index=True)
+    created_by: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FileItem(SQLModel, table=True):
+    """자료실 파일 (사진·영상·문서)"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    stored_key: str = Field(index=True)
+    storage: str = "local"                      # local(서버) / s3(R2) — 파일마다 저장 위치 기억
+    thumb_key: str = ""
+    size: int = 0
+    mime: str = ""
+    kind: str = Field(default="other", index=True)   # image / video / doc / other
+    width: int = 0
+    height: int = 0
+    duration: float = 0
+    project_id: Optional[int] = Field(default=None, index=True)
+    folder_id: Optional[int] = Field(default=None, index=True)
+    taken_at: Optional[datetime] = None
+    uploaded_by: Optional[int] = None
+    is_deleted: bool = Field(default=False, index=True)
+    deleted_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 class Expense(SQLModel, table=True):
@@ -211,6 +244,7 @@ class Attendance(SQLModel, table=True):
     pay_status: str = "미지급"  # 미지급/지급완료
     pay_date: Optional[date] = None
     registered_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    staff_id: Optional[int] = Field(default=None, index=True)   # 인력배치에서 자동 생성된 기록이면 배치 ID
     memo: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -481,6 +515,9 @@ def init_db():
             _add_column_if_missing(conn, "project", "event_end_date", "event_end_date DATE")
             _add_column_if_missing(conn, "projectstaff", "is_offer", "is_offer BOOLEAN DEFAULT 0 NOT NULL")
             _add_column_if_missing(conn, "quote", "updated_by", "updated_by INTEGER")
+            _add_column_if_missing(conn, "attendance", "staff_id", "staff_id INTEGER")
+            _add_column_if_missing(conn, "user", "punch_token", "punch_token VARCHAR DEFAULT ''")
+            _add_column_if_missing(conn, "fileitem", "storage", "storage VARCHAR DEFAULT 'local' NOT NULL")
             _add_column_if_missing(conn, "quote", "updated_at", "updated_at TIMESTAMP")
             # ── 면세 → 현금거래(무증빙) 리네이밍 ──
             _safe_exec(conn, "UPDATE project SET vat_mode = 'cash' WHERE vat_mode = 'exempt'")
