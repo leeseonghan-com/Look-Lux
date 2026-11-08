@@ -196,6 +196,11 @@ def restore(name) -> dict:
             init_db()      # 예전 백업이면 새 칸 자동 추가
         except Exception as e:
             print(f"[BACKUP] 복원 후 정리 경고: {e}")
+        try:
+            import routes_files
+            routes_files._MIGRATED = False
+        except Exception:
+            pass
         return {"ok": True, "msg": f"{name} 시점으로 복원했습니다.", "counts": db_counts()}
     finally:
         shutil.rmtree(gz.parent, True)

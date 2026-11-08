@@ -507,15 +507,61 @@ def _safe_exec(conn, sql: str):
         print(f"[WARN] sql skip: {sql[:60]}... - {e}")
 
 
+def ensure_schema():
+    """★ 예전 버전 백업을 복원해도 오류가 나지 않게 — 지금 프로그램에 있는데 DB에 없는 표·칸을 전부 자동 추가.
+    (칸 하나하나 마이그레이션을 적어두지 않아도 빠진 칸이 생기지 않도록 하는 최종 안전장치)"""
+    from sqlalchemy import inspect as _inspect
+    added = 0
+    try:
+        SQLModel.metadata.create_all(engine)
+    except Exception as e:
+        print(f"[WARN] create_all failed: {e}")
+    try:
+        with engine.begin() as conn:
+            insp = _inspect(conn)
+            for table in SQLModel.metadata.sorted_tables:
+                if not insp.has_table(table.name):
+                    continue
+                have = {c["name"] for c in insp.get_columns(table.name)}
+                for col in table.columns:
+                    if col.name in have:
+                        continue
+                    try:
+                        typ = col.type.compile(dialect=conn.dialect)
+                    except Exception:
+                        typ = "TEXT"
+                    dflt = None
+                    d = getattr(col, "default", None)
+                    if d is not None and getattr(d, "is_scalar", False):
+                        dflt = d.arg
+                    if dflt is None and not col.nullable:
+                        t = typ.upper()
+                        dflt = 0 if any(k in t for k in ("INT", "BOOL", "FLOAT", "REAL", "NUMERIC", "DECIMAL")) else ""
+                    if isinstance(dflt, bool):
+                        dflt = int(dflt)
+                    if isinstance(dflt, (int, float)):
+                        dsql = f" DEFAULT {dflt}"
+                    elif isinstance(dflt, str):
+                        dsql = " DEFAULT '" + dflt.replace("'", "''") + "'"
+                    else:
+                        dsql = ""
+                    try:
+                        conn.exec_driver_sql(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {typ}{dsql}')
+                        added += 1
+                        print(f"[SCHEMA] {table.name}.{col.name} 자동 추가")
+                    except Exception as e:
+                        print(f"[SCHEMA] {table.name}.{col.name} 추가 실패: {e}")
+    except Exception as e:
+        print(f"[SCHEMA] 점검 실패: {e}")
+    return added
+
+
 def init_db():
     import os
     os.makedirs("data", exist_ok=True)
     os.makedirs(f"{DATA_DIR}/receipts", exist_ok=True)
     os.makedirs(f"{DATA_DIR}/company", exist_ok=True)
-    try:
-        SQLModel.metadata.create_all(engine)
-    except Exception as e:
-        print(f"[WARN] create_all failed: {e}")
+    ensure_schema()   # ★ 빠진 표·칸 먼저 채움 (예전 백업 복원 대비)
 
     # 마이그레이션: 새 컬럼 추가 + 기존 데이터 환산 (각 단계 독립 실행)
     try:

@@ -604,6 +604,18 @@ async def backup_full_restore(
             restored_files += 1
         except OSError as ex:
             raise HTTPException(500, f"DB 복원 실패: {ex}")
+        # ★ 예전 버전 백업이면 새로 생긴 표·칸이 없어 모든 화면이 오류 → 복원 직후 자동 보충
+        try:
+            engine.dispose()
+            from database import init_db
+            init_db()
+        except Exception as ex:
+            print(f"[RESTORE] 구조 보충 경고: {ex}")
+        try:
+            import routes_files
+            routes_files._MIGRATED = False   # 예전 프로젝트별 자료 → 폴더 전환 다시 점검
+        except Exception:
+            pass
 
     return templates.TemplateResponse(request, "backup_restored.html", {
         "message": f"✅ 완전 복원 완료 — {restored_files}개 파일 복원됨",
