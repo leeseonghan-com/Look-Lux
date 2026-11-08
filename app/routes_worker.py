@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, Form, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from sqlmodel import Session, select
 
-from database import engine, Worker, User
+from database import engine, Worker, User, DATA_DIR
 from template_utils import templates
 
 try:
@@ -18,8 +18,18 @@ except ImportError:
 router = APIRouter()
 
 # 근무자 사진 저장 디렉토리
-WORKER_PHOTO_DIR = Path(__file__).parent / "data" / "worker_photos"
+# ★ 예전에는 프로그램 폴더 안(app/data)에 저장해서 배포할 때마다 사진이 사라졌음 → 영구 저장 위치로 변경
+WORKER_PHOTO_DIR = Path(DATA_DIR) / "worker_photos"
 WORKER_PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    _old = Path(__file__).parent / "data" / "worker_photos"
+    if _old.exists() and _old.resolve() != WORKER_PHOTO_DIR.resolve():
+        for _f in _old.iterdir():
+            if _f.is_file() and not (WORKER_PHOTO_DIR / _f.name).exists():
+                import shutil as _sh
+                _sh.copy2(_f, WORKER_PHOTO_DIR / _f.name)
+except Exception as _e:
+    print(f"[WORKER] 사진 위치 옮기기 실패: {_e}")
 
 
 def _user(request: Request):

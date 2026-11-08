@@ -8,6 +8,58 @@
   <p class="text-sm mt-1" style="color: var(--ink-4);">Excel 파일 또는 완전 백업 ZIP으로 전체 데이터를 저장하고 다른 환경으로 옮길 수 있습니다.</p>
 </div>
 
+{# ────── ⭐ 자동 백업 · 시점 되돌리기 ────── #}
+{% if is_admin %}
+<div class="card mb-5" id="ab-card" style="max-width:1024px; border:2px solid #2563EB;">
+  <div id="ab-warn"></div>
+  <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+    <h2 class="text-lg font-bold" style="color:#1E3A8A;">🕒 자동 백업 · 이전 시점으로 되돌리기</h2>
+    <button type="button" class="btn-primary" onclick="abNow()">지금 백업하기</button>
+  </div>
+  <p class="text-sm mb-3" style="color:var(--ink-3); line-height:1.6;">
+    서버가 시작될 때마다, 그리고 6시간마다 전체 데이터(프로젝트·견적·근태·발주·거래처·직원·자료 목록·활동 기록)를 자동으로 저장합니다.
+    R2가 연결되어 있으면 R2에도 함께 보관되어, 서버 저장공간이 초기화돼도 되살릴 수 있습니다.
+    데이터가 비어 있는 상태는 백업하지 않아 좋은 백업이 덮어써지지 않습니다.
+  </p>
+  <div id="ab-now" class="text-sm mb-3" style="color:var(--ink-4);">불러오는 중…</div>
+  <div style="overflow-x:auto;"><table style="width:100%; font-size:13px; border-collapse:collapse;">
+    <thead><tr style="text-align:left; color:var(--ink-4); border-bottom:1px solid var(--line);"><th style="padding:8px 6px;">백업 시각</th><th>크기</th><th>보관 위치</th><th style="text-align:right;"></th></tr></thead>
+    <tbody id="ab-rows"></tbody>
+  </table></div>
+</div>
+<script>
+(function(){
+  function j(u,b){return fetch(u,{method:b?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(function(r){return r.json();});}
+  function fmt(c){return Object.keys(c||{}).map(function(k){return k+' '+c[k];}).join(' · ')||'없음';}
+  function kb(n){return n>1048576?(n/1048576).toFixed(1)+'MB':Math.max(1,Math.round(n/1024))+'KB';}
+  window.abLoad=function(){
+    j('/api/autobackup/list').then(function(d){
+      var w=document.getElementById('ab-warn');
+      if(d.storage.on_railway && !d.storage.persistent){
+        w.innerHTML='<div style="background:#FEF2F2;border:2px solid #DC2626;color:#991B1B;padding:12px 14px;border-radius:12px;margin-bottom:12px;font-size:14px;font-weight:700;line-height:1.6;">⚠ 지금 데이터가 <u>배포할 때마다 지워지는 임시 공간</u>('+d.storage.data_dir+')에 저장되고 있습니다.<br>Railway → 이 서비스 → <b>Volume 추가</b>(Mount path: <code>/data</code>)를 해야 초기화가 멈춥니다.</div>';
+      } else if(d.storage.on_railway){
+        w.innerHTML='<div style="background:#ECFDF5;border:1px solid #A7F3D0;color:#047857;padding:10px 14px;border-radius:12px;margin-bottom:12px;font-size:13px;font-weight:700;">✓ 영구 저장공간(Volume '+d.storage.volume+')에 저장 중 — 배포해도 데이터가 유지됩니다.</div>';
+      }
+      document.getElementById('ab-now').innerHTML='현재 데이터: <b>'+fmt(d.now)+'</b>'+(d.last.at?' · 마지막 백업 '+d.last.at+(d.last.ok===false?' <span style="color:#B91C1C;">('+d.last.msg+')</span>':''):'')+(d.r2?' · ☁ R2 보관 켜짐':' · <span style="color:#B45309;">R2 미연결(서버에만 보관)</span>');
+      var tb=document.getElementById('ab-rows');
+      if(!d.rows.length){tb.innerHTML='<tr><td colspan="4" style="padding:16px 6px;color:var(--ink-4);">아직 백업이 없습니다. [지금 백업하기]를 눌러 주세요.</td></tr>';return;}
+      tb.innerHTML=d.rows.map(function(r){return '<tr style="border-bottom:1px solid #F1F5F9;"><td style="padding:8px 6px;font-weight:700;">'+r.at+'</td><td>'+kb(r.size)+'</td><td>'+(r.local?'서버 ':'')+(r.r2?'☁ R2':'')+'</td><td style="text-align:right;"><button type="button" class="btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="abRestore(\''+r.name+'\',\''+r.at+'\')">↩ 이 시점으로 되돌리기</button></td></tr>';}).join('');
+    });
+  };
+  window.abNow=function(){j('/api/autobackup/now',{}).then(function(r){alert(r.ok?'✓ '+r.msg:r.msg);abLoad();});};
+  window.abRestore=function(name,at){
+    j('/api/autobackup/peek',{name:name}).then(function(p){
+      if(!p.ok){alert(p.msg);return;}
+      var c=prompt(at+' 시점으로 되돌립니다.\n\n그 시점 데이터: '+fmt(p.counts)+'\n현재 데이터: '+fmt(p.now)+'\n\n그 이후에 입력한 내용은 사라집니다(지금 상태는 자동으로 한 번 더 백업되어 다시 되돌릴 수 있습니다).\n진행하려면 \'복원\' 이라고 입력하세요.');
+      if(c!=='복원')return;
+      j('/api/autobackup/restore',{name:name,confirm:'복원'}).then(function(r){alert(r.ok?'✓ '+r.msg+'\n'+fmt(r.counts):r.msg);location.reload();});
+    });
+  };
+  abLoad();
+})();
+</script>
+{% endif %}
+
 {# ────── ⭐ 완전 백업 · 복원 (관리자 전용, 최우선 표시) ────── #}
 {% if is_admin %}
 <div class="card mb-5" style="max-width: 1024px; background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border: 2px solid #F59E0B;">

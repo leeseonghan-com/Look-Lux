@@ -41,6 +41,13 @@ def startup():
         from routes_files import purge_old_trash
         purge_old_trash()
         audit.purge_old(engine)
+        import autobackup
+        autobackup.start()      # ★ 시작 직후 + 6시간마다 자동 백업
+        from database import storage_status
+        _st = storage_status()
+        if not _st["persistent"]:
+            print(f"[DATA] ⚠ 경고: 데이터가 영구 저장공간이 아닌 {_st['data_dir']} 에 저장되고 있습니다. "
+                  f"Railway 서비스에 Volume을 연결하세요. (배포할 때마다 초기화됨)")
     except Exception as e:
         # 마이그레이션 실패해도 서버는 살아있게 (Healthcheck 통과용)
         import traceback

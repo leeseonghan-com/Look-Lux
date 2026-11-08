@@ -11,8 +11,34 @@ from sqlmodel import SQLModel, Field, create_engine, Session
 # - 로컬:   data/ (프로젝트 폴더 내)
 # - 클라우드: DATA_DIR 환경변수로 지정 (/data) — Fly volume 등
 # - 데스크톱 앱: launcher.py가 OS별 사용자 디렉토리 지정
-DATA_DIR = os.environ.get("DATA_DIR", "data")
+# ★ Railway에 볼륨(영구 저장 디스크)이 연결되어 있으면 그 위치를 최우선 사용
+#   (볼륨이 없거나 다른 경로에 붙어 있으면 배포할 때마다 데이터가 초기화됨)
+DATA_DIR = (os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or os.environ.get("DATA_DIR") or "data").rstrip("/") or "data"
 Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+# 볼륨 위치가 바뀐 경우: 이전 위치(DATA_DIR 설정값)에 있던 데이터를 새 위치로 1회 복사 (새 위치가 비어 있을 때만)
+try:
+    _prev = (os.environ.get("DATA_DIR") or "").rstrip("/")
+    if _prev and os.path.abspath(_prev) != os.path.abspath(DATA_DIR) and Path(_prev, "app.db").exists() \
+            and not Path(DATA_DIR, "app.db").exists():
+        import shutil as _sh
+        for _item in Path(_prev).iterdir():
+            _dst = Path(DATA_DIR) / _item.name
+            if _dst.exists():
+                continue
+            (_sh.copytree if _item.is_dir() else _sh.copy2)(_item, _dst)
+        print(f"[DATA] 이전 저장 위치 {_prev} → 영구 저장 위치 {DATA_DIR} 로 데이터 복사")
+except Exception as _e:
+    print(f"[DATA] 저장 위치 옮기기 실패: {_e}")
+
+
+def storage_status() -> dict:
+    """데이터가 배포 후에도 남는 곳에 저장되는지 진단"""
+    on_railway = bool(os.environ.get("RAILWAY_PROJECT_ID") or os.environ.get("RAILWAY_ENVIRONMENT_NAME")
+                      or os.environ.get("RAILWAY_SERVICE_ID"))
+    vol = (os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or "").rstrip("/")
+    persistent = (not on_railway) or bool(vol and os.path.abspath(DATA_DIR) == os.path.abspath(vol))
+    return {"on_railway": on_railway, "volume": vol, "data_dir": os.path.abspath(DATA_DIR),
+            "persistent": persistent}
 Path(f"{DATA_DIR}/receipts").mkdir(parents=True, exist_ok=True)
 Path(f"{DATA_DIR}/company").mkdir(parents=True, exist_ok=True)
 

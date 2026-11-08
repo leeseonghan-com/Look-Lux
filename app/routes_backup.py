@@ -1275,3 +1275,53 @@ def cancel_upload(request: Request):
     user = _user(request)
     _PREVIEW_CACHE.pop(user.id, None)
     return RedirectResponse("/backup", status_code=303)
+
+
+# ============================================================
+# ⭐ 자동 백업 목록 · 되돌리기 (관리자 전용)
+# ============================================================
+from fastapi.responses import JSONResponse as _JR
+
+
+@router.get("/api/autobackup/list")
+def autobackup_list(request: Request):
+    require_admin_user(request)
+    import autobackup
+    from database import storage_status
+    rows = [{"name": r["name"], "at": r["at"].strftime("%Y-%m-%d %H:%M") if r["at"] else "", "size": r["size"],
+             "local": r["local"], "r2": r["r2"]} for r in autobackup.list_backups()]
+    last = autobackup.last
+    return _JR({"rows": rows, "storage": storage_status(), "now": autobackup.db_counts(),
+                "r2": bool(autobackup._store()),
+                "last": {"at": last["at"].strftime("%m/%d %H:%M") if last["at"] else "", "ok": last["ok"], "msg": last["msg"]}})
+
+
+@router.post("/api/autobackup/now")
+def autobackup_now(request: Request):
+    require_admin_user(request)
+    import autobackup
+    return _JR(autobackup.snapshot("수동"))
+
+
+@router.post("/api/autobackup/peek")
+async def autobackup_peek(request: Request):
+    require_admin_user(request)
+    import autobackup
+    d = await request.json()
+    try:
+        return _JR({"ok": True, "counts": autobackup.peek(str(d.get("name") or "")), "now": autobackup.db_counts()})
+    except Exception as e:
+        return _JR({"ok": False, "msg": str(e)}, status_code=400)
+
+
+@router.post("/api/autobackup/restore")
+async def autobackup_restore(request: Request):
+    require_admin_user(request)
+    import autobackup
+    d = await request.json()
+    if d.get("confirm") != "복원":
+        return _JR({"ok": False, "msg": "확인 문구가 맞지 않습니다."}, status_code=400)
+    try:
+        return _JR(autobackup.restore(str(d.get("name") or "")))
+    except Exception as e:
+        return _JR({"ok": False, "msg": f"복원 실패: {e}"}, status_code=500)
